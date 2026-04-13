@@ -231,7 +231,8 @@
 }
 
 .stat-card .value.accent {
-  color: var(--accent);
+  color: #8BA600;
+  -webkit-text-stroke: 0.8px #6B8000;
 }
 
 .stat-card .sub {
