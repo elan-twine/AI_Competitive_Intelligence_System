@@ -1,0 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-primary: #F7FFE0;
+  --bg-secondary: #F0FFCC;
+  --bg-card: rgba(255, 255, 255, 0.75);
+  --bg-card-hover: rgba(255, 255, 255, 0.9);
+  --border: transparent;
+  --border-hover: #DBFE02;
+  --text-primary: #12150F;
+  --text-secondary: #1A1A1A;
+  --text-muted: #3A3A3A;
+  --accent: #DBFE02;
+  --accent-dark: #0B0D00;
+  --accent-dim: rgba(219, 254, 2, 0.15);
+  --positive: #16A34A;
+  --negative: #DC2626;
+  --neutral: #2563EB;
+  --x-color: #1DA1F2;
+  --reddit-color: #FF4500;
+  --news-color: #16A34A;
+  --linkedin-color: #0A66C2;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  --glow-color: rgba(180, 210, 0, 0.45);
+  --glow-color-hover: rgba(180, 210, 0, 0.7);
+  --border-idle-opacity: 0.6;
+  --inner-bg: rgba(255, 255, 255, 0.5);
+  --inner-bg-hover: rgba(255, 255, 255, 0.7);
+  --divider: rgba(0, 0, 0, 0.06);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Space Grotesk', -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  position: relative;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(219, 254, 2, 0.5);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* ---- Dark Mode ---- */
+[data-theme="dark"] {
+  --bg-primary: #0A0A0A;
+  --bg-secondary: #111111;
+  --bg-card: rgba(30, 30, 30, 0.7);
+  --bg-card-hover: rgba(40, 40, 40, 0.8);
+  --text-primary: #FCFCF9;
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-muted: rgba(255, 255, 255, 0.3);
+  --accent: #DBFE02;
+  --accent-dark: #DBFE02;
+  --accent-dim: rgba(219, 254, 2, 0.1);
+  --positive: #34D399;
+  --negative: #F87171;
+  --neutral: #60A5FA;
+  --glass-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --glow-color: rgba(219, 254, 2, 0.3);
+  --glow-color-hover: rgba(219, 254, 2, 0.7);
+  --border-idle-opacity: 0.5;
+  --inner-bg: rgba(255, 255, 255, 0.03);
+  --inner-bg-hover: rgba(255, 255, 255, 0.06);
+  --divider: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(219, 254, 2, 0.2);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(219, 254, 2, 0.4);
+}
