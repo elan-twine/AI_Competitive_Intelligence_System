@@ -29,12 +29,12 @@
 .chart-tooltip {
   background: var(--bg-card);
   backdrop-filter: blur(12px);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--glow-color-hover);
   border-radius: 10px;
   padding: 10px 14px;
   font-size: 13px;
   color: var(--text-primary);
-  box-shadow: 0 0 15px var(--glow-color);
+  box-shadow: 0 0 10px var(--glow-color);
 }
 
 .chart-tooltip-value {
@@ -339,8 +339,8 @@
 
 .platform-card:hover {
   background: var(--inner-bg-hover);
-  border-color: var(--accent);
-  box-shadow: 0 0 20px var(--glow-color);
+  border-color: var(--glow-color-hover);
+  box-shadow: 0 0 15px var(--glow-color);
 }
 
 .platform-icon {
@@ -430,9 +430,9 @@
 }
 
 .feed-item:hover {
-  border-color: var(--accent);
+  border-color: var(--glow-color-hover);
   background: var(--inner-bg-hover);
-  box-shadow: 0 0 15px var(--glow-color);
+  box-shadow: 0 0 10px var(--glow-color);
 }
 
 .feed-platform-dot {
