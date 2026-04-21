@@ -39,7 +39,7 @@ function Dashboard({ onLogout }) {
   const [feedFilter, setFeedFilter] = useState('All')
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem('twine-sov-theme')
-    return saved ? saved === 'dark' : false
+    return saved === 'dark'
   })
 
   useEffect(() => {

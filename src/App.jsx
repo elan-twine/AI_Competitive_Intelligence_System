@@ -14,11 +14,19 @@ function getInitialView() {
   return 'landing'
 }
 
+const PUBLIC_VIEWS = new Set(['landing', 'login', 'docs'])
+
 function App() {
   const [view, setView] = useState(getInitialView)
 
   useEffect(() => {
     window.location.hash = view === 'landing' ? '' : view
+    if (PUBLIC_VIEWS.has(view)) {
+      document.documentElement.setAttribute('data-theme', 'light')
+    } else {
+      const saved = localStorage.getItem('twine-sov-theme')
+      document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light')
+    }
   }, [view])
 
   useEffect(() => {

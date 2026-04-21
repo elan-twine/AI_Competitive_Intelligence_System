@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { ArrowLeft, ExternalLink, Moon, Sun, Zap, Database, Brain, LineChart } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Zap, Database, Brain, LineChart } from 'lucide-react'
 
 function GithubIcon({ size = 16 }) {
   return (
@@ -14,16 +13,6 @@ import './landing.css'
 const REPO_URL = 'https://github.com/esmyla/AI_Competitive_Intelligence_System_Twine_S26'
 
 export default function Docs({ onNavigate }) {
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem('twine-sov-theme')
-    return saved ? saved === 'dark' : false
-  })
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
-    localStorage.setItem('twine-sov-theme', dark ? 'dark' : 'light')
-  }, [dark])
-
   return (
     <div className="landing">
       <div className="landing-bg">
@@ -38,9 +27,6 @@ export default function Docs({ onNavigate }) {
         </button>
         <div className="landing-nav-right">
           <button className="landing-nav-link" onClick={() => onNavigate('login')}>Login</button>
-          <button className="theme-btn" onClick={() => setDark(d => !d)} aria-label="Toggle theme">
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
         </div>
       </nav>
 

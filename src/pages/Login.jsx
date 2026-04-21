@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { ArrowLeft, ArrowRight, Moon, Sun } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
 import './landing.css'
 
@@ -7,15 +7,6 @@ export default function Login({ onNavigate, onLoginSuccess }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem('twine-sov-theme')
-    return saved ? saved === 'dark' : false
-  })
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
-    localStorage.setItem('twine-sov-theme', dark ? 'dark' : 'light')
-  }, [dark])
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -40,11 +31,6 @@ export default function Login({ onNavigate, onLoginSuccess }) {
         <button className="landing-nav-link back" onClick={() => onNavigate('landing')}>
           <ArrowLeft size={14} /> Back
         </button>
-        <div className="landing-nav-right">
-          <button className="theme-btn" onClick={() => setDark(d => !d)} aria-label="Toggle theme">
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-        </div>
       </nav>
 
       <div className="auth-wrap">
