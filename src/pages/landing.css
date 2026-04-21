@@ -304,108 +304,26 @@
   letter-spacing: 0.3px;
 }
 
-/* --- Orb --- */
+/* --- 3D Glass Knot --- */
 .landing-orb-wrap {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 480px;
+  min-height: 520px;
 }
 
-.landing-orb {
+.glass-knot-canvas {
+  width: 100%;
+  height: 560px;
+  max-width: 640px;
   position: relative;
-  width: 440px;
-  height: 440px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  perspective: 1200px;
 }
 
-.orb-core {
-  position: absolute;
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #DBFE02 40%, #8BA600 100%);
-  box-shadow:
-    0 0 60px rgba(219, 254, 2, 0.6),
-    0 0 120px rgba(219, 254, 2, 0.3),
-    inset -20px -20px 40px rgba(139, 166, 0, 0.4);
-  animation: orbPulse 4s ease-in-out infinite;
-}
-
-[data-theme="dark"] .orb-core {
-  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #DBFE02 50%, #5a6b00 100%);
-  box-shadow:
-    0 0 80px rgba(219, 254, 2, 0.7),
-    0 0 160px rgba(219, 254, 2, 0.4),
-    inset -20px -20px 40px rgba(90, 107, 0, 0.5);
-}
-
-@keyframes orbPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-
-.orb-ring {
-  position: absolute;
-  border-radius: 50%;
-  border: 1.5px solid transparent;
-  background:
-    conic-gradient(from 0deg, transparent 0%, rgba(219, 254, 2, 0.8) 30%, transparent 60%, rgba(219, 254, 2, 0.5) 85%, transparent 100%) border-box;
-  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-
-.orb-ring-1 {
-  width: 260px;
-  height: 260px;
-  animation: orbSpin 9s linear infinite;
-}
-
-.orb-ring-2 {
-  width: 340px;
-  height: 340px;
-  animation: orbSpinReverse 14s linear infinite;
-  opacity: 0.7;
-}
-
-.orb-ring-3 {
-  width: 420px;
-  height: 420px;
-  animation: orbSpin 20s linear infinite;
-  opacity: 0.4;
-}
-
-@keyframes orbSpin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes orbSpinReverse {
-  to { transform: rotate(-360deg); }
-}
-
-.orb-knot {
-  position: absolute;
-  width: 380px;
-  height: 380px;
-  animation: orbKnot 20s linear infinite;
-}
-
-.orb-knot-inner {
-  transform-origin: center;
-  animation: orbKnotInner 12s linear infinite;
-}
-
-@keyframes orbKnot {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes orbKnotInner {
-  to { transform: rotate(-360deg); }
+.glass-knot-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
 }
 
 /* --- Auth --- */
@@ -679,13 +597,8 @@
   .landing-title { font-size: 44px; }
   .landing-cta { justify-content: center; }
   .landing-tags { justify-content: center; }
-  .landing-orb-wrap { min-height: 360px; order: -1; }
-  .landing-orb { width: 320px; height: 320px; }
-  .orb-ring-3 { width: 310px; height: 310px; }
-  .orb-ring-2 { width: 250px; height: 250px; }
-  .orb-ring-1 { width: 190px; height: 190px; }
-  .orb-core { width: 100px; height: 100px; }
-  .orb-knot { width: 280px; height: 280px; }
+  .landing-orb-wrap { min-height: 380px; order: -1; }
+  .glass-knot-canvas { height: 380px; max-width: 380px; }
   .docs-grid { grid-template-columns: 1fr; }
   .landing-nav { padding: 20px 24px; }
 }

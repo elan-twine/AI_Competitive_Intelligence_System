@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Moon, Sun, ArrowRight, BookOpen, LogIn } from 'lucide-react'
+import GlassKnot from '../components/GlassKnot'
 import './landing.css'
 
 export default function Landing({ onNavigate }) {
@@ -65,34 +66,7 @@ export default function Landing({ onNavigate }) {
         </div>
 
         <div className="landing-orb-wrap">
-          <div className="landing-orb">
-            <div className="orb-ring orb-ring-1" />
-            <div className="orb-ring orb-ring-2" />
-            <div className="orb-ring orb-ring-3" />
-            <div className="orb-core" />
-            <svg className="orb-knot" viewBox="-100 -100 200 200">
-              <defs>
-                <linearGradient id="knotGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#DBFE02" />
-                  <stop offset="50%" stopColor="#DBFE02" stopOpacity="0.3" />
-                  <stop offset="100%" stopColor="#DBFE02" />
-                </linearGradient>
-              </defs>
-              <g className="orb-knot-inner">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <ellipse
-                    key={i}
-                    cx="0" cy="0" rx="70" ry="28"
-                    fill="none"
-                    stroke="url(#knotGrad)"
-                    strokeWidth="1.2"
-                    strokeOpacity={0.5 + (i / 12)}
-                    transform={`rotate(${i * 30})`}
-                  />
-                ))}
-              </g>
-            </svg>
-          </div>
+          <GlassKnot />
         </div>
       </main>
 
