@@ -12,23 +12,44 @@ export function useSOVData() {
   async function fetchAll() {
     setLoading(true)
     setError(null)
+
+    const safeQuery = async (table, orderCol) => {
+      try {
+        const res = await supabase.from(table).select('*').order(orderCol, { ascending: false })
+        if (res.error) {
+          console.warn(`[SOV] ${table} query error:`, res.error.message)
+          return []
+        }
+        return res.data || []
+      } catch (err) {
+        console.warn(`[SOV] ${table} threw:`, err)
+        return []
+      }
+    }
+
+    const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 8000))
+
     try {
-      const [tweetsRes, redditRes, newsRes, linkedinRes] = await Promise.all([
-        supabase.from('tweets').select('*').order('createdAt', { ascending: false }),
-        supabase.from('reddit_posts').select('*').order('createdAt', { ascending: false }),
-        supabase.from('googlenews').select('*').order('publishedAt', { ascending: false }),
-        supabase.from('linkedin_posts').select('*').order('posted_at', { ascending: false }),
+      const result = await Promise.race([
+        Promise.all([
+          safeQuery('tweets', 'createdAt'),
+          safeQuery('reddit_posts', 'createdAt'),
+          safeQuery('googlenews', 'publishedAt'),
+          safeQuery('linkedin_posts', 'posted_at'),
+        ]),
+        timeout,
       ])
 
-      if (tweetsRes.error) throw tweetsRes.error
-      if (redditRes.error) throw redditRes.error
-      if (newsRes.error) throw newsRes.error
-      if (linkedinRes.error) throw linkedinRes.error
-
-      setTweets(tweetsRes.data || [])
-      setRedditPosts(redditRes.data || [])
-      setGoogleNews(newsRes.data || [])
-      setLinkedinPosts(linkedinRes.data || [])
+      if (result === 'timeout') {
+        console.warn('[SOV] fetch timed out after 8s — rendering empty state')
+        setTweets([]); setRedditPosts([]); setGoogleNews([]); setLinkedinPosts([])
+      } else {
+        const [tw, rd, gn, li] = result
+        setTweets(tw)
+        setRedditPosts(rd)
+        setGoogleNews(gn)
+        setLinkedinPosts(li)
+      }
     } catch (err) {
       setError(err.message)
     } finally {

@@ -21,7 +21,9 @@ function App() {
 
   useEffect(() => {
     window.location.hash = view === 'landing' ? '' : view
-    if (PUBLIC_VIEWS.has(view)) {
+    if (view === 'landing') {
+      document.documentElement.setAttribute('data-theme', 'dark')
+    } else if (view === 'login' || view === 'docs') {
       document.documentElement.setAttribute('data-theme', 'light')
     } else {
       const saved = localStorage.getItem('twine-sov-theme')
@@ -37,7 +39,12 @@ function App() {
 
   const navigate = (next) => setView(next)
 
-  const handleLoginSuccess = () => setView('dashboard')
+  const handleLoginSuccess = () => {
+    if (!localStorage.getItem('twine-sov-theme')) {
+      localStorage.setItem('twine-sov-theme', 'dark')
+    }
+    setView('dashboard')
+  }
 
   const handleLogout = () => {
     localStorage.removeItem('twine-sov-auth')
@@ -45,12 +52,12 @@ function App() {
     setView('landing')
   }
 
-  if (view === 'landing') return <Landing onNavigate={navigate} />
+  if (view === 'landing') return <Landing onNavigate={navigate} onLoginSuccess={handleLoginSuccess} />
   if (view === 'login') return <Login onNavigate={navigate} onLoginSuccess={handleLoginSuccess} />
   if (view === 'docs') return <Docs onNavigate={navigate} />
   if (view === 'dashboard') return <Dashboard onLogout={handleLogout} />
 
-  return <Landing onNavigate={navigate} />
+  return <Landing onNavigate={navigate} onLoginSuccess={handleLoginSuccess} />
 }
 
 export default App
