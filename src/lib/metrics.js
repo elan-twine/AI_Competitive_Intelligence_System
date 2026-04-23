@@ -29,12 +29,16 @@ export function companyRow(posts, company) {
   const rows = posts.filter(p => p.companyName === company)
   const postCount = rows.length
   const unweightedSOV = rows.reduce((s, p) => s + (p.unweightedSOV || 0), 0)
-  const weightedSOV = rows.reduce((s, p) => s + (p.weightedSOV || p.sov || 0), 0)
+  const weightedSOV = rows.reduce((s, p) => s + (p.weightedSOV || 0), 0)
   const sentimentRows = rows.filter(p => p.sentiment != null)
   const avgSentiment = sentimentRows.length
     ? sentimentRows.reduce((s, p) => s + p.sentiment, 0) / sentimentRows.length
     : 0
   return { company, postCount, unweightedSOV, weightedSOV, avgSentiment, posts: rows }
+}
+
+export function totalWeightedSOV(posts) {
+  return posts.reduce((s, p) => s + (p.weightedSOV || 0), 0)
 }
 
 export function rankings(posts) {
