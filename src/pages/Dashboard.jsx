@@ -3,7 +3,7 @@ import { RefreshCw, TrendingUp, MessageCircle, BarChart3, Globe, Moon, Sun, LogO
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
 import { GlassCard } from '../components/GlassCard'
-import { applyFilters, rankings, companyRow, platformSplit, compare, totalWeightedSOV } from '../lib/metrics'
+import { applyFilters, rankings, companyRow, platformSplit, compare } from '../lib/metrics'
 import '../App.css'
 
 const PLATFORM_COLORS = {
@@ -119,10 +119,11 @@ function Dashboard({ onLogout }) {
     )
   }
 
-  const totalSOV = totalWeightedSOV(filtered)
-  const sentRows = filtered.filter(p => p.sentiment != null)
-  const avgSentiment = sentRows.length ? sentRows.reduce((s, p) => s + p.sentiment, 0) / sentRows.length : 0
   const pb = platformSplit(filtered)
+  const twineIdx = ranked.findIndex(r => isTwine(r.company))
+  const twineRow = twineIdx >= 0 ? ranked[twineIdx] : null
+  const twineRank = twineIdx >= 0 ? twineIdx + 1 : null
+  const platformCount = Object.keys(pb).length
 
   const maxSOV = ranked.length ? ranked[0].weightedSOV || 1 : 1
   const isTwine = (name) => /twine/i.test(name || '')
@@ -201,22 +202,38 @@ function Dashboard({ onLogout }) {
 
       {tab === 'overview' && (
         <>
-          {/* Stats grid */}
+          {/* Stats grid — Twine-focused */}
           <div className="stats-grid">
             {[
-              { label: 'Total Posts', value: filtered.length, sub: platform === 'All' ? 'Across all platforms' : `On ${platform}` },
-              { label: 'Total Weighted SOV', value: totalSOV.toFixed(1), sub: 'Sum across all companies', accent: true },
               {
-                label: 'Avg Sentiment',
-                value: `${avgSentiment > 0 ? '+' : ''}${avgSentiment.toFixed(2)}`,
-                sub: 'Scale: -3 to +3',
-                color: avgSentiment > 0 ? 'var(--positive)' : avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)',
+                label: 'Twine Rank',
+                value: twineRank ? `#${twineRank}` : '—',
+                sub: ranked.length ? `of ${ranked.length} competitors` : 'no data',
+                color: twineRank === 1 ? 'var(--positive)' : undefined,
               },
-              { label: 'Companies', value: ranked.length, sub: `${Object.keys(pb).length} platforms` },
+              {
+                label: 'Twine Weighted SOV',
+                value: twineRow ? twineRow.weightedSOV.toFixed(1) : '—',
+                sub: twineRow ? `${twineRow.postCount} posts` : 'not in filter',
+                accent: true,
+              },
+              {
+                label: 'Twine Sentiment',
+                value: twineRow ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(2)}` : '—',
+                sub: 'Scale: -3 to +3',
+                color: twineRow
+                  ? (twineRow.avgSentiment > 0 ? 'var(--positive)' : twineRow.avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)')
+                  : undefined,
+              },
+              {
+                label: 'Total Posts',
+                value: filtered.length,
+                sub: platform === 'All' ? `Across ${platformCount} platform${platformCount === 1 ? '' : 's'}` : `On ${platform}`,
+              },
             ].map((stat, i) => (
               <GlassCard key={i} className="stat-card" intensity={10}>
                 <div className="label">{stat.label}</div>
-                <div className="value" style={stat.color ? { color: stat.color } : stat.accent ? { color: 'var(--accent)' } : {}}>
+                <div className={`value ${stat.accent ? 'accent' : ''}`} style={stat.color ? { color: stat.color } : {}}>
                   {stat.value}
                 </div>
                 <div className="sub">{stat.sub}</div>

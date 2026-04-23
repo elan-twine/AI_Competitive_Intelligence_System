@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowRight, LogIn, X } from 'lucide-react'
 import LiquidEther from '../components/LiquidEther'
 import { GlassCard } from '../components/GlassCard'
+import { checkLogin } from '../lib/auth'
 import './landing.css'
 
 export default function Landing({ onNavigate, onLoginSuccess }) {
@@ -75,16 +76,23 @@ function LoginModal({ onClose, onLoginSuccess }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState(null)
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    setErrorMsg(null)
     if (!email || !password) return
     setLoading(true)
     setTimeout(() => {
+      setLoading(false)
+      if (!checkLogin(email, password)) {
+        setErrorMsg('Invalid email or password')
+        return
+      }
       localStorage.setItem('twine-sov-auth', 'true')
       localStorage.setItem('twine-sov-user', email)
       onLoginSuccess()
-    }, 500)
+    }, 300)
   }
 
   return (
@@ -119,10 +127,11 @@ function LoginModal({ onClose, onLoginSuccess }) {
                 placeholder="••••••••"
               />
             </label>
+            {errorMsg && <div className="auth-error">{errorMsg}</div>}
             <button type="submit" className="cta-primary auth-submit" disabled={loading}>
               {loading ? 'Signing in...' : (<>Sign in <ArrowRight size={16} /></>)}
             </button>
-            <p className="auth-hint muted">Demo mode — any email + password will work.</p>
+            <p className="auth-hint muted">Team members only — reach out if you need access.</p>
           </form>
         </GlassCard>
       </div>

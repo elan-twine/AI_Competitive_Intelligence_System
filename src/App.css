@@ -670,13 +670,13 @@
 
 .feed-filter-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .feed-filter-row .filter-label {
-  min-width: 80px;
+  min-width: 0;
 }
 
 /* ---- Twine row highlight ---- */
@@ -698,6 +698,27 @@
 .breakdown-table tr.is-twine .col-company {
   color: var(--accent);
   font-weight: 700;
+}
+
+/* ---- Light-mode green text readability ---- */
+[data-theme="light"] .stat-card .value.accent {
+  color: #5a6b00;
+  -webkit-text-stroke: 0.6px #3f4a00;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .sentiment-row.is-twine {
+  background: rgba(139, 166, 0, 0.18);
+}
+
+[data-theme="light"] .sentiment-row.is-twine .sentiment-name,
+[data-theme="light"] .breakdown-table tr.is-twine .col-company {
+  color: #3f4a00;
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .breakdown-table tr.is-twine td {
+  background: rgba(139, 166, 0, 0.15);
 }
 
 /* ---- Breakdown table ---- */

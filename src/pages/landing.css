@@ -581,6 +581,17 @@
   margin-top: 4px;
 }
 
+.auth-error {
+  padding: 10px 12px;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  border-radius: 10px;
+  color: var(--negative);
+  font-size: 12.5px;
+  text-align: center;
+  font-weight: 500;
+}
+
 .muted { color: var(--text-muted); }
 
 /* --- Docs --- */

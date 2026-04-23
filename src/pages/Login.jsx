@@ -1,22 +1,30 @@
 import { useState } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
+import { checkLogin } from '../lib/auth'
 import './landing.css'
 
 export default function Login({ onNavigate, onLoginSuccess }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState(null)
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    setErrorMsg(null)
     if (!email || !password) return
     setLoading(true)
     setTimeout(() => {
+      setLoading(false)
+      if (!checkLogin(email, password)) {
+        setErrorMsg('Invalid email or password')
+        return
+      }
       localStorage.setItem('twine-sov-auth', 'true')
       localStorage.setItem('twine-sov-user', email)
       onLoginSuccess()
-    }, 600)
+    }, 300)
   }
 
   return (
@@ -62,12 +70,13 @@ export default function Login({ onNavigate, onLoginSuccess }) {
               />
             </label>
 
+            {errorMsg && <div className="auth-error">{errorMsg}</div>}
             <button type="submit" className="cta-primary auth-submit" disabled={loading}>
               {loading ? 'Signing in...' : (<>Sign in <ArrowRight size={16} /></>)}
             </button>
 
             <p className="auth-hint muted">
-              Demo mode — any email + password will work.
+              Team members only — reach out if you need access.
             </p>
           </form>
         </GlassCard>
