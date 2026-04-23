@@ -57,8 +57,8 @@ export default function Landing({ onNavigate, onLoginSuccess }) {
         </main>
 
         <footer className="landing-footer">
-          <span>© {new Date().getFullYear()} Twine · Internal Tool</span>
-          <span className="muted">S26 Competitive Intelligence System</span>
+          <span>© {new Date().getFullYear()} Purdue Solutions</span>
+          <span className="muted"></span>
         </footer>
       </div>
 
