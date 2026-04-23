@@ -119,6 +119,7 @@ function Dashboard({ onLogout }) {
     )
   }
 
+  const isTwine = (name) => /twine/i.test(name || '')
   const pb = platformSplit(filtered)
   const twineIdx = ranked.findIndex(r => isTwine(r.company))
   const twineRow = twineIdx >= 0 ? ranked[twineIdx] : null
@@ -126,7 +127,6 @@ function Dashboard({ onLogout }) {
   const platformCount = Object.keys(pb).length
 
   const maxSOV = ranked.length ? ranked[0].weightedSOV || 1 : 1
-  const isTwine = (name) => /twine/i.test(name || '')
 
   // Feed-local filtering: apply on top of `filtered`
   const feedPosts = filtered.filter(p => {
