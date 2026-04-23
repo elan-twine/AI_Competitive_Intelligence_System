@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
-import { RefreshCw, TrendingUp, MessageCircle, BarChart3, Globe, Moon, Sun, LogOut } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { useState, useEffect, useMemo } from 'react'
+import { RefreshCw, TrendingUp, MessageCircle, BarChart3, Globe, Moon, Sun, LogOut, Filter, ArrowUpDown } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
 import { GlassCard } from '../components/GlassCard'
+import { applyFilters, rankings, companyRow, platformSplit, sentimentBuckets, compare } from '../lib/metrics'
 import '../App.css'
 
 const PLATFORM_COLORS = {
@@ -11,6 +12,13 @@ const PLATFORM_COLORS = {
   'Google News': '#34D399',
   'LinkedIn': '#0A66C2',
 }
+const PLATFORMS = ['All', 'X', 'Reddit', 'Google News', 'LinkedIn']
+const SENTIMENTS = ['All', 'positive', 'neutral', 'negative']
+const TIME_RANGES = [
+  { label: 'All time', value: 0 },
+  { label: '30d', value: 30 },
+  { label: '7d', value: 7 },
+]
 
 function SentimentLabel({ score }) {
   if (score == null) return null
@@ -30,22 +38,49 @@ function CustomTooltip({ active, payload }) {
   )
 }
 
+function fmtSent(s) {
+  const n = Number(s || 0)
+  return `${n > 0 ? '+' : ''}${n.toFixed(2)}`
+}
+
 function Dashboard({ onLogout }) {
-  const {
-    allPosts, companies, loading, error, refetch,
-    getCompanySOV, getCompanySentiment, getPlatformBreakdown,
-  } = useSOVData()
+  const { allPosts, companies, loading, error, refetch } = useSOVData()
 
-  const [feedFilter, setFeedFilter] = useState('All')
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem('twine-sov-theme')
-    return saved === 'dark'
-  })
+  const [platform, setPlatform] = useState('All')
+  const [sentiment, setSentiment] = useState('All')
+  const [days, setDays] = useState(0)
+  const [sortKey, setSortKey] = useState('weightedSOV')
+  const [compareA, setCompareA] = useState('')
+  const [compareB, setCompareB] = useState('')
 
+  const [dark, setDark] = useState(() => localStorage.getItem('twine-sov-theme') === 'dark')
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
     localStorage.setItem('twine-sov-theme', dark ? 'dark' : 'light')
   }, [dark])
+
+  // Filtered working set
+  const filtered = useMemo(
+    () => applyFilters(allPosts, { platform, sentiment, days }),
+    [allPosts, platform, sentiment, days]
+  )
+
+  const ranked = useMemo(() => rankings(filtered), [filtered])
+  const sortedRanked = useMemo(() => {
+    const arr = [...ranked]
+    arr.sort((a, b) => {
+      const va = a[sortKey], vb = b[sortKey]
+      if (typeof va === 'string') return va.localeCompare(vb)
+      return (vb || 0) - (va || 0)
+    })
+    return arr
+  }, [ranked, sortKey])
+
+  // Seed compare pickers once companies arrive
+  useEffect(() => {
+    if (companies.length && !compareA) setCompareA(companies[0])
+    if (companies.length > 1 && !compareB) setCompareB(companies[1])
+  }, [companies, compareA, compareB])
 
   if (loading) {
     return (
@@ -55,7 +90,6 @@ function Dashboard({ onLogout }) {
       </div>
     )
   }
-
   if (error) {
     return (
       <div className="loading-screen">
@@ -65,19 +99,22 @@ function Dashboard({ onLogout }) {
     )
   }
 
-  const totalSOV = allPosts.reduce((s, p) => s + (p.sov || 0), 0)
-  const avgSentiment = allPosts.filter(p => p.sentiment != null).length > 0
-    ? allPosts.filter(p => p.sentiment != null).reduce((s, p) => s + p.sentiment, 0) / allPosts.filter(p => p.sentiment != null).length
-    : 0
-  const platformBreakdown = getPlatformBreakdown()
+  const totalSOV = filtered.reduce((s, p) => s + (p.sov || 0), 0)
+  const sentRows = filtered.filter(p => p.sentiment != null)
+  const avgSentiment = sentRows.length ? sentRows.reduce((s, p) => s + p.sentiment, 0) / sentRows.length : 0
+  const pb = platformSplit(filtered)
 
-  const chartData = companies
-    .map(c => ({ name: c, sov: getCompanySOV(c) }))
-    .sort((a, b) => b.sov - a.sov)
+  const chartData = ranked.map(r => ({ name: r.company, sov: r.weightedSOV }))
+  const topPosts = [...filtered].sort((a, b) => (b.sov || 0) - (a.sov || 0)).slice(0, 20)
 
-  const filteredPosts = (feedFilter === 'All' ? allPosts : allPosts.filter(p => p.platform === feedFilter))
-    .sort((a, b) => (b.sov || 0) - (a.sov || 0))
-    .slice(0, 20)
+  const cmp = compareA && compareB ? compare(filtered, compareA, compareB) : null
+  const cmpChart = cmp
+    ? [
+        { name: 'Posts', [compareA]: cmp.a.postCount, [compareB]: cmp.b.postCount },
+        { name: 'Unweighted SOV', [compareA]: +cmp.a.unweightedSOV.toFixed(2), [compareB]: +cmp.b.unweightedSOV.toFixed(2) },
+        { name: 'Weighted SOV', [compareA]: +cmp.a.weightedSOV.toFixed(2), [compareB]: +cmp.b.weightedSOV.toFixed(2) },
+      ]
+    : []
 
   return (
     <div className="app">
@@ -102,9 +139,51 @@ function Dashboard({ onLogout }) {
         </div>
       </header>
 
+      {/* Global filter bar */}
+      <GlassCard className="card filter-bar" intensity={3}>
+        <div className="filter-icon"><Filter size={14} /></div>
+        <div className="filter-group">
+          <span className="filter-label">Platform</span>
+          <div className="chip-row">
+            {PLATFORMS.map(p => (
+              <button
+                key={p}
+                className={`chip ${platform === p ? 'active' : ''}`}
+                onClick={() => setPlatform(p)}
+              >{p}</button>
+            ))}
+          </div>
+        </div>
+        <div className="filter-group">
+          <span className="filter-label">Sentiment</span>
+          <div className="chip-row">
+            {SENTIMENTS.map(s => (
+              <button
+                key={s}
+                className={`chip ${sentiment === s ? 'active' : ''}`}
+                onClick={() => setSentiment(s)}
+              >{s}</button>
+            ))}
+          </div>
+        </div>
+        <div className="filter-group">
+          <span className="filter-label">Time</span>
+          <div className="chip-row">
+            {TIME_RANGES.map(t => (
+              <button
+                key={t.value}
+                className={`chip ${days === t.value ? 'active' : ''}`}
+                onClick={() => setDays(t.value)}
+              >{t.label}</button>
+            ))}
+          </div>
+        </div>
+      </GlassCard>
+
+      {/* Stats grid */}
       <div className="stats-grid">
         {[
-          { label: 'Total Posts', value: allPosts.length, sub: 'Across all platforms' },
+          { label: 'Total Posts', value: filtered.length, sub: platform === 'All' ? 'Across all platforms' : `On ${platform}` },
           { label: 'Total SOV', value: totalSOV.toFixed(1), sub: 'Weighted share of voice', accent: true },
           {
             label: 'Avg Sentiment',
@@ -112,7 +191,7 @@ function Dashboard({ onLogout }) {
             sub: 'Scale: -3 to +3',
             color: avgSentiment > 0 ? 'var(--positive)' : avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)',
           },
-          { label: 'Companies', value: companies.length, sub: `${Object.keys(platformBreakdown).length} platforms` },
+          { label: 'Companies', value: ranked.length, sub: `${Object.keys(pb).length} platforms` },
         ].map((stat, i) => (
           <GlassCard key={i} className="stat-card" intensity={10}>
             <div className="label">{stat.label}</div>
@@ -124,14 +203,12 @@ function Dashboard({ onLogout }) {
         ))}
       </div>
 
+      {/* Rankings + sentiment */}
       <div className="main-grid">
         <GlassCard className="card" intensity={5}>
           <div className="card-header">
             <span className="card-title">Share of Voice by Company</span>
-            <span className="card-badge">
-              <TrendingUp size={11} style={{ marginRight: 4 }} />
-              Rankings
-            </span>
+            <span className="card-badge"><TrendingUp size={11} style={{ marginRight: 4 }} />Rankings</span>
           </div>
           {chartData.length > 0 ? (
             <div className="chart-container">
@@ -149,24 +226,21 @@ function Dashboard({ onLogout }) {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="empty-state"><p>No company data yet</p></div>
+            <div className="empty-state"><p>No data for the current filters</p></div>
           )}
         </GlassCard>
 
         <GlassCard className="card" intensity={5}>
           <div className="card-header">
             <span className="card-title">Sentiment by Company</span>
-            <span className="card-badge">
-              <MessageCircle size={11} style={{ marginRight: 4 }} />
-              Analysis
-            </span>
+            <span className="card-badge"><MessageCircle size={11} style={{ marginRight: 4 }} />Analysis</span>
           </div>
-          {companies.length > 0 ? companies.sort((a, b) => getCompanySentiment(b) - getCompanySentiment(a)).map(company => {
-            const sent = getCompanySentiment(company)
+          {ranked.length > 0 ? [...ranked].sort((a, b) => b.avgSentiment - a.avgSentiment).map(r => {
+            const sent = r.avgSentiment
             const normalized = (sent + 3) / 6
             return (
-              <div className="sentiment-row" key={company}>
-                <span className="sentiment-name">{company}</span>
+              <div className="sentiment-row" key={r.company}>
+                <span className="sentiment-name">{r.company}</span>
                 <div className="sentiment-bar-group">
                   <div className="bar" style={{
                     width: `${normalized * 100}%`,
@@ -174,33 +248,104 @@ function Dashboard({ onLogout }) {
                   }} />
                 </div>
                 <span className={`sentiment-score ${sent > 0 ? 'positive' : sent < 0 ? 'negative' : 'neutral'}`}>
-                  {sent > 0 ? '+' : ''}{sent.toFixed(1)}
+                  {fmtSent(sent)}
                 </span>
               </div>
             )
           }) : (
-            <div className="empty-state"><p>No sentiment data yet</p></div>
+            <div className="empty-state"><p>No sentiment data for current filters</p></div>
           )}
         </GlassCard>
       </div>
 
+      {/* All-companies breakdown table */}
+      <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4}>
+        <div className="card-header">
+          <span className="card-title">All Companies · Breakdown</span>
+          <span className="card-badge"><ArrowUpDown size={11} style={{ marginRight: 4 }} />Sortable</span>
+        </div>
+        {sortedRanked.length === 0 ? (
+          <div className="empty-state"><p>No data for the current filters</p></div>
+        ) : (
+          <div className="table-wrap">
+            <table className="breakdown-table">
+              <thead>
+                <tr>
+                  <SortHeader label="Company" field="company" sortKey={sortKey} setSortKey={setSortKey} align="left" />
+                  <SortHeader label="Posts" field="postCount" sortKey={sortKey} setSortKey={setSortKey} />
+                  <SortHeader label="Unweighted SOV" field="unweightedSOV" sortKey={sortKey} setSortKey={setSortKey} />
+                  <SortHeader label="Weighted SOV" field="weightedSOV" sortKey={sortKey} setSortKey={setSortKey} />
+                  <SortHeader label="Avg Sentiment" field="avgSentiment" sortKey={sortKey} setSortKey={setSortKey} />
+                </tr>
+              </thead>
+              <tbody>
+                {sortedRanked.map(r => (
+                  <tr key={r.company}>
+                    <td className="col-company">{r.company}</td>
+                    <td>{r.postCount}</td>
+                    <td>{r.unweightedSOV.toFixed(2)}</td>
+                    <td><strong>{r.weightedSOV.toFixed(2)}</strong></td>
+                    <td className={r.avgSentiment > 0 ? 'positive' : r.avgSentiment < 0 ? 'negative' : 'neutral'}>
+                      {fmtSent(r.avgSentiment)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </GlassCard>
+
+      {/* Head-to-head compare */}
+      <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4}>
+        <div className="card-header">
+          <span className="card-title">Head-to-head</span>
+          <span className="card-badge">Compare</span>
+        </div>
+        <div className="compare-pickers">
+          <CompanyPicker label="Company A" companies={companies} value={compareA} onChange={setCompareA} />
+          <div className="compare-vs">vs</div>
+          <CompanyPicker label="Company B" companies={companies} value={compareB} onChange={setCompareB} />
+        </div>
+
+        {cmp && compareA !== compareB ? (
+          <>
+            <div className="compare-cards">
+              <CompareColumn company={compareA} row={cmp.a} winners={cmp.winners} />
+              <CompareColumn company={compareB} row={cmp.b} winners={cmp.winners} />
+            </div>
+            <div className="chart-container" style={{ height: 220, marginTop: 20 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={cmpChart} margin={{ left: 10, right: 20, top: 20, bottom: 0 }}>
+                  <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                  <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
+                  <Tooltip cursor={{ fill: 'rgba(219,254,2,0.06)' }} />
+                  <Bar dataKey={compareA} fill="#DBFE02" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey={compareB} fill="rgba(219,254,2,0.35)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        ) : (
+          <div className="empty-state"><p>Pick two different companies to compare</p></div>
+        )}
+      </GlassCard>
+
+      {/* Platform breakdown */}
       <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4}>
         <div className="card-header">
           <span className="card-title">Platform Breakdown</span>
-          <span className="card-badge">
-            <Globe size={11} style={{ marginRight: 4 }} />
-            Sources
-          </span>
+          <span className="card-badge"><Globe size={11} style={{ marginRight: 4 }} />Sources</span>
         </div>
         <div className="platform-grid">
-          {Object.entries(PLATFORM_COLORS).map(([platform, color]) => {
-            const data = platformBreakdown[platform] || { count: 0, sov: 0 }
+          {Object.entries(PLATFORM_COLORS).map(([plat, color]) => {
+            const data = pb[plat] || { count: 0, sov: 0 }
             return (
-              <div className="platform-card" key={platform}>
+              <div className="platform-card" key={plat}>
                 <div className="platform-icon" style={{ background: `${color}15` }}>
                   <div style={{ width: 12, height: 12, borderRadius: '50%', background: color }} />
                 </div>
-                <div className="platform-name">{platform}</div>
+                <div className="platform-name">{plat}</div>
                 <div className="platform-count">{data.count}</div>
                 <div className="platform-sov">SOV {data.sov.toFixed(1)}</div>
               </div>
@@ -209,27 +354,14 @@ function Dashboard({ onLogout }) {
         </div>
       </GlassCard>
 
+      {/* Recent mentions feed */}
       <GlassCard className="card feed-section" intensity={3}>
         <div className="card-header">
           <span className="card-title">Recent Mentions</span>
-          <span className="card-badge">
-            <BarChart3 size={11} style={{ marginRight: 4 }} />
-            Feed
-          </span>
-        </div>
-        <div className="feed-tabs">
-          {['All', 'X', 'Reddit', 'Google News', 'LinkedIn'].map(tab => (
-            <button
-              key={tab}
-              className={`feed-tab ${feedFilter === tab ? 'active' : ''}`}
-              onClick={() => setFeedFilter(tab)}
-            >
-              {tab}
-            </button>
-          ))}
+          <span className="card-badge"><BarChart3 size={11} style={{ marginRight: 4 }} />Top 20 by SOV</span>
         </div>
         <div className="feed-list">
-          {filteredPosts.length > 0 ? filteredPosts.map((post, i) => {
+          {topPosts.length > 0 ? topPosts.map((post, i) => {
             const url = post.twitterUrl || post.permalink || post.url || post.post_url || '#'
             const title = post.text || post.title || post.selfText || 'Untitled'
             const company = post.companyName || '—'
@@ -249,10 +381,60 @@ function Dashboard({ onLogout }) {
               </a>
             )
           }) : (
-            <div className="empty-state"><p>No posts found</p></div>
+            <div className="empty-state"><p>No posts for current filters</p></div>
           )}
         </div>
       </GlassCard>
+    </div>
+  )
+}
+
+function SortHeader({ label, field, sortKey, setSortKey, align = 'right' }) {
+  const active = sortKey === field
+  return (
+    <th className={`sortable ${active ? 'active' : ''}`} style={{ textAlign: align }} onClick={() => setSortKey(field)}>
+      {label}{active ? ' ↓' : ''}
+    </th>
+  )
+}
+
+function CompanyPicker({ label, companies, value, onChange }) {
+  return (
+    <label className="company-picker">
+      <span className="filter-label">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {companies.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+    </label>
+  )
+}
+
+function CompareColumn({ company, row, winners }) {
+  const win = (metric) => winners[metric] === company
+  return (
+    <div className="compare-column">
+      <div className="compare-company">{company}</div>
+      <div className={`compare-metric ${win('volume') ? 'winner' : ''}`}>
+        <span className="metric-label">Posts</span>
+        <span className="metric-value">{row.postCount}</span>
+        {win('volume') && <span className="winner-badge">leads</span>}
+      </div>
+      <div className={`compare-metric ${win('sov') ? 'winner' : ''}`}>
+        <span className="metric-label">Weighted SOV</span>
+        <span className="metric-value">{row.weightedSOV.toFixed(2)}</span>
+        {win('sov') && <span className="winner-badge">leads</span>}
+      </div>
+      <div className="compare-metric">
+        <span className="metric-label">Unweighted SOV</span>
+        <span className="metric-value">{row.unweightedSOV.toFixed(2)}</span>
+      </div>
+      <div className={`compare-metric ${win('sentiment') ? 'winner' : ''}`}>
+        <span className="metric-label">Avg Sentiment</span>
+        <span className={`metric-value ${row.avgSentiment > 0 ? 'positive' : row.avgSentiment < 0 ? 'negative' : 'neutral'}`}>
+          {fmtSent(row.avgSentiment)}
+        </span>
+        {win('sentiment') && <span className="winner-badge">leads</span>}
+      </div>
     </div>
   )
 }
