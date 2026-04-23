@@ -171,7 +171,7 @@ function Dashboard({ onLogout }) {
       </div>
 
       {/* Global filter bar (platform + time only) */}
-      <GlassCard className="card filter-bar" intensity={3}>
+      <GlassCard className="card filter-bar" intensity={3} interactive>
         <div className="filter-icon"><Filter size={14} /></div>
         <div className="filter-group">
           <span className="filter-label">Platform</span>
@@ -283,7 +283,7 @@ function Dashboard({ onLogout }) {
           </div>
 
           {/* All-companies breakdown table */}
-          <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4}>
+          <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
               <span className="card-title">All Companies · Breakdown</span>
               <span className="card-badge"><ArrowUpDown size={11} style={{ marginRight: 4 }} />Sortable</span>
@@ -344,7 +344,7 @@ function Dashboard({ onLogout }) {
           </GlassCard>
 
           {/* Recent mentions feed with local multi-select filters */}
-          <GlassCard className="card feed-section" intensity={3}>
+          <GlassCard className="card feed-section" intensity={3} interactive>
             <div className="card-header">
               <span className="card-title">Recent Mentions</span>
               <span className="card-badge"><SlidersHorizontal size={11} style={{ marginRight: 4 }} />Filterable</span>
@@ -404,7 +404,7 @@ function Dashboard({ onLogout }) {
       )}
 
       {tab === 'compare' && (
-        <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4}>
+        <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
           <div className="card-header">
             <span className="card-title">Head-to-head</span>
             <span className="card-badge">Compare</span>

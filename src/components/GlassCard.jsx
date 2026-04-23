@@ -1,7 +1,9 @@
 import { useGlassTilt } from '../hooks/useGlassTilt'
 
-export function GlassCard({ children, className = '', style = {}, intensity = 6, ...props }) {
-  const { ref, onMouseMove, onMouseLeave } = useGlassTilt({ intensity })
+// `interactive={true}` → skip the 3D tilt (used on panels with clickable children
+// so hovering a button doesn't shove the whole panel around). Glare still tracks.
+export function GlassCard({ children, className = '', style = {}, intensity = 5, interactive = false, ...props }) {
+  const { ref, onMouseMove, onMouseLeave } = useGlassTilt({ intensity, disabled: interactive })
 
   return (
     <div

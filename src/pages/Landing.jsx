@@ -50,7 +50,6 @@ export default function Landing({ onNavigate, onLoginSuccess }) {
               <button className="cta-primary" onClick={() => setLoginOpen(true)}>
                 <LogIn size={16} />
                 Launch dashboard
-                <ArrowRight size={16} />
               </button>
             </div>
           </div>
@@ -91,7 +90,7 @@ function LoginModal({ onClose, onLoginSuccess }) {
   return (
     <div className="landing-modal-backdrop" onClick={onClose}>
       <div className="landing-modal" onClick={(e) => e.stopPropagation()}>
-        <GlassCard className="auth-card" intensity={3}>
+        <GlassCard className="auth-card" intensity={3} interactive>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
