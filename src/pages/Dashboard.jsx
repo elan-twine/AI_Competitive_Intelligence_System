@@ -66,7 +66,7 @@ function Dashboard({ onLogout }) {
   const [days, setDays] = useState(0)
 
   // Overview
-  const [sortKey, setSortKey] = useState('weightedSOV')
+  const [sortKey, setSortKey] = useState('pct')
 
   // Compare
   const [compareA, setCompareA] = useState('')
@@ -130,7 +130,7 @@ function Dashboard({ onLogout }) {
   const twineRank = twineIdx >= 0 ? twineIdx + 1 : null
   const platformCount = Object.keys(pb).length
 
-  const maxSOV = ranked.length ? ranked[0].weightedSOV || 1 : 1
+  const maxSOV = ranked.length ? ranked[0].pct || 1 : 1
 
   // Feed-local filtering: apply on top of `filtered`
   const feedPosts = filtered.filter(p => {
@@ -142,7 +142,7 @@ function Dashboard({ onLogout }) {
       if (!feedSentiments.has(kind)) return false
     }
     return true
-  }).sort((a, b) => (b.weightedSOV || b.sov || 0) - (a.weightedSOV || a.sov || 0)).slice(0, 40)
+  }).sort((a, b) => (b.unweightedSOV || b.sov || 0) - (a.unweightedSOV || a.sov || 0)).slice(0, 40)
 
   const cmp = compareA && compareB ? compare(filtered, compareA, compareB) : null
 
@@ -226,8 +226,8 @@ function Dashboard({ onLogout }) {
                 color: twineRank === 1 ? 'var(--positive)' : undefined,
               },
               {
-                label: 'Twine Weighted SOV',
-                value: twineRow ? twineRow.weightedSOV.toFixed(1) : '—',
+                label: 'Twine SOV',
+                value: twineRow ? `${twineRow.pct.toFixed(1)}%` : '—',
                 sub: twineRow ? `${twineRow.postCount} posts` : 'not in filter',
                 accent: true,
               },
@@ -263,19 +263,19 @@ function Dashboard({ onLogout }) {
                 <span className="card-badge"><TrendingUp size={11} style={{ marginRight: 4 }} />Rankings</span>
               </div>
               {ranked.length > 0 ? ranked.map(r => {
-                const pct = maxSOV > 0 ? (r.weightedSOV / maxSOV) * 100 : 0
+                const barPct = maxSOV > 0 ? (r.pct / maxSOV) * 100 : 0
                 const twine = isTwine(r.company)
                 return (
                   <div className={`sentiment-row ${twine ? 'is-twine' : ''}`} key={r.company}>
                     <span className="sentiment-name">{r.company}</span>
                     <div className="sentiment-bar-group">
                       <div className="bar" style={{
-                        width: `${pct}%`,
+                        width: `${barPct}%`,
                         background: twine ? 'var(--accent)' : 'rgba(219, 254, 2, 0.45)',
                       }} />
                     </div>
                     <span className="sentiment-score" style={{ color: 'var(--text-primary)' }}>
-                      {r.weightedSOV.toFixed(2)}
+                      {r.pct.toFixed(1)}%
                     </span>
                   </div>
                 )
@@ -328,8 +328,7 @@ function Dashboard({ onLogout }) {
                     <tr>
                       <SortHeader label="Company" field="company" sortKey={sortKey} setSortKey={setSortKey} align="left" />
                       <SortHeader label="Posts" field="postCount" sortKey={sortKey} setSortKey={setSortKey} />
-                      <SortHeader label="Unweighted SOV" field="unweightedSOV" sortKey={sortKey} setSortKey={setSortKey} />
-                      <SortHeader label="Weighted SOV" field="weightedSOV" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label="SOV %" field="pct" sortKey={sortKey} setSortKey={setSortKey} />
                       <SortHeader label="Avg Sentiment" field="avgSentiment" sortKey={sortKey} setSortKey={setSortKey} />
                     </tr>
                   </thead>
@@ -338,8 +337,7 @@ function Dashboard({ onLogout }) {
                       <tr key={r.company} className={isTwine(r.company) ? 'is-twine' : ''}>
                         <td className="col-company">{r.company}</td>
                         <td>{r.postCount}</td>
-                        <td>{r.unweightedSOV.toFixed(2)}</td>
-                        <td><strong>{r.weightedSOV.toFixed(2)}</strong></td>
+                        <td><strong>{r.pct.toFixed(1)}%</strong></td>
                         <td className={r.avgSentiment > 0 ? 'positive' : r.avgSentiment < 0 ? 'negative' : 'neutral'}>
                           {fmtSent(r.avgSentiment)}
                         </td>
@@ -411,7 +409,7 @@ function Dashboard({ onLogout }) {
                 const title = post.text || post.title || post.selfText || 'Untitled'
                 const company = post.companyName || '—'
                 const color = PLATFORM_COLORS[post.platform] || '#888'
-                const sov = post.weightedSOV || post.sov || 0
+                const sov = post.unweightedSOV || post.sov || 0
                 return (
                   <a key={i} className="feed-item" href={url} target="_blank" rel="noopener noreferrer">
                     <div className="feed-platform-dot" style={{ background: color }} />
@@ -515,12 +513,8 @@ function CompareColumn({ company, row, winners, posts }) {
         <span className="metric-value">{row.postCount}</span>
       </div>
       <div className={`compare-metric ${win('sov') ? 'winner' : ''}`}>
-        <span className="metric-label">Weighted SOV</span>
-        <span className="metric-value">{row.weightedSOV.toFixed(2)}</span>
-      </div>
-      <div className="compare-metric">
-        <span className="metric-label">Unweighted SOV</span>
-        <span className="metric-value">{row.unweightedSOV.toFixed(2)}</span>
+        <span className="metric-label">SOV %</span>
+        <span className="metric-value">{row.pct != null ? `${row.pct.toFixed(1)}%` : row.unweightedSOV.toFixed(2)}</span>
       </div>
       <div className={`compare-metric ${win('sentiment') ? 'winner' : ''}`}>
         <span className="metric-label">Avg Sentiment</span>

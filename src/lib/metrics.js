@@ -43,7 +43,11 @@ export function totalWeightedSOV(posts) {
 
 export function rankings(posts) {
   const companies = [...new Set(posts.map(p => p.companyName).filter(Boolean))]
-  return companies.map(c => companyRow(posts, c)).sort((a, b) => b.weightedSOV - a.weightedSOV)
+  const rows = companies.map(c => companyRow(posts, c))
+  const totalUnweighted = rows.reduce((s, r) => s + r.unweightedSOV, 0) || 1
+  return rows
+    .map(r => ({ ...r, pct: (r.unweightedSOV / totalUnweighted) * 100 }))
+    .sort((a, b) => b.unweightedSOV - a.unweightedSOV)
 }
 
 export function platformSplit(posts, company) {
@@ -71,8 +75,11 @@ export function sentimentBuckets(posts, company) {
 export function compare(posts, companyA, companyB) {
   const a = companyRow(posts, companyA)
   const b = companyRow(posts, companyB)
+  const total = posts.reduce((s, p) => s + (p.unweightedSOV || 0), 0) || 1
+  a.pct = (a.unweightedSOV / total) * 100
+  b.pct = (b.unweightedSOV / total) * 100
   const winners = {
-    sov: a.weightedSOV === b.weightedSOV ? null : a.weightedSOV > b.weightedSOV ? companyA : companyB,
+    sov: a.unweightedSOV === b.unweightedSOV ? null : a.unweightedSOV > b.unweightedSOV ? companyA : companyB,
     sentiment: a.avgSentiment === b.avgSentiment ? null : a.avgSentiment > b.avgSentiment ? companyA : companyB,
     volume: a.postCount === b.postCount ? null : a.postCount > b.postCount ? companyA : companyB,
   }

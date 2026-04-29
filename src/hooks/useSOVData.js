@@ -81,10 +81,10 @@ export function useSOVData() {
   }, [])
 
   const allPosts = [
-    ...tweets.map(t => ({ ...t, platform: 'X', sov: t.weightedSOV || t.unweightedSOV || 0, ts: t.createdAt })),
-    ...redditPosts.map(r => ({ ...r, platform: 'Reddit', sov: r.weightedSOV || r.unweightedSOV || 0, ts: r.createdAt })),
-    ...googleNews.map(g => ({ ...g, platform: 'Google News', sov: g.weightedSOV || g.unweightedSOV || 0, ts: g.publishedAt })),
-    ...linkedinPosts.map(l => ({ ...l, platform: 'LinkedIn', sov: l.weightedSOV || l.unweightedSOV || 0, ts: l.posted_at })),
+    ...tweets.map(t => ({ ...t, platform: 'X', sov: t.unweightedSOV || 0, ts: t.createdAt })),
+    ...redditPosts.map(r => ({ ...r, platform: 'Reddit', sov: r.unweightedSOV || 0, ts: r.createdAt })),
+    ...googleNews.map(g => ({ ...g, platform: 'Google News', sov: g.unweightedSOV || 0, ts: g.publishedAt })),
+    ...linkedinPosts.map(l => ({ ...l, platform: 'LinkedIn', sov: l.unweightedSOV || 0, ts: l.posted_at })),
   ].filter(p => isTracked(p.companyName))
 
   const companies = [...new Set(allPosts.map(p => p.companyName).filter(Boolean))]

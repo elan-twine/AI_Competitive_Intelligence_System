@@ -264,8 +264,14 @@
 }
 
 .stat-card .value.accent {
-  color: #8BA600;
-  -webkit-text-stroke: 0.8px #6B8000;
+  color: var(--accent);
+  text-shadow: 0 0 18px rgba(219, 254, 2, 0.35);
+}
+
+[data-theme="light"] .stat-card .value.accent {
+  color: #5a6b00;
+  -webkit-text-stroke: 0.6px #3f4a00;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
 }
 
 .stat-card .sub {
@@ -734,12 +740,6 @@
 }
 
 /* ---- Light-mode green text readability ---- */
-[data-theme="light"] .stat-card .value.accent {
-  color: #5a6b00;
-  -webkit-text-stroke: 0.6px #3f4a00;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
-}
-
 [data-theme="light"] .sentiment-row.is-twine {
   background: rgba(139, 166, 0, 0.18);
 }
