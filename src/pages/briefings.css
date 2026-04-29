@@ -1,0 +1,452 @@
+/* Briefings page — uses the dashboard's design tokens (--accent, --bg-card,
+   --text-*, --positive/negative/neutral, etc.) so it inherits light/dark
+   theme and matches the SOV side visually. All classes scoped under
+   .briefings-root to keep the local rules isolated. */
+
+.briefings-root {
+  --bf-r: 14px;
+  display: block;
+}
+
+.briefings-root *, .briefings-root *::before, .briefings-root *::after {
+  box-sizing: border-box;
+}
+
+/* ── Subtab nav (mirrors .tab-nav from App.css) ── */
+.briefings-root .bf-nav {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 4px;
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  border: 1px solid var(--divider);
+  width: fit-content;
+}
+.briefings-root .bf-tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.briefings-root .bf-tab:hover {
+  color: var(--text-primary);
+  background: var(--inner-bg);
+}
+.briefings-root .bf-tab.on {
+  background: var(--accent);
+  color: #0B0D00;
+  font-weight: 600;
+}
+
+.briefings-root .bf-pg { padding-top: 4px; }
+
+/* ── Toolbar (n8n status / settings) ── */
+.briefings-root .bf-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.briefings-root .bf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  color: var(--text-secondary);
+}
+.briefings-root .bf-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--negative); }
+.briefings-root .bf-dot.on { background: var(--accent); box-shadow: 0 0 6px var(--glow-color); }
+
+.briefings-root .bf-btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--divider);
+  background: var(--inner-bg);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.briefings-root .bf-btn:hover {
+  border-color: var(--glow-color-hover);
+  background: var(--inner-bg-hover);
+}
+.briefings-root .bf-btn-g {
+  background: var(--accent);
+  color: #0B0D00;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.briefings-root .bf-btn-g:hover {
+  background: #C4E600;
+  border-color: #C4E600;
+  box-shadow: 0 4px 12px rgba(219, 254, 2, 0.4);
+}
+
+/* ── Stats grid (mirrors .stats-grid) ── */
+.briefings-root .bf-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* ── Card / glass card (relies on .glass-card from App.css) ── */
+.briefings-root .bf-card { padding: 22px; }
+.briefings-root .bf-card h3 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+
+.briefings-root .bf-g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.briefings-root .bf-g3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+
+/* ── Threat pill ── */
+.briefings-root .bf-tp {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
+}
+.briefings-root .bf-tp-high     { background: rgba(220, 38, 38, 0.12); color: var(--negative); border-color: rgba(220, 38, 38, 0.35); }
+.briefings-root .bf-tp-medium   { background: rgba(37, 99, 235, 0.12); color: var(--neutral);  border-color: rgba(37, 99, 235, 0.35); }
+.briefings-root .bf-tp-low      { background: var(--accent-dim);       color: var(--accent);   border-color: var(--accent); }
+.briefings-root .bf-tp-critical { background: rgba(220, 38, 38, 0.22); color: var(--negative); border-color: var(--negative); }
+
+[data-theme="light"] .briefings-root .bf-tp-low { color: #5a6b00; }
+
+/* ── Tag chip ── */
+.briefings-root .bf-tag {
+  padding: 3px 9px;
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ── Bars (threat / product breadth) ── */
+.briefings-root .bf-bar-r { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.briefings-root .bf-bar-l { width: 130px; font-size: 12px; font-weight: 600; flex-shrink: 0; color: var(--text-primary); }
+.briefings-root .bf-bar-t { flex: 1; height: 22px; background: var(--inner-bg); border-radius: 6px; overflow: hidden; }
+.briefings-root .bf-bar-f {
+  height: 100%;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0B0D00;
+  transition: width 0.7s ease;
+}
+
+/* ── Strength/weakness rows ── */
+.briefings-root .bf-sw {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--inner-bg);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  transition: border-color 0.15s;
+}
+.briefings-root .bf-sw:hover { border-color: var(--divider); }
+.briefings-root .bf-sw .m { flex-shrink: 0; width: 16px; text-align: center; font-weight: 700; }
+
+/* ── Table (mirrors .breakdown-table) ── */
+.briefings-root .bf-tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+.briefings-root .bf-tbl th {
+  background: transparent;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--divider);
+}
+.briefings-root .bf-tbl td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--divider);
+  vertical-align: top;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.briefings-root .bf-tbl tr:last-child td { border-bottom: none; }
+.briefings-root .bf-tbl tbody tr:hover td { background: var(--inner-bg); }
+.briefings-root .bf-tbl td:first-child { font-weight: 600; color: var(--text-primary); width: 140px; }
+
+/* ── OpenAI vs page ── */
+.briefings-root .bf-vs-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 32px;
+  margin-bottom: 24px;
+}
+.briefings-root .bf-vs-hero .main-co {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.7px;
+  color: var(--text-primary);
+}
+.briefings-root .bf-vs-hero .sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.briefings-root .bf-vs-hero .vs-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 6px 16px;
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-dim);
+}
+[data-theme="light"] .briefings-root .bf-vs-hero .vs-badge { color: #5a6b00; border-color: #8BA600; }
+
+.briefings-root .bf-vs-card { margin-bottom: 16px; padding: 0 !important; }
+.briefings-root .bf-vs-card-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--divider);
+}
+.briefings-root .bf-vs-card-hdr h4 { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.briefings-root .bf-vs-card-body { padding: 22px; }
+.briefings-root .bf-vs-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.briefings-root .bf-vs-col-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; color: var(--text-muted); }
+.briefings-root .bf-openai-col { border-left: 3px solid var(--accent); padding-left: 14px; }
+.briefings-root .bf-comp-col   { border-left: 3px solid var(--neutral); padding-left: 14px; }
+
+/* ── Briefing detail ── */
+.briefings-root .bf-bk {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+.briefings-root .bf-bk:hover { color: var(--accent); }
+[data-theme="light"] .briefings-root .bf-bk:hover { color: #5a6b00; }
+
+.briefings-root .bf-b-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--divider);
+}
+.briefings-root .bf-b-hero h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.7px; color: var(--text-primary); }
+.briefings-root .bf-b-hero .meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+.briefings-root .bf-bs { margin-bottom: 24px; }
+.briefings-root .bf-bs > h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--divider);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.briefings-root .bf-snap { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.briefings-root .bf-snap-i {
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+.briefings-root .bf-snap-i .sl { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 4px; }
+.briefings-root .bf-snap-i .sv { font-size: 12px; font-weight: 500; color: var(--text-primary); line-height: 1.45; }
+
+.briefings-root .bf-sw-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.briefings-root .bf-battle {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 18px;
+}
+.briefings-root .bf-battle-i {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(219, 254, 2, 0.12);
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 10px;
+  line-height: 1.5;
+}
+.briefings-root .bf-battle-i:last-child { border-bottom: none; }
+.briefings-root .bf-battle-i .s { color: var(--accent); flex-shrink: 0; font-weight: 700; }
+[data-theme="light"] .briefings-root .bf-battle-i .s { color: #5a6b00; }
+
+/* ── n8n bar ── */
+.briefings-root .bf-n8n-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px !important;
+  margin-bottom: 20px;
+}
+.briefings-root .bf-n8n-bar .lbl {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.briefings-root .bf-n8n-bar input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.briefings-root .bf-n8n-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.briefings-root .bf-n8n-bar input::placeholder { color: var(--text-muted); }
+
+.briefings-root .bf-spin {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(11, 13, 0, 0.25);
+  border-top-color: #0B0D00;
+  border-radius: 50%;
+  animation: bf-sp 0.6s linear infinite;
+}
+@keyframes bf-sp { to { transform: rotate(360deg); } }
+
+/* ── Modal ── */
+.briefings-root .bf-ov {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  z-index: 100;
+  place-items: center;
+}
+.briefings-root .bf-ov.open { display: grid; }
+.briefings-root .bf-mod {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 440px;
+  max-width: 92vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+.briefings-root .bf-mod h2 { font-size: 16px; font-weight: 600; margin-bottom: 4px; color: var(--text-primary); }
+.briefings-root .bf-mod .sub { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; }
+.briefings-root .bf-mod label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin: 12px 0 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+.briefings-root .bf-mod input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+.briefings-root .bf-mod input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.briefings-root .bf-mod-help {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--inner-bg);
+  border-radius: 8px;
+  border: 1px solid var(--divider);
+}
+.briefings-root .bf-mod-help .t { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.briefings-root .bf-mod-help ol { font-size: 11px; color: var(--text-secondary); padding-left: 16px; line-height: 1.7; }
+.briefings-root .bf-mod-ft { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+/* ── Toast ── */
+.briefings-root .bf-toast {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  z-index: 200;
+  color: var(--text-primary);
+  transform: translateY(70px);
+  opacity: 0;
+  transition: 0.3s;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+.briefings-root .bf-toast.show { transform: translateY(0); opacity: 1; }
+.briefings-root .bf-toast.ok { border-left: 3px solid var(--accent); }
+.briefings-root .bf-toast.err { border-left: 3px solid var(--negative); }
+
+@media (max-width: 800px) {
+  .briefings-root .bf-stats { grid-template-columns: 1fr 1fr; }
+  .briefings-root .bf-g2,
+  .briefings-root .bf-g3,
+  .briefings-root .bf-vs-cols,
+  .briefings-root .bf-sw-2 { grid-template-columns: 1fr; }
+  .briefings-root .bf-vs-hero { flex-direction: column; align-items: flex-start; gap: 14px; }
+}

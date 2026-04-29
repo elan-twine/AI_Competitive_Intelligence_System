@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { useSOVData } from '../hooks/useSOVData'
 import { GlassCard } from '../components/GlassCard'
 import { applyFilters, rankings, companyRow, platformSplit, compare } from '../lib/metrics'
+import Briefings from './Briefings'
 import '../App.css'
 
 const PLATFORM_COLORS = {
@@ -54,7 +55,10 @@ function toggle(set, value) {
 function Dashboard({ onLogout }) {
   const { allPosts, companies, loading, error, refetch } = useSOVData()
 
-  // Tabs
+  // Top-level view: SOV dashboard vs Briefings (siblings, not nested)
+  const [view, setView] = useState('sov')
+
+  // SOV-internal tabs
   const [tab, setTab] = useState('overview')
 
   // Global filters (platform + time only — sentiment is local to feed now)
@@ -147,16 +151,22 @@ function Dashboard({ onLogout }) {
       <header className="header">
         <div className="header-left">
           <img src="/twine-logo.svg" alt="Twine" className="header-logo" />
-          <h1>Twine <span>SOV</span></h1>
+          <h1>Twine <span>{view === 'sov' ? 'SOV' : 'Briefings'}</span></h1>
+        </div>
+        <div className="view-switch">
+          <button className={`view-seg ${view === 'sov' ? 'active' : ''}`} onClick={() => setView('sov')}>SOV Dashboard</button>
+          <button className={`view-seg ${view === 'briefings' ? 'active' : ''}`} onClick={() => setView('briefings')}>Briefings</button>
         </div>
         <div className="header-right">
           <button className="theme-btn" onClick={() => setDark(d => !d)} aria-label="Toggle theme">
             {dark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          <button className={`refresh-btn ${loading ? 'loading' : ''}`} onClick={refetch}>
-            <RefreshCw size={14} />
-            Refresh
-          </button>
+          {view === 'sov' && (
+            <button className={`refresh-btn ${loading ? 'loading' : ''}`} onClick={refetch}>
+              <RefreshCw size={14} />
+              Refresh
+            </button>
+          )}
           {onLogout && (
             <button className="theme-btn" onClick={onLogout} aria-label="Log out" title="Log out">
               <LogOut size={16} />
@@ -165,7 +175,11 @@ function Dashboard({ onLogout }) {
         </div>
       </header>
 
-      {/* Tabs */}
+      {view === 'briefings' && <Briefings />}
+
+      {view === 'sov' && (
+      <>
+      {/* SOV-internal tabs */}
       <div className="tab-nav">
         <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
         <button className={`tab ${tab === 'compare' ? 'active' : ''}`} onClick={() => setTab('compare')}>Compare</button>
@@ -441,6 +455,8 @@ function Dashboard({ onLogout }) {
             <div className="empty-state"><p>Pick two different companies to compare</p></div>
           )}
         </GlassCard>
+      )}
+      </>
       )}
     </div>
   )
