@@ -1,6 +1,25 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
+// The 10 companies we track. Anything else in the source tables is noise
+// (mislabeled posts, comma-joined names like "Orchid Security, Lumos",
+// generic categories like "None", or off-topic mentions) and must be
+// filtered out so it doesn't leak into rankings / sentiment / feed.
+export const TRACKED_COMPANIES = [
+  'Twine Security',
+  'Lumos',
+  'Orchid Security',
+  'Cerby',
+  'Linx Security',
+  'BlinkOps',
+  'Opti',
+  'Fabrix Security',
+  'Nagomi Security',
+  'Redblock',
+]
+const TRACKED_SET = new Set(TRACKED_COMPANIES.map(c => c.toLowerCase()))
+const isTracked = (name) => !!name && TRACKED_SET.has(String(name).trim().toLowerCase())
+
 export function useSOVData() {
   const [tweets, setTweets] = useState([])
   const [redditPosts, setRedditPosts] = useState([])
@@ -66,7 +85,7 @@ export function useSOVData() {
     ...redditPosts.map(r => ({ ...r, platform: 'Reddit', sov: r.weightedSOV || r.unweightedSOV || 0, ts: r.createdAt })),
     ...googleNews.map(g => ({ ...g, platform: 'Google News', sov: g.weightedSOV || g.unweightedSOV || 0, ts: g.publishedAt })),
     ...linkedinPosts.map(l => ({ ...l, platform: 'LinkedIn', sov: l.weightedSOV || l.unweightedSOV || 0, ts: l.posted_at })),
-  ]
+  ].filter(p => isTracked(p.companyName))
 
   const companies = [...new Set(allPosts.map(p => p.companyName).filter(Boolean))]
 
