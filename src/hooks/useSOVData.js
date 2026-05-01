@@ -80,12 +80,56 @@ export function useSOVData() {
     fetchAll()
   }, [])
 
-  const allPosts = [
-    ...tweets.map(t => ({ ...t, platform: 'X', sov: t.unweightedSOV || 0, ts: t.createdAt })),
-    ...redditPosts.map(r => ({ ...r, platform: 'Reddit', sov: r.unweightedSOV || 0, ts: r.createdAt })),
-    ...googleNews.map(g => ({ ...g, platform: 'Google News', sov: g.unweightedSOV || 0, ts: g.publishedAt })),
-    ...linkedinPosts.map(l => ({ ...l, platform: 'LinkedIn', sov: l.unweightedSOV || 0, ts: l.posted_at })),
+  const rawPosts = [
+    ...tweets.map(t => ({ ...t, platform: 'X', ts: t.createdAt })),
+    ...redditPosts.map(r => ({ ...r, platform: 'Reddit', ts: r.createdAt })),
+    ...googleNews.map(g => ({ ...g, platform: 'Google News', ts: g.publishedAt })),
+    ...linkedinPosts.map(l => ({ ...l, platform: 'LinkedIn', ts: l.posted_at })),
   ].filter(p => isTracked(p.companyName))
+
+  // Two concerns to balance:
+  //   1. n8n's weightedSOV is on different scales per platform (Reddit's
+  //      log compression vs X's engagement × decay), so naively summing
+  //      raw values double-counts whichever platform has the biggest scale.
+  //   2. But platforms also have very different data volumes (LinkedIn 325
+  //      posts vs X 15 vs Reddit 4) and a platform with 4 posts shouldn't
+  //      count as much as one with 325. Per-platform-equal weighting was
+  //      letting tiny platforms dominate composite rankings.
+  //
+  // Fix: normalize within each platform (handles concern 1), then weight
+  // each platform's contribution by its share of total posts (handles
+  // concern 2). Each post's contribution becomes:
+  //   unweightedSOV = 1 / totalPostsAcrossAll          (pure post share)
+  //   weightedSOV   = (post.weightedSOV / Σ_platform)
+  //                   × (platformPostCount / totalPostsAcrossAll)
+  // Falls back to post-share if a platform's weighted pool is zero (e.g.
+  // Google News calc is broken upstream).
+  const platformPostCounts = {}
+  const platformWeightedTotals = {}
+  for (const p of rawPosts) {
+    const k = p.platform
+    platformPostCounts[k] = (platformPostCounts[k] || 0) + 1
+    platformWeightedTotals[k] = (platformWeightedTotals[k] || 0) + (p.weightedSOV || 0)
+  }
+  const totalPosts = rawPosts.length || 1
+  const allPosts = rawPosts.map(p => {
+    const postCount = platformPostCounts[p.platform] || 1
+    const weightedTotal = platformWeightedTotals[p.platform] || 0
+    const platformShare = postCount / totalPosts // platform's fraction of all posts
+    const unweighted = 1 / totalPosts
+    const platformFraction = weightedTotal > 0
+      ? (p.weightedSOV || 0) / weightedTotal
+      : 1 / postCount
+    const weighted = platformFraction * platformShare
+    return {
+      ...p,
+      // Preserve the raw n8n score for per-post display in the feed.
+      rawWeightedSOV: p.weightedSOV || 0,
+      unweightedSOV: unweighted,
+      weightedSOV: weighted,
+      sov: unweighted,
+    }
+  })
 
   const companies = [...new Set(allPosts.map(p => p.companyName).filter(Boolean))]
 

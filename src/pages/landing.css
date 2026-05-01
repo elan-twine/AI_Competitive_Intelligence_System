@@ -256,6 +256,16 @@
   align-items: center;
 }
 
+.landing-hero-text.centered .landing-title {
+  color: #ffffff;
+  text-shadow: 0 0 24px rgba(255, 255, 255, 0.4), 0 0 4px rgba(255, 255, 255, 0.6);
+}
+
+.landing-hero-text.centered .landing-sub {
+  color: #ffffff;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+}
+
 .landing-hero-text.centered .landing-sub {
   margin-left: auto;
   margin-right: auto;

@@ -42,9 +42,14 @@ export function totalWeightedSOV(posts) {
 }
 
 // Composite "Overall" score weights — easy to tweak in one place.
-// Sentiment is rescaled from -3..+3 into 0..100 so it lives on the same
-// scale as the two percent columns.
-const OVERALL_W = { unweighted: 0.35, weighted: 0.35, sentiment: 0.30 }
+// All three signals are now genuinely independent:
+//   unweighted = raw post-count share (just frequency)
+//   weighted   = engagement × decay share (size of conversation)
+//   sentiment  = average tone, rescaled -3..+3 → 0..100
+// Weighted gets the largest slice because engagement-size is the dominant
+// signal of market presence. Unweighted captures pure mention frequency
+// (small-account chatter still matters as a signal). Sentiment is tone.
+const OVERALL_W = { unweighted: 0.30, weighted: 0.40, sentiment: 0.30 }
 
 export function rankings(posts) {
   const companies = [...new Set(posts.map(p => p.companyName).filter(Boolean))]

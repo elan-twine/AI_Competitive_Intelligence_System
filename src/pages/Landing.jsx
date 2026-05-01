@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowRight, LogIn, X } from 'lucide-react'
-import LiquidEther from '../components/LiquidEther'
+import StarSwipe from '../components/StarSwipe'
 import { GlassCard } from '../components/GlassCard'
 import { checkLogin } from '../lib/auth'
 import './landing.css'
@@ -11,19 +11,20 @@ export default function Landing({ onNavigate, onLoginSuccess }) {
   return (
     <div className={`landing ${loginOpen ? 'modal-open' : ''}`}>
       <div className="landing-bg">
-        <LiquidEther
-          colors={['#DBFE02', '#39FF14', '#00FFB3', '#C4FF00']}
-          mouseForce={22}
-          cursorSize={120}
-          autoDemo={true}
-          autoSpeed={0.55}
-          autoIntensity={2.4}
-          resolution={0.5}
-          takeoverDuration={0.25}
-          autoResumeDelay={2000}
-          autoRampDuration={0.6}
-          pausePointer={loginOpen}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+        <StarSwipe
+          color="#DBFE02"
+          backgroundColor="#000000"
+          speed={0.2}
+          scale={1.5}
+          warpStrength={1.5}
+          warpCurvature={6}
+          warpFalloff={4}
+          scrollSpeed={6}
+          colorIntensity={0.05}
+          rotation={-45}
+          opacity={0.7}
+          cursorInteraction={!loginOpen}
+          cursorIntensity={1}
         />
       </div>
 

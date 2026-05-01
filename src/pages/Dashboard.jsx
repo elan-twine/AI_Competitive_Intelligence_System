@@ -328,13 +328,15 @@ function Dashboard({ onLogout }) {
                 onToggle={(v) => setFeedCompanies(s => toggle(s, v))}
                 onClear={() => setFeedCompanies(new Set())}
               />
-              <MultiSelectRow
-                label="Platform"
-                options={PLATFORMS_NO_ALL}
-                selected={feedPlatforms}
-                onToggle={(v) => setFeedPlatforms(s => toggle(s, v))}
-                onClear={() => setFeedPlatforms(new Set())}
-              />
+              {platform === 'All' && (
+                <MultiSelectRow
+                  label="Platform"
+                  options={PLATFORMS_NO_ALL}
+                  selected={feedPlatforms}
+                  onToggle={(v) => setFeedPlatforms(s => toggle(s, v))}
+                  onClear={() => setFeedPlatforms(new Set())}
+                />
+              )}
               <MultiSelectRow
                 label="Sentiment"
                 options={SENTIMENT_KINDS}
@@ -346,13 +348,21 @@ function Dashboard({ onLogout }) {
 
             <div className="feed-list">
               {feedPosts.length > 0 ? feedPosts.map((post, i) => {
-                const url = post.twitterUrl || post.permalink || post.url || post.post_url || '#'
+                // n8n leaves the URL columns empty for tweets, so synthesize
+                // from the post id when needed. X uses /i/web/status/<id>.
+                const directUrl = post.twitterUrl || post.permalink || post.url || post.post_url
+                const synthesized = post.platform === 'X' && post.id
+                  ? `https://x.com/i/web/status/${post.id}`
+                  : null
+                const url = directUrl || synthesized
                 const title = post.text || post.title || post.selfText || 'Untitled'
                 const company = post.companyName || '—'
                 const color = PLATFORM_COLORS[post.platform] || '#888'
-                const sov = post.unweightedSOV || post.sov || 0
+                const sov = post.rawWeightedSOV ?? 0
+                const Wrapper = url ? 'a' : 'div'
+                const linkProps = url ? { href: url, target: '_blank', rel: 'noopener noreferrer' } : {}
                 return (
-                  <a key={i} className="feed-item" href={url} target="_blank" rel="noopener noreferrer">
+                  <Wrapper key={i} className="feed-item" {...linkProps}>
                     <div className="feed-platform-dot" style={{ background: color }} />
                     <div className="feed-content">
                       <div className="feed-title">{title}</div>
@@ -363,7 +373,7 @@ function Dashboard({ onLogout }) {
                       </div>
                     </div>
                     <span className="feed-sov">{sov.toFixed(1)}</span>
-                  </a>
+                  </Wrapper>
                 )
               }) : (
                 <div className="empty-state"><p>No posts match these filters</p></div>
