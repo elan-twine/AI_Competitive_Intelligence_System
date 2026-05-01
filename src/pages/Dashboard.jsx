@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { RefreshCw, TrendingUp, MessageCircle, BarChart3, Globe, Moon, Sun, LogOut, Filter, ArrowUpDown, SlidersHorizontal } from 'lucide-react'
+import { BarChart3, Globe, Moon, Sun, LogOut, Filter, ArrowUpDown, SlidersHorizontal } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
 import { GlassCard } from '../components/GlassCard'
@@ -66,7 +66,7 @@ function Dashboard({ onLogout }) {
   const [days, setDays] = useState(0)
 
   // Overview
-  const [sortKey, setSortKey] = useState('pct')
+  const [sortKey, setSortKey] = useState('overall')
 
   // Compare
   const [compareA, setCompareA] = useState('')
@@ -130,8 +130,6 @@ function Dashboard({ onLogout }) {
   const twineRank = twineIdx >= 0 ? twineIdx + 1 : null
   const platformCount = Object.keys(pb).length
 
-  const maxSOV = ranked.length ? ranked[0].pct || 1 : 1
-
   // Feed-local filtering: apply on top of `filtered`
   const feedPosts = filtered.filter(p => {
     if (feedCompanies.size > 0 && !feedCompanies.has(p.companyName)) return false
@@ -161,12 +159,6 @@ function Dashboard({ onLogout }) {
           <button className="theme-btn" onClick={() => setDark(d => !d)} aria-label="Toggle theme">
             {dark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          {view === 'sov' && (
-            <button className={`refresh-btn ${loading ? 'loading' : ''}`} onClick={refetch}>
-              <RefreshCw size={14} />
-              Refresh
-            </button>
-          )}
           {onLogout && (
             <button className="theme-btn" onClick={onLogout} aria-label="Log out" title="Log out">
               <LogOut size={16} />
@@ -222,13 +214,13 @@ function Dashboard({ onLogout }) {
               {
                 label: 'Twine Rank',
                 value: twineRank ? `#${twineRank}` : '—',
-                sub: ranked.length ? `of ${ranked.length} competitors` : 'no data',
+                sub: ranked.length ? `overall, of ${ranked.length}` : 'no data',
                 color: twineRank === 1 ? 'var(--positive)' : undefined,
               },
               {
-                label: 'Twine SOV',
-                value: twineRow ? `${twineRow.pct.toFixed(1)}%` : '—',
-                sub: twineRow ? `${twineRow.postCount} posts` : 'not in filter',
+                label: 'Twine Overall',
+                value: twineRow ? twineRow.overall.toFixed(1) : '—',
+                sub: twineRow ? `${twineRow.pct.toFixed(1)}% SOV · ${twineRow.postCount} posts` : 'not in filter',
                 accent: true,
               },
               {
@@ -255,63 +247,30 @@ function Dashboard({ onLogout }) {
             ))}
           </div>
 
-          {/* Rankings + sentiment */}
-          <div className="main-grid">
-            <GlassCard className="card" intensity={5}>
+          {/* Platform breakdown — only when not filtered to a single platform */}
+          {platform === 'All' && (
+            <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4}>
               <div className="card-header">
-                <span className="card-title">Share of Voice by Company</span>
-                <span className="card-badge"><TrendingUp size={11} style={{ marginRight: 4 }} />Rankings</span>
+                <span className="card-title">Platform Breakdown</span>
+                <span className="card-badge"><Globe size={11} style={{ marginRight: 4 }} />Sources</span>
               </div>
-              {ranked.length > 0 ? ranked.map(r => {
-                const barPct = maxSOV > 0 ? (r.pct / maxSOV) * 100 : 0
-                const twine = isTwine(r.company)
-                return (
-                  <div className={`sentiment-row ${twine ? 'is-twine' : ''}`} key={r.company}>
-                    <span className="sentiment-name">{r.company}</span>
-                    <div className="sentiment-bar-group">
-                      <div className="bar" style={{
-                        width: `${barPct}%`,
-                        background: twine ? 'var(--accent)' : 'rgba(219, 254, 2, 0.45)',
-                      }} />
+              <div className="platform-grid">
+                {Object.entries(PLATFORM_COLORS).map(([plat, color]) => {
+                  const data = pb[plat] || { count: 0, sov: 0 }
+                  return (
+                    <div className="platform-card" key={plat}>
+                      <div className="platform-icon" style={{ background: `${color}15` }}>
+                        <div style={{ width: 12, height: 12, borderRadius: '50%', background: color }} />
+                      </div>
+                      <div className="platform-name">{plat}</div>
+                      <div className="platform-count">{data.count}</div>
+                      <div className="platform-sov">SOV {data.sov.toFixed(1)}</div>
                     </div>
-                    <span className="sentiment-score" style={{ color: 'var(--text-primary)' }}>
-                      {r.pct.toFixed(1)}%
-                    </span>
-                  </div>
-                )
-              }) : (
-                <div className="empty-state"><p>No data for the current filters</p></div>
-              )}
-            </GlassCard>
-
-            <GlassCard className="card" intensity={5}>
-              <div className="card-header">
-                <span className="card-title">Sentiment by Company</span>
-                <span className="card-badge"><MessageCircle size={11} style={{ marginRight: 4 }} />Analysis</span>
+                  )
+                })}
               </div>
-              {ranked.length > 0 ? [...ranked].sort((a, b) => b.avgSentiment - a.avgSentiment).map(r => {
-                const sent = r.avgSentiment
-                const normalized = (sent + 3) / 6
-                const twine = isTwine(r.company)
-                return (
-                  <div className={`sentiment-row ${twine ? 'is-twine' : ''}`} key={r.company}>
-                    <span className="sentiment-name">{r.company}</span>
-                    <div className="sentiment-bar-group">
-                      <div className="bar" style={{
-                        width: `${normalized * 100}%`,
-                        background: sent > 0 ? 'var(--positive)' : sent < 0 ? 'var(--negative)' : 'var(--neutral)',
-                      }} />
-                    </div>
-                    <span className={`sentiment-score ${sent > 0 ? 'positive' : sent < 0 ? 'negative' : 'neutral'}`}>
-                      {fmtSent(sent)}
-                    </span>
-                  </div>
-                )
-              }) : (
-                <div className="empty-state"><p>No sentiment data for current filters</p></div>
-              )}
             </GlassCard>
-          </div>
+          )}
 
           {/* All-companies breakdown table */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
@@ -328,8 +287,10 @@ function Dashboard({ onLogout }) {
                     <tr>
                       <SortHeader label="Company" field="company" sortKey={sortKey} setSortKey={setSortKey} align="left" />
                       <SortHeader label="Posts" field="postCount" sortKey={sortKey} setSortKey={setSortKey} />
-                      <SortHeader label="SOV %" field="pct" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label="Unweighted %" field="unweightedPct" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label="Weighted %" field="weightedPct" sortKey={sortKey} setSortKey={setSortKey} />
                       <SortHeader label="Avg Sentiment" field="avgSentiment" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label="Overall" field="overall" sortKey={sortKey} setSortKey={setSortKey} />
                     </tr>
                   </thead>
                   <tbody>
@@ -337,10 +298,12 @@ function Dashboard({ onLogout }) {
                       <tr key={r.company} className={isTwine(r.company) ? 'is-twine' : ''}>
                         <td className="col-company">{r.company}</td>
                         <td>{r.postCount}</td>
-                        <td><strong>{r.pct.toFixed(1)}%</strong></td>
+                        <td><strong>{r.unweightedPct.toFixed(1)}%</strong></td>
+                        <td><strong>{r.weightedPct.toFixed(1)}%</strong></td>
                         <td className={r.avgSentiment > 0 ? 'positive' : r.avgSentiment < 0 ? 'negative' : 'neutral'}>
                           {fmtSent(r.avgSentiment)}
                         </td>
+                        <td><strong style={{ color: 'var(--accent)' }}>{r.overall.toFixed(1)}</strong></td>
                       </tr>
                     ))}
                   </tbody>
@@ -349,28 +312,6 @@ function Dashboard({ onLogout }) {
             )}
           </GlassCard>
 
-          {/* Platform breakdown */}
-          <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4}>
-            <div className="card-header">
-              <span className="card-title">Platform Breakdown</span>
-              <span className="card-badge"><Globe size={11} style={{ marginRight: 4 }} />Sources</span>
-            </div>
-            <div className="platform-grid">
-              {Object.entries(PLATFORM_COLORS).map(([plat, color]) => {
-                const data = pb[plat] || { count: 0, sov: 0 }
-                return (
-                  <div className="platform-card" key={plat}>
-                    <div className="platform-icon" style={{ background: `${color}15` }}>
-                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: color }} />
-                    </div>
-                    <div className="platform-name">{plat}</div>
-                    <div className="platform-count">{data.count}</div>
-                    <div className="platform-sov">SOV {data.sov.toFixed(1)}</div>
-                  </div>
-                )
-              })}
-            </div>
-          </GlassCard>
 
           {/* Recent mentions feed with local multi-select filters */}
           <GlassCard className="card feed-section" intensity={3} interactive>
@@ -486,7 +427,8 @@ function SortHeader({ label, field, sortKey, setSortKey, align = 'right' }) {
   const active = sortKey === field
   return (
     <th className={`sortable ${active ? 'active' : ''}`} style={{ textAlign: align }} onClick={() => setSortKey(field)}>
-      {label}{active ? ' ↓' : ''}
+      {label}
+      <span className="sort-arrow" aria-hidden style={{ visibility: active ? 'visible' : 'hidden' }}> ↓</span>
     </th>
   )
 }

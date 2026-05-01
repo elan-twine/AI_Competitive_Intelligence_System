@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { RefreshCw, RotateCw, Plus } from 'lucide-react'
+import { RotateCw, Plus } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
 import {
   useBriefingsData,
@@ -57,12 +57,6 @@ export default function Briefings() {
 
   return (
     <div className="briefings-root">
-      <div className="bf-toolbar">
-        <button className="bf-btn" onClick={refetch} title="Refetch from Supabase">
-          <RefreshCw size={13} />
-          {loading ? 'Loading…' : 'Refresh'}
-        </button>
-      </div>
 
       <div className="bf-nav">
         {[

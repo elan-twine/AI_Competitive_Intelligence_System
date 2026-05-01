@@ -41,13 +41,28 @@ export function totalWeightedSOV(posts) {
   return posts.reduce((s, p) => s + (p.weightedSOV || 0), 0)
 }
 
+// Composite "Overall" score weights — easy to tweak in one place.
+// Sentiment is rescaled from -3..+3 into 0..100 so it lives on the same
+// scale as the two percent columns.
+const OVERALL_W = { unweighted: 0.35, weighted: 0.35, sentiment: 0.30 }
+
 export function rankings(posts) {
   const companies = [...new Set(posts.map(p => p.companyName).filter(Boolean))]
   const rows = companies.map(c => companyRow(posts, c))
   const totalUnweighted = rows.reduce((s, r) => s + r.unweightedSOV, 0) || 1
+  const totalWeighted = rows.reduce((s, r) => s + r.weightedSOV, 0) || 1
   return rows
-    .map(r => ({ ...r, pct: (r.unweightedSOV / totalUnweighted) * 100 }))
-    .sort((a, b) => b.unweightedSOV - a.unweightedSOV)
+    .map(r => {
+      const unweightedPct = (r.unweightedSOV / totalUnweighted) * 100
+      const weightedPct = (r.weightedSOV / totalWeighted) * 100
+      const sentimentScaled = ((r.avgSentiment + 3) / 6) * 100
+      const overall =
+        OVERALL_W.unweighted * unweightedPct +
+        OVERALL_W.weighted * weightedPct +
+        OVERALL_W.sentiment * sentimentScaled
+      return { ...r, pct: unweightedPct, unweightedPct, weightedPct, sentimentScaled, overall }
+    })
+    .sort((a, b) => b.overall - a.overall)
 }
 
 export function platformSplit(posts, company) {

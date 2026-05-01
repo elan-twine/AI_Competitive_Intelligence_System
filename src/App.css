@@ -146,6 +146,7 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 40px;
+  position: relative;
 }
 
 .header-left {
@@ -178,6 +179,7 @@
 }
 
 /* ---- Top-level view switcher (SOV / Briefings) ---- */
+/* Absolutely centered so changing H1 / right-side actions don't shift it. */
 .view-switch {
   display: flex;
   gap: 4px;
@@ -186,13 +188,17 @@
   backdrop-filter: blur(10px);
   border: 1px solid var(--divider);
   border-radius: 12px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .view-seg {
   padding: 8px 18px;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-secondary);
   background: transparent;
   border: none;
@@ -200,6 +206,8 @@
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
+  min-width: 130px;
+  text-align: center;
 }
 
 .view-seg:hover { color: var(--text-primary); background: var(--inner-bg); }
@@ -207,7 +215,6 @@
 .view-seg.active {
   background: var(--accent);
   color: #0B0D00;
-  font-weight: 600;
 }
 
 .refresh-btn {
@@ -246,6 +253,7 @@
 
 .stat-card {
   padding: 24px;
+  text-align: center;
 }
 
 .stat-card .label {
@@ -254,6 +262,7 @@
   letter-spacing: 1.5px;
   color: var(--text-muted);
   margin-bottom: 10px;
+  text-align: center;
 }
 
 .stat-card .value {
@@ -261,6 +270,7 @@
   font-weight: 700;
   letter-spacing: -1.5px;
   color: var(--text-primary);
+  text-align: center;
 }
 
 .stat-card .value.accent {
@@ -278,6 +288,7 @@
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 6px;
+  text-align: center;
 }
 
 /* ---- Main Grid ---- */
@@ -763,6 +774,12 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  table-layout: fixed;
+}
+
+.breakdown-table .sort-arrow {
+  display: inline-block;
+  width: 0.9em;
 }
 
 .breakdown-table thead th {
