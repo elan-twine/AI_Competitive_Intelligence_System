@@ -1,7 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
-import { Settings, Zap, RefreshCw } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { RefreshCw, RotateCw, Plus } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
-import { useBriefingsData, keyFor } from '../hooks/useBriefingsData'
+import {
+  useBriefingsData,
+  N8N_NEW_COMPETITOR_WEBHOOK,
+  N8N_UPDATE_ALL_WEBHOOK,
+} from '../hooks/useBriefingsData'
 import './briefings.css'
 
 const COMP_COLORS = {
@@ -32,11 +36,8 @@ export default function Briefings() {
   const { briefings, posts, urns, loading, refetch } = useBriefingsData()
   const [subtab, setSubtab] = useState('overview')
   const [activeBrief, setActiveBrief] = useState(null)
-  const [modalOpen, setModalOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
-
-  const compKeys = useMemo(() => Object.keys(briefings), [briefings])
 
   function showToast(msg, kind = 'ok') {
     setToast({ msg, kind })
@@ -57,14 +58,9 @@ export default function Briefings() {
   return (
     <div className="briefings-root">
       <div className="bf-toolbar">
-        <N8nDot />
         <button className="bf-btn" onClick={refetch} title="Refetch from Supabase">
           <RefreshCw size={13} />
           {loading ? 'Loading…' : 'Refresh'}
-        </button>
-        <button className="bf-btn" onClick={() => setModalOpen(true)}>
-          <Settings size={13} />
-          Settings
         </button>
       </div>
 
@@ -92,7 +88,6 @@ export default function Briefings() {
             loading={loading}
             openBrief={openBrief}
             showToast={showToast}
-            setModalOpen={setModalOpen}
             refetch={refetch}
           />
         )}
@@ -105,93 +100,150 @@ export default function Briefings() {
         {subtab === 'posts' && <PostsList posts={posts} loading={loading} />}
       </div>
 
-      {modalOpen && <SettingsModal onClose={() => setModalOpen(false)} showToast={showToast} />}
       {toast && <div className={`bf-toast show ${toast.kind}`}>{toast.msg}</div>}
     </div>
   )
 }
 
-function N8nDot() {
-  const [connected, setConnected] = useState(() => !!localStorage.getItem('n8n_url'))
-  useEffect(() => {
-    const onStorage = () => setConnected(!!localStorage.getItem('n8n_url'))
-    window.addEventListener('storage', onStorage)
-    const t = setInterval(onStorage, 1000)
-    return () => { window.removeEventListener('storage', onStorage); clearInterval(t) }
-  }, [])
+function WebhookBar({ urns, showToast, refetch }) {
+  const [busy, setBusy] = useState(null) // 'new' | 'loop' | null
+  const [showModal, setShowModal] = useState(false)
+
+  async function submitNew({ company, urn }) {
+    setBusy('new')
+    try {
+      const body = { competitor: company, company, urn, URN: urn }
+      const r = await fetch(N8N_NEW_COMPETITOR_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        mode: 'cors',
+      })
+      if (!r.ok) throw new Error(`webhook returned ${r.status}`)
+      showToast(`${company} queued — refetching…`, 'ok')
+      setShowModal(false)
+      setTimeout(refetch, 2500)
+    } catch (e) {
+      showToast('Error: ' + e.message, 'err')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function fireLoop() {
+    if (!confirm('Re-scrape and update ALL existing briefs? This may take a while.')) return
+    setBusy('loop')
+    try {
+      const r = await fetch(N8N_UPDATE_ALL_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        mode: 'cors',
+      })
+      if (!r.ok) throw new Error(`webhook returned ${r.status}`)
+      showToast('Update-all loop triggered — refetching in 5s…', 'ok')
+      setTimeout(refetch, 5000)
+    } catch (e) {
+      showToast('Error: ' + e.message, 'err')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
-    <span className="bf-pill">
-      <span className={`bf-dot ${connected ? 'on' : ''}`} />
-      {connected ? 'n8n connected' : 'n8n disconnected'}
-    </span>
+    <>
+      <div className="bf-action-bar">
+        <button
+          className="bf-action-btn primary"
+          onClick={() => setShowModal(true)}
+          disabled={busy !== null}
+          title="Add a new competitor — writes one row to competitor_briefings"
+        >
+          {busy === 'new' ? <span className="bf-spin" /> : <><Plus size={14} /> New competitor</>}
+        </button>
+        <button
+          className="bf-action-btn"
+          onClick={fireLoop}
+          disabled={busy !== null}
+          title="Re-scrape and update every existing brief"
+        >
+          {busy === 'loop' ? <span className="bf-spin" /> : <><RotateCw size={14} /> Update all briefs</>}
+        </button>
+      </div>
+
+      {showModal && (
+        <NewCompetitorModal
+          urns={urns}
+          onClose={() => setShowModal(false)}
+          onSubmit={submitNew}
+          busy={busy === 'new'}
+        />
+      )}
+    </>
   )
 }
 
-function GenerateBar({ urns, onGenerated, showToast, setModalOpen, refetch }) {
+function NewCompetitorModal({ urns, onClose, onSubmit, busy }) {
   const [name, setName] = useState('')
   const [urn, setUrn] = useState('')
-  const [generating, setGenerating] = useState(false)
 
-  // Auto-fill URN when typed name matches a known company
+  // Auto-fill URN when typed name matches a known company in linkedin_URNs
   useEffect(() => {
     const match = urns.find(u => u.company && u.company.toLowerCase() === name.trim().toLowerCase())
     if (match && match.URN != null) setUrn(String(match.URN))
   }, [name, urns])
 
-  async function gen() {
-    const company = name.trim()
-    if (!company && !urn.trim()) { showToast('Enter a competitor name or URN', 'err'); return }
-    const url = localStorage.getItem('n8n_url')
-    if (!url) { setModalOpen(true); showToast('Set your webhook URL first', 'err'); return }
-    setGenerating(true)
-    try {
-      const headers = { 'Content-Type': 'application/json' }
-      const auth = localStorage.getItem('n8n_auth') || ''
-      if (auth) headers['Authorization'] = auth
-      const body = { competitor: company, company, urn: urn.trim() || null, URN: urn.trim() || null }
-      const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), mode: 'cors' })
-      if (!r.ok) throw new Error(`webhook returned ${r.status}`)
-      // Trust supabase as source of truth — the n8n flow writes there.
-      // Give it a moment, then refetch.
-      showToast(`${company || urn} generation triggered — refetching…`, 'ok')
-      setTimeout(async () => { await refetch(); onGenerated?.(company) }, 1500)
-      setName(''); setUrn('')
-    } catch (e) {
-      showToast('Error: ' + e.message, 'err')
-    } finally {
-      setGenerating(false)
-    }
+  const trimmedName = name.trim()
+  const trimmedUrn = urn.trim()
+  const valid = !!trimmedName && !!trimmedUrn
+
+  function handleSubmit() {
+    if (!valid) return
+    onSubmit({ company: trimmedName, urn: trimmedUrn })
   }
 
   return (
-    <GlassCard className="bf-card bf-n8n-bar" intensity={3} interactive>
-      <div className="lbl"><Zap size={14} /> Generate via n8n</div>
-      <input
-        list="bf-urn-list"
-        value={name}
-        onChange={e => setName(e.target.value)}
-        placeholder="Competitor name"
-        onKeyDown={e => { if (e.key === 'Enter') gen() }}
-        style={{ flex: '1 1 180px' }}
-      />
-      <datalist id="bf-urn-list">
-        {urns.map(u => <option key={u.id} value={u.company} />)}
-      </datalist>
-      <input
-        value={urn}
-        onChange={e => setUrn(e.target.value)}
-        placeholder="LinkedIn URN (optional)"
-        onKeyDown={e => { if (e.key === 'Enter') gen() }}
-        style={{ flex: '0 1 200px' }}
-      />
-      <button className="bf-btn bf-btn-g" onClick={gen} disabled={generating}>
-        {generating ? <span className="bf-spin" /> : 'Generate'}
-      </button>
-    </GlassCard>
+    <div className="bf-ov open" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bf-mod">
+        <h2>New competitor</h2>
+        <div className="sub">Generate a brief and write it to <code>competitor_briefings</code>.</div>
+        <label>Competitor name</label>
+        <input
+          list="bf-urn-list"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="e.g. Linx Security"
+          autoFocus
+          onKeyDown={e => { if (e.key === 'Enter' && valid) handleSubmit() }}
+        />
+        <datalist id="bf-urn-list">
+          {urns.map(u => <option key={u.id} value={u.company} />)}
+        </datalist>
+        <label>LinkedIn URN</label>
+        <input
+          value={urn}
+          onChange={e => setUrn(e.target.value)}
+          placeholder="e.g. 92514012"
+          onKeyDown={e => { if (e.key === 'Enter' && valid) handleSubmit() }}
+        />
+        <div className="bf-mod-help">
+          <div className="t">Tip</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            URN is the LinkedIn company numeric ID — find it in the company page source under <code>companyId</code> or <code>urn:li:fsd_company:</code>. Typing a name already in <code>linkedin_URNs</code> auto-fills the URN.
+          </div>
+        </div>
+        <div className="bf-mod-ft">
+          <button className="bf-btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="bf-btn bf-btn-g" onClick={handleSubmit} disabled={!valid || busy}>
+            {busy ? <span className="bf-spin" /> : 'Generate'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
-function Overview({ data, posts, urns, loading, openBrief, showToast, setModalOpen, refetch }) {
+function Overview({ data, posts, urns, loading, openBrief, showToast, refetch }) {
   const all = Object.values(data)
   const uniqProducts = new Set(all.flatMap(c => c.products || []))
   const highCount = all.filter(c => c.threat === 'high' || c.threat === 'critical').length
@@ -200,7 +252,7 @@ function Overview({ data, posts, urns, loading, openBrief, showToast, setModalOp
 
   return (
     <>
-      <GenerateBar urns={urns} showToast={showToast} setModalOpen={setModalOpen} refetch={refetch} />
+      <WebhookBar urns={urns} showToast={showToast} refetch={refetch} />
 
       <div className="bf-stats">
         <StatCard label="Competitors" value={all.length} />
@@ -539,39 +591,3 @@ function Snap({ label, value }) {
   )
 }
 
-function SettingsModal({ onClose, showToast }) {
-  const [url, setUrl] = useState(() => localStorage.getItem('n8n_url') || '')
-  const [auth, setAuth] = useState(() => localStorage.getItem('n8n_auth') || '')
-  function save() {
-    localStorage.setItem('n8n_url', url.trim())
-    localStorage.setItem('n8n_auth', auth.trim())
-    showToast('Saved', 'ok')
-    onClose()
-  }
-  return (
-    <div className="bf-ov open" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bf-mod">
-        <h2>n8n Connection</h2>
-        <div className="sub">Link your Competitor Briefing Generator workflow</div>
-        <label>Webhook URL</label>
-        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://your-instance.app.n8n.cloud/webhook/..." />
-        <label>Auth Header (optional)</label>
-        <input value={auth} onChange={e => setAuth(e.target.value)} placeholder="Bearer your-token" />
-        <div className="bf-mod-help">
-          <div className="t">Setup</div>
-          <ol>
-            <li>Open your n8n workflow</li>
-            <li>Add or find the <b>Webhook</b> trigger node</li>
-            <li>Copy the <b>Production URL</b></li>
-            <li>Workflow should write the briefing into the <code>competitor_briefings</code> Supabase table</li>
-            <li>Paste the URL above and hit <b>Save</b></li>
-          </ol>
-        </div>
-        <div className="bf-mod-ft">
-          <button className="bf-btn" onClick={onClose}>Cancel</button>
-          <button className="bf-btn bf-btn-g" onClick={save}>Save</button>
-        </div>
-      </div>
-    </div>
-  )
-}
