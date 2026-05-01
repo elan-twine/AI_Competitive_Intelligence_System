@@ -17,7 +17,7 @@ const COMP_COLORS = {
   blinkops: '#60a5fa',
   opti: '#fb923c',
   fabrix_security: '#34d399',
-  nagomi_security: '#fbbf24',
+  surf_ai: '#fbbf24',
   redblock: 'var(--negative)',
 }
 const THREAT_PCT = { critical: 95, high: 75, medium: 50, low: 25 }

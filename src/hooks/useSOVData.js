@@ -14,7 +14,7 @@ export const TRACKED_COMPANIES = [
   'BlinkOps',
   'Opti',
   'Fabrix Security',
-  'Nagomi Security',
+  'Surf AI',
   'Redblock',
 ]
 const TRACKED_SET = new Set(TRACKED_COMPANIES.map(c => c.toLowerCase()))
