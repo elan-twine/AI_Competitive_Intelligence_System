@@ -1,15 +1,20 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { Settings, Zap } from 'lucide-react'
+import { Settings, Zap, RefreshCw } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
-import { SEED_BRIEFINGS, OPENAI_KEY } from '../data/briefings'
+import { useBriefingsData, keyFor } from '../hooks/useBriefingsData'
 import './briefings.css'
 
-// Per-competitor accent for the OpenAI-vs-X cards (the right-hand "comp" border)
 const COMP_COLORS = {
-  anthropic: '#a78bfa',
-  crowdstrike: 'var(--negative)',
-  google: 'var(--neutral)',
-  perplexity: 'var(--positive)',
+  twine_security: 'var(--accent)',
+  lumos: '#a78bfa',
+  cerby: 'var(--neutral)',
+  linx_security: 'var(--positive)',
+  orchid_security: '#f472b6',
+  blinkops: '#60a5fa',
+  opti: '#fb923c',
+  fabrix_security: '#34d399',
+  nagomi_security: '#fbbf24',
+  redblock: 'var(--negative)',
 }
 const THREAT_PCT = { critical: 95, high: 75, medium: 50, low: 25 }
 const THREAT_BAR_COLOR = {
@@ -24,15 +29,14 @@ function ThreatPill({ threat }) {
 }
 
 export default function Briefings() {
-  const [data, setData] = useState(SEED_BRIEFINGS)
+  const { briefings, posts, urns, loading, refetch } = useBriefingsData()
   const [subtab, setSubtab] = useState('overview')
   const [activeBrief, setActiveBrief] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
 
-  const oai = data[OPENAI_KEY]
-  const compKeys = useMemo(() => Object.keys(data).filter(k => k !== OPENAI_KEY), [data])
+  const compKeys = useMemo(() => Object.keys(briefings), [briefings])
 
   function showToast(msg, kind = 'ok') {
     setToast({ msg, kind })
@@ -54,6 +58,10 @@ export default function Briefings() {
     <div className="briefings-root">
       <div className="bf-toolbar">
         <N8nDot />
+        <button className="bf-btn" onClick={refetch} title="Refetch from Supabase">
+          <RefreshCw size={13} />
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
         <button className="bf-btn" onClick={() => setModalOpen(true)}>
           <Settings size={13} />
           Settings
@@ -63,9 +71,9 @@ export default function Briefings() {
       <div className="bf-nav">
         {[
           ['overview', 'Overview'],
-          ['vs', 'OpenAI vs Competitors'],
           ['compare', 'Compare All'],
           ['briefs', 'Briefings'],
+          ['posts', 'Posts of Interest'],
         ].map(([t, label]) => (
           <button
             key={t}
@@ -77,15 +85,24 @@ export default function Briefings() {
 
       <div className="bf-pg">
         {subtab === 'overview' && (
-          <Overview data={data} setData={setData} openBrief={openBrief} showToast={showToast} setModalOpen={setModalOpen} />
+          <Overview
+            data={briefings}
+            posts={posts}
+            urns={urns}
+            loading={loading}
+            openBrief={openBrief}
+            showToast={showToast}
+            setModalOpen={setModalOpen}
+            refetch={refetch}
+          />
         )}
-        {subtab === 'vs' && <VsView oai={oai} data={data} compKeys={compKeys} />}
-        {subtab === 'compare' && <CompareAll data={data} />}
+        {subtab === 'compare' && <CompareAll data={briefings} loading={loading} />}
         {subtab === 'briefs' && (
-          activeBrief
-            ? <BriefDetail c={data[activeBrief]} onBack={() => setActiveBrief(null)} />
-            : <BriefList data={data} openBrief={openBrief} />
+          activeBrief && briefings[activeBrief]
+            ? <BriefDetail c={briefings[activeBrief]} onBack={() => setActiveBrief(null)} />
+            : <BriefList data={briefings} loading={loading} openBrief={openBrief} />
         )}
+        {subtab === 'posts' && <PostsList posts={posts} loading={loading} />}
       </div>
 
       {modalOpen && <SettingsModal onClose={() => setModalOpen(false)} showToast={showToast} />}
@@ -110,23 +127,20 @@ function N8nDot() {
   )
 }
 
-function Overview({ data, setData, openBrief, showToast, setModalOpen }) {
-  const [genName, setGenName] = useState('')
+function GenerateBar({ urns, onGenerated, showToast, setModalOpen, refetch }) {
+  const [name, setName] = useState('')
+  const [urn, setUrn] = useState('')
   const [generating, setGenerating] = useState(false)
 
-  const all = Object.values(data)
-  const uniqProducts = new Set(all.flatMap(c => c.products))
-  const highCount = all.filter(c => c.threat === 'high' || c.threat === 'critical').length
-  const overlapTotal = all.reduce((s, c) => s + (c.overlap?.length || 0), 0)
-  const maxProducts = Math.max(...all.map(c => c.products.length))
-
-  const news = all
-    .flatMap(c => (c.news || []).map(n => ({ co: c.name, d: c.date, t: n })))
-    .sort((a, b) => b.d.localeCompare(a.d))
+  // Auto-fill URN when typed name matches a known company
+  useEffect(() => {
+    const match = urns.find(u => u.company && u.company.toLowerCase() === name.trim().toLowerCase())
+    if (match && match.URN != null) setUrn(String(match.URN))
+  }, [name, urns])
 
   async function gen() {
-    const name = genName.trim()
-    if (!name) { showToast('Enter a competitor name', 'err'); return }
+    const company = name.trim()
+    if (!company && !urn.trim()) { showToast('Enter a competitor name or URN', 'err'); return }
     const url = localStorage.getItem('n8n_url')
     if (!url) { setModalOpen(true); showToast('Set your webhook URL first', 'err'); return }
     setGenerating(true)
@@ -134,37 +148,14 @@ function Overview({ data, setData, openBrief, showToast, setModalOpen }) {
       const headers = { 'Content-Type': 'application/json' }
       const auth = localStorage.getItem('n8n_auth') || ''
       if (auth) headers['Authorization'] = auth
-      const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ competitor: name }), mode: 'cors' })
-      const raw = await r.json()
-      const d = Array.isArray(raw) ? raw[0] : raw
-      const x = d.output || d.result || d.briefing || d.data || d
-      const key = name.toLowerCase().replace(/\s+/g, '_')
-      const briefing = {
-        name: x.name || x.company || name,
-        date: x.date || new Date().toISOString().split('T')[0],
-        threat: (x.threatLevel || x.threat_level || x.threat || 'medium').toLowerCase(),
-        summary: x.summary || x.threatDescription || '',
-        category: x.category || '',
-        claim: x.coreClaim || x.core_claim || x.claim || '',
-        pricing: x.pricing || x.pricingSignals || '',
-        api: x.api || '',
-        models: x.models || x.flagshipModels || [],
-        products: x.products || x.product_overview || [],
-        industries: x.industries || [],
-        customers: x.customers || x.customerTypes || [],
-        funding: x.funding || '',
-        strengths: x.strengths || [],
-        weaknesses: x.weaknesses || [],
-        diff: x.differentiation || x.diff || [],
-        overlap: x.overlapRisks || x.overlap || [],
-        battle: x.battleCardNotes || x.battle || [],
-        gaps: x.positioningGaps || x.gaps || [],
-        news: x.recentNews || x.news || [],
-      }
-      setData(prev => ({ ...prev, [key]: briefing }))
-      openBrief(key)
-      showToast(`${name} briefing added`, 'ok')
-      setGenName('')
+      const body = { competitor: company, company, urn: urn.trim() || null, URN: urn.trim() || null }
+      const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), mode: 'cors' })
+      if (!r.ok) throw new Error(`webhook returned ${r.status}`)
+      // Trust supabase as source of truth — the n8n flow writes there.
+      // Give it a moment, then refetch.
+      showToast(`${company || urn} generation triggered — refetching…`, 'ok')
+      setTimeout(async () => { await refetch(); onGenerated?.(company) }, 1500)
+      setName(''); setUrn('')
     } catch (e) {
       showToast('Error: ' + e.message, 'err')
     } finally {
@@ -173,19 +164,43 @@ function Overview({ data, setData, openBrief, showToast, setModalOpen }) {
   }
 
   return (
+    <GlassCard className="bf-card bf-n8n-bar" intensity={3} interactive>
+      <div className="lbl"><Zap size={14} /> Generate via n8n</div>
+      <input
+        list="bf-urn-list"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Competitor name"
+        onKeyDown={e => { if (e.key === 'Enter') gen() }}
+        style={{ flex: '1 1 180px' }}
+      />
+      <datalist id="bf-urn-list">
+        {urns.map(u => <option key={u.id} value={u.company} />)}
+      </datalist>
+      <input
+        value={urn}
+        onChange={e => setUrn(e.target.value)}
+        placeholder="LinkedIn URN (optional)"
+        onKeyDown={e => { if (e.key === 'Enter') gen() }}
+        style={{ flex: '0 1 200px' }}
+      />
+      <button className="bf-btn bf-btn-g" onClick={gen} disabled={generating}>
+        {generating ? <span className="bf-spin" /> : 'Generate'}
+      </button>
+    </GlassCard>
+  )
+}
+
+function Overview({ data, posts, urns, loading, openBrief, showToast, setModalOpen, refetch }) {
+  const all = Object.values(data)
+  const uniqProducts = new Set(all.flatMap(c => c.products || []))
+  const highCount = all.filter(c => c.threat === 'high' || c.threat === 'critical').length
+  const overlapTotal = all.reduce((s, c) => s + (c.overlap?.length || 0), 0)
+  const maxProducts = Math.max(1, ...all.map(c => (c.products || []).length))
+
+  return (
     <>
-      <GlassCard className="bf-card bf-n8n-bar" intensity={3} interactive>
-        <div className="lbl"><Zap size={14} /> Generate via n8n</div>
-        <input
-          value={genName}
-          onChange={e => setGenName(e.target.value)}
-          placeholder="Enter a competitor name..."
-          onKeyDown={e => { if (e.key === 'Enter') gen() }}
-        />
-        <button className="bf-btn bf-btn-g" onClick={gen} disabled={generating}>
-          {generating ? <span className="bf-spin" /> : 'Generate'}
-        </button>
-      </GlassCard>
+      <GenerateBar urns={urns} showToast={showToast} setModalOpen={setModalOpen} refetch={refetch} />
 
       <div className="bf-stats">
         <StatCard label="Competitors" value={all.length} />
@@ -194,85 +209,106 @@ function Overview({ data, setData, openBrief, showToast, setModalOpen }) {
         <StatCard label="Products Tracked" value={uniqProducts.size} accent />
       </div>
 
-      <div className="bf-g3">
-        {Object.keys(data).map(k => {
-          const c = data[k]
-          const isOai = k === OPENAI_KEY
-          return (
-            <GlassCard
-              key={k}
-              className="bf-card"
-              intensity={4}
-              interactive
-              style={{ cursor: 'pointer' }}
-              onClick={() => openBrief(k)}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.3px', color: 'var(--text-primary)' }}>
-                  {c.name}
-                  {isOai && <span style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginLeft: 8, padding: '2px 6px', borderRadius: 4, background: 'var(--accent-dim)' }}>PRIMARY</span>}
-                </div>
-                <ThreatPill threat={c.threat} />
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{c.category} · {c.date}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 12 }}>{c.claim}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {c.products.slice(0, 3).map(p => <span key={p} className="bf-tag">{p}</span>)}
-                {c.products.length > 3 && <span className="bf-tag">+{c.products.length - 3}</span>}
-              </div>
-            </GlassCard>
-          )
-        })}
-      </div>
+      {all.length === 0 && !loading && (
+        <GlassCard className="bf-card" intensity={3} interactive>
+          <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+            No briefings yet. Generate one via n8n to populate the <code>competitor_briefings</code> table.
+          </div>
+        </GlassCard>
+      )}
 
-      <div className="bf-g2">
-        <GlassCard className="bf-card" intensity={4} interactive>
-          <h3>Threat Assessment</h3>
+      {all.length > 0 && (
+        <div className="bf-g3">
           {Object.keys(data).map(k => {
             const c = data[k]
             return (
-              <div className="bf-bar-r" key={k}>
-                <div className="bf-bar-l">{c.name}</div>
-                <div className="bf-bar-t">
-                  <div className="bf-bar-f" style={{ width: `${THREAT_PCT[c.threat] || 25}%`, background: THREAT_BAR_COLOR[c.threat] || 'var(--accent)' }}>
-                    {(c.threat || '').toUpperCase()}
+              <GlassCard
+                key={k}
+                className="bf-card"
+                intensity={4}
+                interactive
+                style={{ cursor: 'pointer' }}
+                onClick={() => openBrief(k)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.3px', color: 'var(--text-primary)' }}>
+                    {c.name}
                   </div>
+                  <ThreatPill threat={c.threat} />
                 </div>
-              </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{c.category} · {c.date}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 12 }}>{c.claim}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {(c.products || []).slice(0, 3).map(p => <span key={p} className="bf-tag">{p}</span>)}
+                  {(c.products || []).length > 3 && <span className="bf-tag">+{c.products.length - 3}</span>}
+                </div>
+              </GlassCard>
             )
           })}
-        </GlassCard>
-        <GlassCard className="bf-card" intensity={4} interactive>
-          <h3>Product Breadth</h3>
-          {Object.keys(data).map(k => {
-            const c = data[k]
-            return (
-              <div className="bf-bar-r" key={k}>
-                <div className="bf-bar-l">{c.name}</div>
-                <div className="bf-bar-t">
-                  <div className="bf-bar-f" style={{ width: `${(c.products.length / maxProducts) * 100}%`, background: 'var(--accent)' }}>
-                    {c.products.length}
+        </div>
+      )}
+
+      {all.length > 0 && (
+        <div className="bf-g2">
+          <GlassCard className="bf-card" intensity={4} interactive>
+            <h3>Threat Assessment</h3>
+            {Object.keys(data).map(k => {
+              const c = data[k]
+              return (
+                <div className="bf-bar-r" key={k}>
+                  <div className="bf-bar-l">{c.name}</div>
+                  <div className="bf-bar-t">
+                    <div className="bf-bar-f" style={{ width: `${THREAT_PCT[c.threat] || 25}%`, background: THREAT_BAR_COLOR[c.threat] || 'var(--accent)' }}>
+                      {(c.threat || '').toUpperCase()}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
-        </GlassCard>
-      </div>
+              )
+            })}
+          </GlassCard>
+          <GlassCard className="bf-card" intensity={4} interactive>
+            <h3>Product Breadth</h3>
+            {Object.keys(data).map(k => {
+              const c = data[k]
+              const len = (c.products || []).length
+              return (
+                <div className="bf-bar-r" key={k}>
+                  <div className="bf-bar-l">{c.name}</div>
+                  <div className="bf-bar-t">
+                    <div className="bf-bar-f" style={{ width: `${(len / maxProducts) * 100}%`, background: 'var(--accent)' }}>
+                      {len}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </GlassCard>
+        </div>
+      )}
 
       <GlassCard className="bf-card" intensity={3} interactive>
-        <h3>Recent Intelligence</h3>
-        {news.map((n, i) => (
-          <div key={i} style={{
+        <h3>Recent Posts of Interest</h3>
+        {loading && <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '8px 0' }}>Loading…</div>}
+        {!loading && posts.length === 0 && (
+          <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '8px 0' }}>No posts of interest yet.</div>
+        )}
+        {posts.slice(0, 12).map((p, i) => (
+          <div key={p.id ?? i} style={{
             display: 'flex',
             gap: 14,
             padding: '10px 0',
-            borderBottom: i === news.length - 1 ? 'none' : '1px solid var(--divider)',
+            borderBottom: i === Math.min(posts.length, 12) - 1 ? 'none' : '1px solid var(--divider)',
             fontSize: 12,
+            alignItems: 'flex-start',
           }}>
-            <span style={{ color: 'var(--text-muted)', width: 90, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{n.d}</span>
-            <span style={{ fontWeight: 600, width: 130, flexShrink: 0, color: 'var(--text-primary)' }}>{n.co}</span>
-            <span style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{n.t}</span>
+            <span style={{ color: 'var(--text-muted)', width: 90, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+              {(p.date || p.created_at || '').slice(0, 10)}
+            </span>
+            <span style={{ fontWeight: 600, width: 130, flexShrink: 0, color: 'var(--text-primary)' }}>{p.author}</span>
+            <span style={{ color: 'var(--text-secondary)', lineHeight: 1.5, flex: 1 }}>
+              {p.summary}{' '}
+              {p.url && <a href={p.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', whiteSpace: 'nowrap' }}>↗</a>}
+            </span>
           </div>
         ))}
       </GlassCard>
@@ -294,145 +330,23 @@ function StatCard({ label, value, valueColor, accent }) {
   )
 }
 
-function VsView({ oai, data, compKeys }) {
-  return (
-    <>
-      <GlassCard className="bf-vs-hero" intensity={5} interactive>
-        <div>
-          <div className="main-co">OpenAI</div>
-          <div className="sub">AI research and development · $730B valuation</div>
-        </div>
-        <div className="vs-badge">vs {compKeys.length} Competitors</div>
-      </GlassCard>
-
-      <div className="bf-g2">
-        <GlassCard className="bf-card" intensity={4} interactive>
-          <h3>OpenAI Strengths to Leverage</h3>
-          {oai.strengths.map((s, i) => (
-            <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--accent)' }}>✓</span>{s}</div>
-          ))}
-        </GlassCard>
-        <GlassCard className="bf-card" intensity={4} interactive>
-          <h3>OpenAI Gaps to Address</h3>
-          {oai.gaps.map((g, i) => (
-            <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--negative)' }}>△</span>{g}</div>
-          ))}
-        </GlassCard>
-      </div>
-
-      {compKeys.map(k => {
-        const c = data[k]
-        const color = COMP_COLORS[k] || 'var(--negative)'
-        return (
-          <GlassCard className="bf-vs-card" intensity={3} interactive key={k}>
-            <div className="bf-vs-card-hdr">
-              <h4>OpenAI <span style={{ color: 'var(--accent)', margin: '0 8px' }}>vs</span> {c.name}</h4>
-              <span className={`bf-tp bf-tp-${c.threat}`}>{c.threat.toUpperCase()} THREAT</span>
-            </div>
-            <div className="bf-vs-card-body">
-              <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>{c.summary}</p>
-
-              <SectionLabel>Key Models</SectionLabel>
-              <div className="bf-vs-cols" style={{ marginBottom: 18 }}>
-                <div className="bf-openai-col">
-                  <div className="bf-vs-col-title">OpenAI</div>
-                  <TagList items={oai.models} />
-                </div>
-                <div className="bf-comp-col" style={{ borderLeftColor: color }}>
-                  <div className="bf-vs-col-title">{c.name}</div>
-                  {c.models.length ? <TagList items={c.models} /> : <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>N/A</span>}
-                </div>
-              </div>
-
-              <SectionLabel>Strengths Comparison</SectionLabel>
-              <div className="bf-vs-cols" style={{ marginBottom: 18 }}>
-                <div className="bf-openai-col">
-                  <div className="bf-vs-col-title" style={{ color: 'var(--accent)' }}>OpenAI</div>
-                  {oai.strengths.map((s, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--accent)' }}>✓</span>{s}</div>)}
-                </div>
-                <div className="bf-comp-col" style={{ borderLeftColor: color }}>
-                  <div className="bf-vs-col-title" style={{ color }}>{c.name}</div>
-                  {c.strengths.map((s, i) => <div className="bf-sw" key={i}><span className="m" style={{ color }}>✓</span>{s}</div>)}
-                </div>
-              </div>
-
-              <SectionLabel>Weaknesses</SectionLabel>
-              <div className="bf-vs-cols" style={{ marginBottom: 18 }}>
-                <div className="bf-openai-col">
-                  <div className="bf-vs-col-title" style={{ color: 'var(--negative)' }}>OpenAI</div>
-                  {oai.weaknesses.map((w, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--negative)' }}>✗</span>{w}</div>)}
-                </div>
-                <div className="bf-comp-col" style={{ borderLeftColor: color }}>
-                  <div className="bf-vs-col-title" style={{ color: 'var(--negative)' }}>{c.name}</div>
-                  {c.weaknesses.map((w, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--negative)' }}>✗</span>{w}</div>)}
-                </div>
-              </div>
-
-              <SectionLabel>Overlap Risk Areas</SectionLabel>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 18 }}>
-                {c.overlap.map((o, i) => (
-                  <span key={i} style={{ padding: '5px 12px', background: 'rgba(37, 99, 235, 0.08)', border: '1px solid rgba(37, 99, 235, 0.3)', borderRadius: 6, fontSize: 11, fontWeight: 600, color: 'var(--neutral)' }}>⚠ {o}</span>
-                ))}
-              </div>
-
-              <SectionLabel>Battle Card — How OpenAI Wins</SectionLabel>
-              <div className="bf-battle">
-                {c.battle.map((b, i) => <div className="bf-battle-i" key={i}><span className="s">★</span>{b}</div>)}
-              </div>
-            </div>
-          </GlassCard>
-        )
-      })}
-
-      <GlassCard className="bf-card" intensity={4} interactive style={{ marginTop: 20 }}>
-        <h3>Competitor Threat Matrix</h3>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="bf-tbl">
-            <thead><tr><th>Competitor</th><th>Threat</th><th>Strengths</th><th>Weaknesses</th><th>Overlap</th><th>Funding</th></tr></thead>
-            <tbody>
-              {compKeys.map(k => {
-                const c = data[k]
-                return (
-                  <tr key={k}>
-                    <td>{c.name}</td>
-                    <td><ThreatPill threat={c.threat} /></td>
-                    <td>{c.strengths.length}</td>
-                    <td>{c.weaknesses.length}</td>
-                    <td>{c.overlap.length}</td>
-                    <td style={{ fontSize: 11 }}>{c.funding}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </GlassCard>
-    </>
-  )
-}
-
-function SectionLabel({ children }) {
-  return <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>{children}</div>
-}
-function TagList({ items }) {
-  return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{items.map(m => <span key={m} className="bf-tag">{m}</span>)}</div>
-}
-
-function CompareAll({ data }) {
+function CompareAll({ data, loading }) {
   const comps = Object.values(data)
+  if (loading) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div></GlassCard>
+  if (comps.length === 0) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>No briefings yet.</div></GlassCard>
   const rows = [
     ['Threat', c => <ThreatPill threat={c.threat} />],
     ['Category', c => c.category],
     ['Core Claim', c => c.claim],
     ['Pricing', c => c.pricing],
     ['Funding', c => c.funding],
-    ['Models', c => c.models.join(', ') || '—'],
-    ['Products', c => c.products.join(', ')],
-    ['Industries', c => c.industries.join(', ')],
-    ['Strengths', c => c.strengths.map((s, i) => <div key={i} style={{ padding: '2px 0' }}>✓ {s}</div>)],
-    ['Weaknesses', c => c.weaknesses.map((w, i) => <div key={i} style={{ padding: '2px 0' }}>✗ {w}</div>)],
-    ['Differentiation', c => c.diff.map((d, i) => <div key={i} style={{ padding: '2px 0' }}>→ {d}</div>)],
-    ['Overlap Risks', c => c.overlap.map((o, i) => <div key={i} style={{ padding: '2px 0' }}>⚠ {o}</div>)],
+    ['Models', c => (c.models || []).join(', ') || '—'],
+    ['Products', c => (c.products || []).join(', ')],
+    ['Industries', c => (c.industries || []).join(', ')],
+    ['Strengths', c => (c.strengths || []).map((s, i) => <div key={i} style={{ padding: '2px 0' }}>✓ {s}</div>)],
+    ['Weaknesses', c => (c.weaknesses || []).map((w, i) => <div key={i} style={{ padding: '2px 0' }}>✗ {w}</div>)],
+    ['Differentiation', c => (c.diff || []).map((d, i) => <div key={i} style={{ padding: '2px 0' }}>→ {d}</div>)],
+    ['Overlap Risks', c => (c.overlap || []).map((o, i) => <div key={i} style={{ padding: '2px 0' }}>⚠ {o}</div>)],
   ]
   return (
     <GlassCard className="bf-card" intensity={4} interactive>
@@ -453,12 +367,14 @@ function CompareAll({ data }) {
   )
 }
 
-function BriefList({ data, openBrief }) {
+function BriefList({ data, loading, openBrief }) {
+  if (loading) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div></GlassCard>
+  const keys = Object.keys(data)
+  if (keys.length === 0) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>No briefings yet — generate one to get started.</div></GlassCard>
   return (
     <div>
-      {Object.keys(data).map(k => {
+      {keys.map(k => {
         const c = data[k]
-        const isOai = k === OPENAI_KEY
         return (
           <GlassCard
             key={k}
@@ -470,10 +386,7 @@ function BriefList({ data, openBrief }) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {c.name}
-                  {isOai && <span style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginLeft: 8, padding: '2px 6px', borderRadius: 4, background: 'var(--accent-dim)' }}>PRIMARY</span>}
-                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{c.name}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 2 }}>{c.category} · {c.date}</div>
               </div>
               <ThreatPill threat={c.threat} />
@@ -485,6 +398,38 @@ function BriefList({ data, openBrief }) {
   )
 }
 
+function PostsList({ posts, loading }) {
+  if (loading) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div></GlassCard>
+  if (posts.length === 0) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>No posts of interest in Supabase.</div></GlassCard>
+  return (
+    <GlassCard className="bf-card" intensity={3} interactive>
+      <h3>Posts of Interest ({posts.length})</h3>
+      {posts.map((p, i) => (
+        <div key={p.id ?? i} style={{
+          display: 'flex',
+          gap: 14,
+          padding: '14px 0',
+          borderBottom: i === posts.length - 1 ? 'none' : '1px solid var(--divider)',
+          fontSize: 12,
+          alignItems: 'flex-start',
+        }}>
+          <span style={{ color: 'var(--text-muted)', width: 90, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+            {(p.date || p.created_at || '').slice(0, 10)}
+          </span>
+          <span style={{ fontWeight: 600, width: 140, flexShrink: 0, color: 'var(--text-primary)' }}>{p.author}</span>
+          <div style={{ flex: 1, lineHeight: 1.5 }}>
+            <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>{p.summary}</div>
+            {p.relevance_reason && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>Relevance: {p.relevance_reason}</div>
+            )}
+            {p.url && <a href={p.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: 11 }}>open post ↗</a>}
+          </div>
+        </div>
+      ))}
+    </GlassCard>
+  )
+}
+
 function BriefDetail({ c, onBack }) {
   return (
     <GlassCard className="bf-card" intensity={3} interactive>
@@ -492,9 +437,9 @@ function BriefDetail({ c, onBack }) {
       <div className="bf-b-hero">
         <div>
           <h1>{c.name}</h1>
-          <div className="meta">{c.category} · Generated {c.date}</div>
+          <div className="meta">{c.category} · Generated {c.date}{c.urn ? ` · URN ${c.urn}` : ''}</div>
         </div>
-        <span className={`bf-tp bf-tp-${c.threat}`} style={{ fontSize: 12, padding: '6px 14px' }}>{c.threat.toUpperCase()} THREAT</span>
+        <span className={`bf-tp bf-tp-${c.threat}`} style={{ fontSize: 12, padding: '6px 14px' }}>{(c.threat || '').toUpperCase()} THREAT</span>
       </div>
 
       <Section title="Executive Summary">
@@ -510,7 +455,7 @@ function BriefDetail({ c, onBack }) {
         </div>
       </Section>
 
-      {c.models.length > 0 && (
+      {(c.models || []).length > 0 && (
         <Section title="Flagship Models">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {c.models.map(m => <span key={m} className="bf-tag" style={{ fontSize: 12, padding: '5px 12px' }}>{m}</span>)}
@@ -518,16 +463,18 @@ function BriefDetail({ c, onBack }) {
         </Section>
       )}
 
-      <Section title="Products">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {c.products.map(p => <span key={p} className="bf-tag" style={{ fontSize: 12, padding: '5px 12px' }}>{p}</span>)}
-        </div>
-      </Section>
+      {(c.products || []).length > 0 && (
+        <Section title="Products">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {c.products.map(p => <span key={p} className="bf-tag" style={{ fontSize: 12, padding: '5px 12px' }}>{p}</span>)}
+          </div>
+        </Section>
+      )}
 
       <Section title="Target Customers">
         <div className="bf-snap">
-          <Snap label="Industries" value={c.industries.join(', ')} />
-          <Snap label="Customer Types" value={c.customers.join(', ')} />
+          <Snap label="Industries" value={(c.industries || []).join(', ')} />
+          <Snap label="Customer Types" value={(c.customers || []).join(', ')} />
         </div>
       </Section>
 
@@ -535,11 +482,11 @@ function BriefDetail({ c, onBack }) {
         <div className="bf-sw-2">
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Strengths</div>
-            {c.strengths.map((s, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--accent)' }}>✓</span>{s}</div>)}
+            {(c.strengths || []).map((s, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--accent)' }}>✓</span>{s}</div>)}
           </div>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--negative)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Weaknesses</div>
-            {c.weaknesses.map((w, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--negative)' }}>✗</span>{w}</div>)}
+            {(c.weaknesses || []).map((w, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--negative)' }}>✗</span>{w}</div>)}
           </div>
         </div>
       </Section>
@@ -548,28 +495,34 @@ function BriefDetail({ c, onBack }) {
         <div className="bf-sw-2">
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--neutral)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Differentiation</div>
-            {c.diff.map((d, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--neutral)' }}>→</span>{d}</div>)}
+            {(c.diff || []).map((d, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--neutral)' }}>→</span>{d}</div>)}
           </div>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--neutral)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Overlap Risks</div>
-            {c.overlap.map((o, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--neutral)' }}>⚠</span>{o}</div>)}
+            {(c.overlap || []).map((o, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--neutral)' }}>⚠</span>{o}</div>)}
           </div>
         </div>
       </Section>
 
-      <Section title="Battle Card">
-        <div className="bf-battle">
-          {c.battle.map((b, i) => <div className="bf-battle-i" key={i}><span className="s">★</span>{b}</div>)}
-        </div>
-      </Section>
+      {(c.battle || []).length > 0 && (
+        <Section title="Battle Card">
+          <div className="bf-battle">
+            {c.battle.map((b, i) => <div className="bf-battle-i" key={i}><span className="s">★</span>{b}</div>)}
+          </div>
+        </Section>
+      )}
 
-      <Section title="Positioning Gaps">
-        {c.gaps.map((g, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--accent)' }}>△</span>{g}</div>)}
-      </Section>
+      {(c.gaps || []).length > 0 && (
+        <Section title="Positioning Gaps">
+          {c.gaps.map((g, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--accent)' }}>△</span>{g}</div>)}
+        </Section>
+      )}
 
-      <Section title="Recent News">
-        {c.news.map((n, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--text-muted)' }}>•</span>{n}</div>)}
-      </Section>
+      {(c.news || []).length > 0 && (
+        <Section title="Recent News">
+          {c.news.map((n, i) => <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--text-muted)' }}>•</span>{n}</div>)}
+        </Section>
+      )}
     </GlassCard>
   )
 }
@@ -610,7 +563,8 @@ function SettingsModal({ onClose, showToast }) {
             <li>Open your n8n workflow</li>
             <li>Add or find the <b>Webhook</b> trigger node</li>
             <li>Copy the <b>Production URL</b></li>
-            <li>Paste above, hit <b>Save</b></li>
+            <li>Workflow should write the briefing into the <code>competitor_briefings</code> Supabase table</li>
+            <li>Paste the URL above and hit <b>Save</b></li>
           </ol>
         </div>
         <div className="bf-mod-ft">
