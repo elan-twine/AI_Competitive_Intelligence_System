@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
 import { GlassCard } from '../components/GlassCard'
+import { SOVTrendChart } from '../components/SOVTrendChart'
 import { applyFilters, rankings, companyRow, platformSplit, compare } from '../lib/metrics'
 import Briefings from './Briefings'
 import '../App.css'
@@ -54,7 +55,7 @@ function toggle(set, value) {
 }
 
 function Dashboard({ onLogout, onNavigate }) {
-  const { allPosts, companies, loading, error, refetch } = useSOVData()
+  const { allPosts, companies, competitors, loading, error, refetch } = useSOVData()
   const { config: sovConfig } = useSOVConfig()
 
   // Top-level view: SOV dashboard vs Briefings (siblings, not nested)
@@ -278,6 +279,15 @@ function Dashboard({ onLogout, onNavigate }) {
               </div>
             </GlassCard>
           )}
+
+          {/* Weekly Share-of-Voice trend — competitors over time */}
+          <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
+            <div className="card-header">
+              <span className="card-title">Share of Voice — Weekly Trend</span>
+              <span className="card-badge"><BarChart3 size={11} style={{ marginRight: 4 }} />Last 12 weeks</span>
+            </div>
+            <SOVTrendChart posts={filtered} competitors={competitors} config={sovConfig} weeks={12} />
+          </GlassCard>
 
           {/* All-companies breakdown table */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
