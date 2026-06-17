@@ -13,4 +13,15 @@ if (!supabaseAnonKey) {
   )
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    // PKCE returns the session as a `?code=` query param (exchanged for a
+    // session), instead of the implicit flow's `#access_token=` hash — which
+    // this app's hash-based router would otherwise wipe before supabase-js
+    // could read it. PKCE is also Supabase's recommended, more secure flow.
+    flowType: 'pkce',
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+})
