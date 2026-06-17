@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { ArrowRight, LogIn, X } from 'lucide-react'
 import StarSwipe from '../components/StarSwipe'
 import { GlassCard } from '../components/GlassCard'
-import { checkLogin } from '../lib/auth'
+import { GoogleSignInButton } from '../components/GoogleSignInButton'
+import { signIn } from '../lib/auth'
 import './landing.css'
 
 export default function Landing({ onNavigate, onLoginSuccess }) {
@@ -79,21 +80,18 @@ function LoginModal({ onClose, onLoginSuccess }) {
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setErrorMsg(null)
     if (!email || !password) return
     setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      if (!checkLogin(email, password)) {
-        setErrorMsg('Invalid email or password')
-        return
-      }
-      localStorage.setItem('twine-sov-auth', 'true')
-      localStorage.setItem('twine-sov-user', email)
-      onLoginSuccess()
-    }, 300)
+    const { error } = await signIn(email, password)
+    setLoading(false)
+    if (error) {
+      setErrorMsg(error.message || 'Invalid email or password')
+      return
+    }
+    onLoginSuccess()
   }
 
   return (
@@ -132,6 +130,8 @@ function LoginModal({ onClose, onLoginSuccess }) {
             <button type="submit" className="cta-primary auth-submit" disabled={loading}>
               {loading ? 'Signing in...' : (<>Sign in <ArrowRight size={16} /></>)}
             </button>
+            <div className="auth-or"><span>or</span></div>
+            <GoogleSignInButton />
             <p className="auth-hint muted">Team members only — reach out if you need access.</p>
           </form>
         </GlassCard>

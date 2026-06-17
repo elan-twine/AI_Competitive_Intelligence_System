@@ -1,0 +1,106 @@
+/* Manage Competitors page — reuses GlassCard + breakdown-table conventions. */
+
+.comp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.comp-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.comp-field span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.comp-add-btn {
+  align-self: flex-start;
+}
+
+.comp-aliases {
+  color: var(--text-secondary);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.comp-table input {
+  width: 100%;
+  background: var(--inner-bg, var(--bg-card));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.comp-edit-extra {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.comp-actions {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.icon-btn:hover {
+  color: var(--accent);
+  background: var(--bg-card-hover);
+}
+
+.icon-btn.danger:hover {
+  color: var(--negative);
+  border-color: var(--negative);
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.comp-toggle {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.comp-toggle.on {
+  color: var(--positive);
+  background: color-mix(in srgb, var(--positive) 12%, transparent);
+  border-color: color-mix(in srgb, var(--positive) 35%, transparent);
+}
+
+.comp-toggle.off {
+  color: var(--text-secondary);
+  background: var(--bg-card);
+}
+
+.comp-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
