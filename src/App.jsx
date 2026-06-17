@@ -33,9 +33,17 @@ function App() {
       setSession(s)
       setAuthReady(true)
     })
-    const unsub = onAuthChange((s) => {
+    const unsub = onAuthChange((event, s) => {
       setSession(s)
       setAuthReady(true)
+      // A fresh sign-in (email, or returning from the Google OAuth redirect)
+      // lands the user on the dashboard. We can't rely on the URL hash for the
+      // OAuth case — supabase-js consumes it to extract the session — so we
+      // navigate explicitly here and clean any leftover code/token from the URL.
+      if (event === 'SIGNED_IN') {
+        window.history.replaceState({}, document.title, window.location.pathname + '#dashboard')
+        setView('dashboard')
+      }
     })
     return () => { mounted = false; unsub() }
   }, [])
