@@ -593,6 +593,18 @@
   height: 200px;
 }
 
+/* Weekly SOV trend chart */
+.trend-chart-wrap {
+  width: 100%;
+  margin-top: 8px;
+}
+.trend-chart-wrap .recharts-cartesian-axis-tick-value {
+  fill: var(--text-secondary);
+}
+.trend-chart-wrap .recharts-legend-item-text {
+  color: var(--text-secondary) !important;
+}
+
 /* ---- Tab nav ---- */
 .tab-nav {
   display: flex;

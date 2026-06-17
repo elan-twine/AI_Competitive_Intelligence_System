@@ -118,6 +118,60 @@ export function computeWeightedSOV(posts, config = DEFAULT_SOV_CONFIG) {
   return { weightedPct: pct, effectiveWeights, platformTotals }
 }
 
+// ---------------------------------------------------------------------------
+// Weekly SOV trend. Buckets posts into ISO weeks (Mon–Sun) by `post.ts`, then
+// computes per-competitor cross-platform weighted SOV for EACH week using the
+// SAME methodology as computeWeightedSOV (within-platform share → weighted
+// average across platforms, with the min-volume guard). Output is shaped for
+// recharts: one row per week, one numeric key per company (SOV 0..100).
+// ---------------------------------------------------------------------------
+
+// Monday of the ISO week containing `date`, normalized to local midnight.
+// We label each bucket by this Monday as 'YYYY-MM-DD' (the week-start date).
+function isoWeekStart(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  // getDay(): 0=Sun..6=Sat. Shift so Monday is the first day of the week.
+  const day = (d.getDay() + 6) % 7
+  d.setDate(d.getDate() - day)
+  return d
+}
+
+function ymd(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
+}
+
+export function weeklySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
+  const { weeks = 12 } = opts
+
+  // Bucket posts by ISO-week-start label. Posts without a valid ts are skipped
+  // (they can't be placed on the timeline).
+  const buckets = new Map() // weekLabel -> posts[]
+  for (const p of posts) {
+    const t = p.ts ? new Date(p.ts) : null
+    if (!t || isNaN(t.getTime())) continue
+    const label = ymd(isoWeekStart(t))
+    if (!buckets.has(label)) buckets.set(label, [])
+    buckets.get(label).push(p)
+  }
+
+  // Ascending by week, then keep only the most recent N.
+  let labels = [...buckets.keys()].sort() // 'YYYY-MM-DD' sorts lexicographically
+  if (weeks > 0 && labels.length > weeks) labels = labels.slice(labels.length - weeks)
+
+  // Per-week, run the shared methodology and flatten into recharts rows.
+  return labels.map(week => {
+    const { weightedPct } = computeWeightedSOV(buckets.get(week), config)
+    const row = { week }
+    for (const [company, pct] of weightedPct) {
+      row[company] = Math.round(pct * 10) / 10 // 0..100, one decimal
+    }
+    return row
+  })
+}
+
 // Sentiment as its own dimension: net sentiment % and positive-vs-negative
 // SOV split. Net = (pos - neg) / total mentions, expressed as %.
 export function sentimentDimension(posts, company) {
