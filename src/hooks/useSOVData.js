@@ -1,26 +1,34 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useCompetitors } from './useCompetitors'
 
-// The 10 companies we track. Anything else in the source tables is noise
-// (mislabeled posts, comma-joined names like "Orchid Security, Lumos",
-// generic categories like "None", or off-topic mentions) and must be
-// filtered out so it doesn't leak into rankings / sentiment / feed.
-export const TRACKED_COMPANIES = [
-  'Twine Security',
-  'Lumos',
-  'Orchid Security',
-  'Cerby',
-  'Linx Security',
-  'BlinkOps',
-  'Opti',
-  'Fabrix Security',
-  'Surf AI',
-  'Redblock',
-]
-const TRACKED_SET = new Set(TRACKED_COMPANIES.map(c => c.toLowerCase()))
-const isTracked = (name) => !!name && TRACKED_SET.has(String(name).trim().toLowerCase())
+// The set of company names/aliases we track now comes from the `competitors`
+// table (source of truth), not a hardcoded list. Anything else in the source
+// tables is noise (mislabeled posts, comma-joined names, generic categories
+// like "None", off-topic mentions) and is filtered out.
+//
+// `competitors` may be passed in; if omitted the hook fetches it itself via
+// useCompetitors so existing call sites (useSOVData()) keep working.
+function buildTrackedIndex(competitors) {
+  // map: normalized name/alias -> canonical competitor name
+  const index = new Map()
+  for (const c of competitors || []) {
+    if (c.active === false) continue
+    const canonical = c.name
+    const add = (val) => {
+      const key = String(val || '').trim().toLowerCase()
+      if (key) index.set(key, canonical)
+    }
+    add(c.name)
+    for (const a of c.aliases || []) add(a)
+  }
+  return index
+}
 
-export function useSOVData() {
+export function useSOVData(competitorsArg) {
+  const own = useCompetitors()
+  const competitors = competitorsArg ?? own.competitors
+
   const [tweets, setTweets] = useState([])
   const [redditPosts, setRedditPosts] = useState([])
   const [googleNews, setGoogleNews] = useState([])
@@ -80,54 +88,52 @@ export function useSOVData() {
     fetchAll()
   }, [])
 
+  // Tracked-name index from the competitor list (name + aliases, case-insensitive,
+  // trimmed). isTracked returns the canonical name (or null) so attributed posts
+  // collapse aliases onto one display name.
+  const trackedIndex = buildTrackedIndex(competitors)
+  const canonicalOf = (name) => {
+    if (!name) return null
+    return trackedIndex.get(String(name).trim().toLowerCase()) || null
+  }
+  const isTracked = (name) => canonicalOf(name) != null
+
   const rawPosts = [
     ...tweets.map(t => ({ ...t, platform: 'X', ts: t.createdAt })),
     ...redditPosts.map(r => ({ ...r, platform: 'Reddit', ts: r.createdAt })),
     ...googleNews.map(g => ({ ...g, platform: 'Google News', ts: g.publishedAt })),
     ...linkedinPosts.map(l => ({ ...l, platform: 'LinkedIn', ts: l.posted_at })),
-  ].filter(p => isTracked(p.companyName))
+  ]
+    .filter(p => isTracked(p.companyName))
+    // Normalize aliases onto the canonical competitor name.
+    .map(p => ({ ...p, companyName: canonicalOf(p.companyName) }))
 
-  // Two concerns to balance:
-  //   1. n8n's weightedSOV is on different scales per platform (Reddit's
-  //      log compression vs X's engagement × decay), so naively summing
-  //      raw values double-counts whichever platform has the biggest scale.
-  //   2. But platforms also have very different data volumes (LinkedIn 325
-  //      posts vs X 15 vs Reddit 4) and a platform with 4 posts shouldn't
-  //      count as much as one with 325. Per-platform-equal weighting was
-  //      letting tiny platforms dominate composite rankings.
-  //
-  // Fix: normalize within each platform (handles concern 1), then weight
-  // each platform's contribution by its share of total posts (handles
-  // concern 2). Each post's contribution becomes:
-  //   unweightedSOV = 1 / totalPostsAcrossAll          (pure post share)
-  //   weightedSOV   = (post.weightedSOV / Σ_platform)
-  //                   × (platformPostCount / totalPostsAcrossAll)
-  // Falls back to post-share if a platform's weighted pool is zero (e.g.
-  // Google News calc is broken upstream).
-  const platformPostCounts = {}
-  const platformWeightedTotals = {}
-  for (const p of rawPosts) {
-    const k = p.platform
-    platformPostCounts[k] = (platformPostCounts[k] || 0) + 1
-    platformWeightedTotals[k] = (platformWeightedTotals[k] || 0) + (p.weightedSOV || 0)
+  // Per-post weight: prefer the n8n-computed `post_weight` (new field), fall
+  // back to the legacy `weightedSOV` during the data transition. This drives
+  // the within-platform share in metrics.js (computeWeightedSOV).
+  const postWeight = (p) => {
+    const w = p.post_weight
+    if (w != null && !isNaN(w)) return Number(w)
+    if (p.weightedSOV != null && !isNaN(p.weightedSOV)) return Number(p.weightedSOV)
+    return 1
   }
+
+  // Per-post fields the rest of the app expects:
+  //   unweightedSOV — pure post-count share (1 / total posts)
+  //   weightedSOV   — the per-post weight (within-platform share is computed
+  //                   downstream in metrics.computeWeightedSOV)
+  //   postWeight    — explicit alias of the chosen weight for clarity
+  //   rawWeightedSOV/sov — preserved for the feed's per-post display
   const totalPosts = rawPosts.length || 1
   const allPosts = rawPosts.map(p => {
-    const postCount = platformPostCounts[p.platform] || 1
-    const weightedTotal = platformWeightedTotals[p.platform] || 0
-    const platformShare = postCount / totalPosts // platform's fraction of all posts
-    const unweighted = 1 / totalPosts
-    const platformFraction = weightedTotal > 0
-      ? (p.weightedSOV || 0) / weightedTotal
-      : 1 / postCount
-    const weighted = platformFraction * platformShare
+    const w = postWeight(p)
     return {
       ...p,
-      // Preserve the raw n8n score for per-post display in the feed.
-      rawWeightedSOV: p.weightedSOV || 0,
-      unweightedSOV: unweighted,
-      weightedSOV: weighted,
-      sov: unweighted,
+      rawWeightedSOV: p.weightedSOV ?? p.post_weight ?? 0,
+      postWeight: w,
+      unweightedSOV: 1 / totalPosts,
+      weightedSOV: w,
+      sov: 1 / totalPosts,
     }
   })
 
@@ -158,7 +164,10 @@ export function useSOVData() {
 
   return {
     tweets, redditPosts, googleNews, linkedinPosts,
-    allPosts, companies, loading, error, refetch: fetchAll,
+    allPosts, companies, competitors,
+    loading: loading || own.loading,
+    error: error || own.error,
+    refetch: fetchAll,
     getCompanySOV, getCompanySentiment, getPlatformBreakdown,
   }
 }

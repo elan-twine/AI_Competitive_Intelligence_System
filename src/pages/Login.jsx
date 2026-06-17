@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
-import { checkLogin } from '../lib/auth'
+import { GoogleSignInButton } from '../components/GoogleSignInButton'
+import { signIn } from '../lib/auth'
 import './landing.css'
 
 export default function Login({ onNavigate, onLoginSuccess }) {
@@ -10,21 +11,29 @@ export default function Login({ onNavigate, onLoginSuccess }) {
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
 
-  const handleSubmit = (e) => {
+  // Surface an OAuth rejection (e.g. a non-@twinesecurity.com Google account
+  // blocked at signup) that Supabase returns as a ?error_description= param.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const desc = params.get('error_description')
+    if (desc) {
+      setErrorMsg(desc)
+      window.history.replaceState({}, document.title, window.location.pathname + '#login')
+    }
+  }, [])
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setErrorMsg(null)
     if (!email || !password) return
     setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      if (!checkLogin(email, password)) {
-        setErrorMsg('Invalid email or password')
-        return
-      }
-      localStorage.setItem('twine-sov-auth', 'true')
-      localStorage.setItem('twine-sov-user', email)
-      onLoginSuccess()
-    }, 300)
+    const { error } = await signIn(email, password)
+    setLoading(false)
+    if (error) {
+      setErrorMsg(error.message || 'Invalid email or password')
+      return
+    }
+    onLoginSuccess()
   }
 
   return (
@@ -74,6 +83,9 @@ export default function Login({ onNavigate, onLoginSuccess }) {
             <button type="submit" className="cta-primary auth-submit" disabled={loading}>
               {loading ? 'Signing in...' : (<>Sign in <ArrowRight size={16} /></>)}
             </button>
+
+            <div className="auth-or"><span>or</span></div>
+            <GoogleSignInButton />
 
             <p className="auth-hint muted">
               Team members only — reach out if you need access.

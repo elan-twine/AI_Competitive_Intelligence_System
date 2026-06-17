@@ -1,11 +1,39 @@
-// Shared team credential. Single gate for the public Vercel deploy.
-// NOTE: this lives in the JS bundle and is readable by anyone who opens
-// devtools — this is a low-friction team-access gate, not real authentication.
-// If you need actual per-user auth or secret-keeping, switch to Supabase Auth.
+// Real per-user authentication via Supabase Auth. Replaces the old shared
+// team-password gate. Sessions are managed by the supabase client (stored in
+// localStorage by supabase-js itself) — we no longer set our own auth flags.
 
-export const TEAM_EMAIL = 'hello@twinesecurity.com'
-export const TEAM_PASSWORD = 'PurdueSolutions123#'
+import { supabase } from './supabase'
 
-export function checkLogin(email, password) {
-  return (email || '').trim().toLowerCase() === TEAM_EMAIL && password === TEAM_PASSWORD
+export async function signIn(email, password) {
+  return supabase.auth.signInWithPassword({
+    email: (email || '').trim(),
+    password,
+  })
+}
+
+// Google OAuth. Redirects the browser to Google, then back to redirectTo with
+// a code that supabase-js exchanges for a session (detectSessionInUrl). We land
+// on #dashboard; App.jsx shows a spinner while the session is being established.
+export async function signInWithGoogle() {
+  return supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: `${window.location.origin}/#dashboard` },
+  })
+}
+
+export async function signOut() {
+  return supabase.auth.signOut()
+}
+
+export async function getSession() {
+  const { data } = await supabase.auth.getSession()
+  return data?.session || null
+}
+
+// Subscribe to auth state changes. Returns an unsubscribe function.
+export function onAuthChange(callback) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    callback(session)
+  })
+  return () => data?.subscription?.unsubscribe()
 }

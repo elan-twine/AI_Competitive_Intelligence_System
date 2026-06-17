@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
-import { BarChart3, Globe, Moon, Sun, LogOut, Filter, ArrowUpDown, SlidersHorizontal } from 'lucide-react'
+import { BarChart3, Globe, Moon, Sun, LogOut, Filter, ArrowUpDown, SlidersHorizontal, Users } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
+import { useSOVConfig } from '../hooks/useSOVConfig'
 import { GlassCard } from '../components/GlassCard'
 import { applyFilters, rankings, companyRow, platformSplit, compare } from '../lib/metrics'
 import Briefings from './Briefings'
@@ -52,8 +53,9 @@ function toggle(set, value) {
   return next
 }
 
-function Dashboard({ onLogout }) {
+function Dashboard({ onLogout, onNavigate }) {
   const { allPosts, companies, loading, error, refetch } = useSOVData()
+  const { config: sovConfig } = useSOVConfig()
 
   // Top-level view: SOV dashboard vs Briefings (siblings, not nested)
   const [view, setView] = useState('sov')
@@ -89,7 +91,7 @@ function Dashboard({ onLogout }) {
     [allPosts, platform, days]
   )
 
-  const ranked = useMemo(() => rankings(filtered), [filtered])
+  const ranked = useMemo(() => rankings(filtered, sovConfig), [filtered, sovConfig])
   const sortedRanked = useMemo(() => {
     const arr = [...ranked]
     arr.sort((a, b) => {
@@ -142,7 +144,7 @@ function Dashboard({ onLogout }) {
     return true
   }).sort((a, b) => (b.unweightedSOV || b.sov || 0) - (a.unweightedSOV || a.sov || 0)).slice(0, 40)
 
-  const cmp = compareA && compareB ? compare(filtered, compareA, compareB) : null
+  const cmp = compareA && compareB ? compare(filtered, compareA, compareB, sovConfig) : null
 
   return (
     <div className="app">
@@ -156,6 +158,11 @@ function Dashboard({ onLogout }) {
           <button className={`view-seg ${view === 'briefings' ? 'active' : ''}`} onClick={() => setView('briefings')}>Briefings</button>
         </div>
         <div className="header-right">
+          {onNavigate && (
+            <button className="theme-btn" onClick={() => onNavigate('competitors')} aria-label="Manage competitors" title="Manage competitors">
+              <Users size={16} />
+            </button>
+          )}
           <button className="theme-btn" onClick={() => setDark(d => !d)} aria-label="Toggle theme">
             {dark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
