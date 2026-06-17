@@ -52,7 +52,14 @@ function App() {
   const effectiveView = GATED_VIEWS.has(view) && !session ? 'login' : view
 
   useEffect(() => {
-    window.location.hash = view === 'landing' ? '' : view
+    // Never clobber an in-flight OAuth response in the URL — supabase-js needs
+    // to read it to establish the session. Once SIGNED_IN fires we clean the
+    // URL and navigate, after which normal hash routing resumes.
+    const oauthInUrl =
+      window.location.hash.includes('access_token') || window.location.search.includes('code=')
+    if (!oauthInUrl) {
+      window.location.hash = view === 'landing' ? '' : view
+    }
     if (effectiveView === 'landing') {
       document.documentElement.setAttribute('data-theme', 'dark')
     } else if (effectiveView === 'login' || effectiveView === 'docs') {
