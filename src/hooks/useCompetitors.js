@@ -59,14 +59,13 @@ export function useCompetitors() {
     return data
   }, [refetch])
 
-  const deleteCompetitor = useCallback(async (id) => {
-    const { error } = await supabase
-      .from('competitors')
-      .delete()
-      .eq('id', id)
-    if (error) throw error
-    await refetch()
-  }, [refetch])
+  // Note: there is intentionally NO hard delete. "Removing" a competitor means
+  // deactivating it (active=false) via updateCompetitor — it drops out of the
+  // workflow scrape and the dashboard, but all historical rows are preserved
+  // and it can be reactivated at any time.
+  const setActive = useCallback(async (id, active) => {
+    return updateCompetitor(id, { active })
+  }, [updateCompetitor])
 
   const activeCompetitors = competitors.filter(c => c.active !== false)
 
@@ -77,7 +76,7 @@ export function useCompetitors() {
     error,
     addCompetitor,
     updateCompetitor,
-    deleteCompetitor,
+    setActive,
     refetch,
   }
 }

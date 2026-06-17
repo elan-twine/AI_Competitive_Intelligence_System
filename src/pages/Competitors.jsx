@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, LogOut, Plus, Trash2, Pencil, Check, X } from 'lucide-react'
+import { ArrowLeft, LogOut, Plus, Pencil, Check, X } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
 import { useCompetitors } from '../hooks/useCompetitors'
 import '../App.css'
@@ -34,7 +34,7 @@ function buildPayload(form) {
 export default function Competitors({ onLogout, onNavigate }) {
   const {
     competitors, loading, error,
-    addCompetitor, updateCompetitor, deleteCompetitor,
+    addCompetitor, updateCompetitor,
   } = useCompetitors()
 
   const [form, setForm] = useState(EMPTY_FORM)
@@ -101,18 +101,6 @@ export default function Competitors({ onLogout, onNavigate }) {
     }
   }
 
-  const handleDelete = async (c) => {
-    if (!confirm(`Delete competitor "${c.name}"? This cannot be undone.`)) return
-    setBusyId(c.id)
-    try {
-      await deleteCompetitor(c.id)
-    } catch (err) {
-      alert(err.message || 'Failed to delete')
-    } finally {
-      setBusyId(null)
-    }
-  }
-
   return (
     <div className="app">
       <header className="header">
@@ -161,8 +149,11 @@ export default function Competitors({ onLogout, onNavigate }) {
       <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
         <div className="card-header">
           <span className="card-title">Tracked competitors</span>
-          <span className="card-badge">{competitors.length}</span>
+          <span className="card-badge">{competitors.filter(c => c.active !== false).length} tracked</span>
         </div>
+        <p className="muted" style={{ margin: '0 0 12px', fontSize: 13 }}>
+          Removing a competitor just deactivates it — it stops being scraped and drops off the dashboard, but its history is kept and you can re-add it anytime.
+        </p>
 
         {loading ? (
           <div className="empty-state"><p>Loading…</p></div>
@@ -179,7 +170,7 @@ export default function Competitors({ onLogout, onNavigate }) {
                   <th style={{ textAlign: 'left' }}>Domain</th>
                   <th style={{ textAlign: 'left' }}>LinkedIn URN</th>
                   <th style={{ textAlign: 'left' }}>X handle</th>
-                  <th>Active</th>
+                  <th>Tracked</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
@@ -225,15 +216,16 @@ export default function Competitors({ onLogout, onNavigate }) {
                           className={`comp-toggle ${c.active !== false ? 'on' : 'off'}`}
                           disabled={isBusy}
                           onClick={() => toggleActive(c)}
-                          title={c.active !== false ? 'Active — click to deactivate' : 'Inactive — click to activate'}
+                          title={c.active !== false
+                            ? 'Tracked — click to remove from scraping + dashboard (data is kept)'
+                            : 'Removed — click to re-add to tracking'}
                         >
-                          {c.active !== false ? 'Active' : 'Inactive'}
+                          {c.active !== false ? 'Tracked' : 'Removed'}
                         </button>
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div className="comp-actions">
                           <button className="icon-btn" title="Edit" disabled={isBusy} onClick={() => startEdit(c)}><Pencil size={14} /></button>
-                          <button className="icon-btn danger" title="Delete" disabled={isBusy} onClick={() => handleDelete(c)}><Trash2 size={14} /></button>
                         </div>
                       </td>
                     </tr>
