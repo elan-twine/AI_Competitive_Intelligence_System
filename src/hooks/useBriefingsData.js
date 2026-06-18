@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 // Hardcoded n8n webhooks for the briefing flows.
-// Generate-one-new = POST { competitor, urn } → writes one row to competitor_briefings.
+// Generate-one-new = POST { "Competitor Name", "Competitor URL" } → writes one row to competitor_briefings.
 // Update-all-loop  = POST {} → re-scrapes & updates every existing brief.
 export const N8N_NEW_COMPETITOR_WEBHOOK = 'https://twine-security.app.n8n.cloud/webhook/e5c7839b-e076-4e2a-8de3-1db5fdfb750d'
 export const N8N_UPDATE_ALL_WEBHOOK = 'https://twine-security.app.n8n.cloud/webhook/43a45fbb-cbb4-4b38-8cb2-1f46044011dc'
@@ -74,7 +74,7 @@ export function useBriefingsData() {
     }
     const [bRows, pRows, uRows] = await Promise.all([
       safe(() => supabase.from('competitor_briefings').select('*').order('created_at', { ascending: false })),
-      safe(() => supabase.from('postsOfInterest').select('*').order('date', { ascending: false })),
+      safe(() => supabase.from('linkedin_scrape').select('*').order('date', { ascending: false })),
       safe(() => supabase.from('linkedin_URNs').select('*').order('company', { ascending: true })),
     ])
     // Newest briefing wins per company (rows are desc by created_at).
