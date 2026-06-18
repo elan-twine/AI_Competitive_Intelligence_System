@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { RotateCw, Plus } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
 import {
@@ -103,10 +103,10 @@ function WebhookBar({ urns, showToast, refetch }) {
   const [busy, setBusy] = useState(null) // 'new' | 'loop' | null
   const [showModal, setShowModal] = useState(false)
 
-  async function submitNew({ company, urn }) {
+  async function submitNew({ company, url }) {
     setBusy('new')
     try {
-      const body = { competitor: company, company, urn, URN: urn }
+      const body = { 'Competitor Name': company, 'Competitor URL': url }
       const r = await fetch(N8N_NEW_COMPETITOR_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -179,21 +179,15 @@ function WebhookBar({ urns, showToast, refetch }) {
 
 function NewCompetitorModal({ urns, onClose, onSubmit, busy }) {
   const [name, setName] = useState('')
-  const [urn, setUrn] = useState('')
-
-  // Auto-fill URN when typed name matches a known company in linkedin_URNs
-  useEffect(() => {
-    const match = urns.find(u => u.company && u.company.toLowerCase() === name.trim().toLowerCase())
-    if (match && match.URN != null) setUrn(String(match.URN))
-  }, [name, urns])
+  const [url, setUrl] = useState('')
 
   const trimmedName = name.trim()
-  const trimmedUrn = urn.trim()
-  const valid = !!trimmedName && !!trimmedUrn
+  const trimmedUrl = url.trim()
+  const valid = !!trimmedName && !!trimmedUrl
 
   function handleSubmit() {
     if (!valid) return
-    onSubmit({ company: trimmedName, urn: trimmedUrn })
+    onSubmit({ company: trimmedName, url: trimmedUrl })
   }
 
   return (
@@ -213,19 +207,13 @@ function NewCompetitorModal({ urns, onClose, onSubmit, busy }) {
         <datalist id="bf-urn-list">
           {urns.map(u => <option key={u.id} value={u.company} />)}
         </datalist>
-        <label>LinkedIn URN</label>
+        <label>Competitor URL</label>
         <input
-          value={urn}
-          onChange={e => setUrn(e.target.value)}
-          placeholder="e.g. 92514012"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="e.g. https://www.cerby.com"
           onKeyDown={e => { if (e.key === 'Enter' && valid) handleSubmit() }}
         />
-        <div className="bf-mod-help">
-          <div className="t">Tip</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            URN is the LinkedIn company numeric ID — find it in the company page source under <code>companyId</code> or <code>urn:li:fsd_company:</code>. Typing a name already in <code>linkedin_URNs</code> auto-fills the URN.
-          </div>
-        </div>
         <div className="bf-mod-ft">
           <button className="bf-btn" onClick={onClose} disabled={busy}>Cancel</button>
           <button className="bf-btn bf-btn-g" onClick={handleSubmit} disabled={!valid || busy}>
