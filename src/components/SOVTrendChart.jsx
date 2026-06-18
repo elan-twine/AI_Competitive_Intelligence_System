@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer,
 } from 'recharts'
-import { weeklySOVSeries } from '../lib/metrics'
+import { useWeeklySOV } from '../hooks/useWeeklySOV'
 
 // Distinct line colors for competitors. Twine is handled separately (it gets
 // the accent token + a thicker stroke), so this palette is for everyone else.
@@ -39,7 +39,7 @@ function TrendTooltip({ active, payload, label }) {
           style={{ color: 'var(--text-secondary)', display: 'flex', gap: 8, justifyContent: 'space-between' }}
         >
           <span style={{ color: p.color }}>{p.dataKey}</span>
-          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(p.value).toFixed(1)}%</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(p.value).toFixed(1)}</span>
         </div>
       ))}
     </div>
@@ -50,10 +50,13 @@ function TrendTooltip({ active, payload, label }) {
 // `competitors` — the active competitor list (drives which lines to draw)
 // `config` — SOV config (platform weights, min-volume guard)
 // `weeks` — most-recent N weeks to show (default 12)
-export function SOVTrendChart({ posts, competitors = [], config, weeks = 12 }) {
+export function SOVTrendChart({ competitors = [], weeks = 12 }) {
+  // Frozen weekly board snapshots (forward-filled) from the sov_weekly table —
+  // each point is that week's current SOV score, not a re-decayed recompute.
+  const { series } = useWeeklySOV('overall')
   const data = useMemo(
-    () => weeklySOVSeries(posts || [], config, { weeks }),
-    [posts, config, weeks]
+    () => (weeks > 0 && series.length > weeks ? series.slice(series.length - weeks) : series),
+    [series, weeks]
   )
 
   // Lines to draw: active competitors that actually appear somewhere in the
@@ -106,7 +109,7 @@ export function SOVTrendChart({ posts, competitors = [], config, weeks = 12 }) {
             tickLine={false}
             axisLine={false}
             label={{
-              value: 'SOV %',
+              value: 'SOV score',
               angle: -90,
               position: 'insideLeft',
               style: { fill: 'var(--text-secondary)', fontSize: 12 },

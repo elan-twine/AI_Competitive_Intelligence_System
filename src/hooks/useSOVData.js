@@ -129,7 +129,7 @@ export function useSOVData(competitorsArg) {
     const w = postWeight(p)
     return {
       ...p,
-      rawWeightedSOV: p.weightedSOV ?? p.post_weight ?? 0,
+      rawWeightedSOV: p.post_weight ?? p.weightedSOV ?? 0,
       postWeight: w,
       unweightedSOV: 1 / totalPosts,
       weightedSOV: w,
