@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, LogOut, Plus, Pencil, Check, X } from 'lucide-react'
+import { ArrowLeft, LogOut, Plus, Pencil, Check, X, Trash2, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
 import { useCompetitors } from '../hooks/useCompetitors'
 import '../App.css'
@@ -9,54 +9,64 @@ import './competitors.css'
 const toList = (s) => String(s || '').split(',').map(x => x.trim()).filter(Boolean)
 const fromList = (arr) => (Array.isArray(arr) ? arr.join(', ') : '')
 
-const EMPTY_FORM = {
-  name: '',
-  aliases: '',
-  linkedin_urn: '',
-  linkedin_url: '',
-  domain: '',
-  x_handle: '',
-  subreddits: '',
-}
+// Parse a LinkedIn company URL → slug, and derive a reasonable display name.
+const LI_COMPANY_RE = /linkedin\.com\/(?:company|school)\/([^/?#\s]+)/i
+const slugFromUrl = (url) => (String(url).match(LI_COMPANY_RE)?.[1] || '').toLowerCase()
+const nameFromSlug = (slug) =>
+  slug.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim()
 
-function buildPayload(form) {
-  return {
-    name: form.name.trim(),
-    aliases: toList(form.aliases),
-    linkedin_urn: form.linkedin_urn.trim() || null,
-    linkedin_url: form.linkedin_url.trim() || null,
-    domain: form.domain.trim() || null,
-    x_handle: form.x_handle.trim().replace(/^@/, '') || null,
-    subreddits: toList(form.subreddits),
-  }
-}
+const EMPTY_ADV = { aliases: '', linkedin_urn: '', domain: '', x_handle: '', subreddits: '' }
 
 export default function Competitors({ onLogout, onNavigate }) {
-  const {
-    competitors, loading, error,
-    addCompetitor, updateCompetitor,
-  } = useCompetitors()
+  const { competitors, loading, error, addCompetitor, updateCompetitor } = useCompetitors()
 
-  const [form, setForm] = useState(EMPTY_FORM)
+  // Quick-add by URL
+  const [url, setUrl] = useState('')
+  const [name, setName] = useState('')
+  const [nameAuto, setNameAuto] = useState(true)   // name is auto-derived until user edits it
+  const [adv, setAdv] = useState(EMPTY_ADV)
+  const [showAdv, setShowAdv] = useState(false)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState(null)
-  const [editId, setEditId] = useState(null)
-  const [editForm, setEditForm] = useState(EMPTY_FORM)
-  const [busyId, setBusyId] = useState(null)
 
-  const onField = (setter) => (e) => {
-    const { name, value } = e.target
-    setter(prev => ({ ...prev, [name]: value }))
+  // List / edit
+  const [editId, setEditId] = useState(null)
+  const [editForm, setEditForm] = useState({ name: '', aliases: '', linkedin_urn: '', linkedin_url: '', domain: '', x_handle: '', subreddits: '' })
+  const [busyId, setBusyId] = useState(null)
+  const [showRemoved, setShowRemoved] = useState(false)
+
+  const onUrlChange = (e) => {
+    const v = e.target.value
+    setUrl(v)
+    if (nameAuto) {
+      const slug = slugFromUrl(v)
+      setName(slug ? nameFromSlug(slug) : '')
+    }
   }
+  const onNameChange = (e) => { setName(e.target.value); setNameAuto(false) }
+  const onAdv = (e) => { const { name: n, value } = e.target; setAdv(p => ({ ...p, [n]: value })) }
 
   const handleAdd = async (e) => {
     e.preventDefault()
     setAddError(null)
-    if (!form.name.trim()) { setAddError('Name is required'); return }
+    const slug = slugFromUrl(url)
+    if (!slug) { setAddError('Paste a LinkedIn company URL, e.g. https://www.linkedin.com/company/orchid-security'); return }
+    const finalName = (name || nameFromSlug(slug)).trim()
+    if (!finalName) { setAddError('Could not derive a name — type one in.'); return }
     setAdding(true)
     try {
-      await addCompetitor({ ...buildPayload(form), is_self: false, active: true })
-      setForm(EMPTY_FORM)
+      await addCompetitor({
+        name: finalName,
+        aliases: toList(adv.aliases),
+        linkedin_url: `https://www.linkedin.com/company/${slug}`,
+        linkedin_urn: adv.linkedin_urn.trim() || null,   // resolved automatically on the next pipeline run if blank
+        domain: adv.domain.trim() || null,
+        x_handle: adv.x_handle.trim().replace(/^@/, '') || null,
+        subreddits: toList(adv.subreddits),
+        is_self: false,
+        active: true,
+      })
+      setUrl(''); setName(''); setNameAuto(true); setAdv(EMPTY_ADV); setShowAdv(false)
     } catch (err) {
       setAddError(err.message || 'Failed to add competitor')
     } finally {
@@ -64,42 +74,38 @@ export default function Competitors({ onLogout, onNavigate }) {
     }
   }
 
+  const setActive = async (c, active) => {
+    setBusyId(c.id)
+    try { await updateCompetitor(c.id, { active }) }
+    catch (err) { alert(err.message || 'Failed to update') }
+    finally { setBusyId(null) }
+  }
+
   const startEdit = (c) => {
     setEditId(c.id)
     setEditForm({
-      name: c.name || '',
-      aliases: fromList(c.aliases),
-      linkedin_urn: c.linkedin_urn || '',
-      linkedin_url: c.linkedin_url || '',
-      domain: c.domain || '',
-      x_handle: c.x_handle || '',
+      name: c.name || '', aliases: fromList(c.aliases), linkedin_urn: c.linkedin_urn || '',
+      linkedin_url: c.linkedin_url || '', domain: c.domain || '', x_handle: c.x_handle || '',
       subreddits: fromList(c.subreddits),
     })
   }
-
   const saveEdit = async (id) => {
     if (!editForm.name.trim()) return
     setBusyId(id)
     try {
-      await updateCompetitor(id, buildPayload(editForm))
+      await updateCompetitor(id, {
+        name: editForm.name.trim(), aliases: toList(editForm.aliases),
+        linkedin_urn: editForm.linkedin_urn.trim() || null, linkedin_url: editForm.linkedin_url.trim() || null,
+        domain: editForm.domain.trim() || null, x_handle: editForm.x_handle.trim().replace(/^@/, '') || null,
+        subreddits: toList(editForm.subreddits),
+      })
       setEditId(null)
-    } catch (err) {
-      alert(err.message || 'Failed to save')
-    } finally {
-      setBusyId(null)
-    }
+    } catch (err) { alert(err.message || 'Failed to save') }
+    finally { setBusyId(null) }
   }
 
-  const toggleActive = async (c) => {
-    setBusyId(c.id)
-    try {
-      await updateCompetitor(c.id, { active: !(c.active !== false) })
-    } catch (err) {
-      alert(err.message || 'Failed to update')
-    } finally {
-      setBusyId(null)
-    }
-  }
+  const active = competitors.filter(c => c.active !== false)
+  const removed = competitors.filter(c => c.active === false)
 
   return (
     <div className="app">
@@ -122,22 +128,35 @@ export default function Competitors({ onLogout, onNavigate }) {
         </div>
       </header>
 
-      {/* Add competitor */}
+      {/* Quick add by LinkedIn URL */}
       <GlassCard className="card" style={{ marginBottom: 32 }} intensity={3} interactive>
         <div className="card-header">
-          <span className="card-title">Add competitor</span>
+          <span className="card-title">Add a competitor</span>
           <span className="card-badge"><Plus size={11} style={{ marginRight: 4 }} />New</span>
         </div>
+        <p className="muted" style={{ margin: '0 0 14px', fontSize: 13 }}>
+          Paste a LinkedIn company URL and click Add — the name fills in automatically, and the LinkedIn ID is resolved on the next run.
+        </p>
         <form className="comp-form" onSubmit={handleAdd}>
-          <div className="comp-form-grid">
-            <Field label="Name *" name="name" value={form.name} onChange={onField(setForm)} placeholder="Orchid Security" autoFocus />
-            <Field label="Aliases (comma-separated)" name="aliases" value={form.aliases} onChange={onField(setForm)} placeholder="Orchid, Orchid Sec" />
-            <Field label="LinkedIn URN" name="linkedin_urn" value={form.linkedin_urn} onChange={onField(setForm)} placeholder="1234567" />
-            <Field label="LinkedIn URL" name="linkedin_url" value={form.linkedin_url} onChange={onField(setForm)} placeholder="https://linkedin.com/company/…" />
-            <Field label="Domain" name="domain" value={form.domain} onChange={onField(setForm)} placeholder="orchid.security" />
-            <Field label="X handle" name="x_handle" value={form.x_handle} onChange={onField(setForm)} placeholder="orchidsec" />
-            <Field label="Subreddits (comma-separated)" name="subreddits" value={form.subreddits} onChange={onField(setForm)} placeholder="cybersecurity, netsec" />
+          <div className="comp-quickadd">
+            <Field label="LinkedIn company URL *" value={url} onChange={onUrlChange}
+              placeholder="https://www.linkedin.com/company/orchid-security" autoFocus />
+            <Field label="Name" value={name} onChange={onNameChange} placeholder="(auto-filled from the URL)" />
           </div>
+
+          <button type="button" className="comp-adv-toggle" onClick={() => setShowAdv(s => !s)}>
+            {showAdv ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Advanced (aliases, domain, X, subreddits)
+          </button>
+          {showAdv && (
+            <div className="comp-form-grid">
+              <Field label="Aliases (comma-separated)" name="aliases" value={adv.aliases} onChange={onAdv} placeholder="Orchid, Orchid Sec" />
+              <Field label="Domain" name="domain" value={adv.domain} onChange={onAdv} placeholder="orchid.security" />
+              <Field label="X handle" name="x_handle" value={adv.x_handle} onChange={onAdv} placeholder="orchidsec" />
+              <Field label="Subreddits (comma-separated)" name="subreddits" value={adv.subreddits} onChange={onAdv} placeholder="cybersecurity, netsec" />
+              <Field label="LinkedIn URN (optional — auto-resolved)" name="linkedin_urn" value={adv.linkedin_urn} onChange={onAdv} placeholder="1234567" />
+            </div>
+          )}
+
           {addError && <div className="auth-error">{addError}</div>}
           <button type="submit" className="cta-primary comp-add-btn" disabled={adding}>
             {adding ? 'Adding…' : (<><Plus size={16} /> Add competitor</>)}
@@ -145,21 +164,21 @@ export default function Competitors({ onLogout, onNavigate }) {
         </form>
       </GlassCard>
 
-      {/* Competitor list */}
+      {/* Tracked competitors (active only by default) */}
       <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
         <div className="card-header">
           <span className="card-title">Tracked competitors</span>
-          <span className="card-badge">{competitors.filter(c => c.active !== false).length} tracked</span>
+          <span className="card-badge">{active.length} tracked</span>
         </div>
         <p className="muted" style={{ margin: '0 0 12px', fontSize: 13 }}>
-          Removing a competitor just deactivates it — it stops being scraped and drops off the dashboard, but its history is kept and you can re-add it anytime.
+          Remove drops a competitor from scraping and the dashboard immediately. History is kept, so you can re-add it anytime.
         </p>
 
         {loading ? (
           <div className="empty-state"><p>Loading…</p></div>
         ) : error ? (
           <div className="empty-state"><p>Error: {error}</p></div>
-        ) : competitors.length === 0 ? (
+        ) : active.length === 0 ? (
           <div className="empty-state"><p>No competitors yet — add one above.</p></div>
         ) : (
           <div className="table-wrap">
@@ -168,36 +187,27 @@ export default function Competitors({ onLogout, onNavigate }) {
                 <tr>
                   <th style={{ textAlign: 'left' }}>Name</th>
                   <th style={{ textAlign: 'left' }}>Domain</th>
-                  <th style={{ textAlign: 'left' }}>LinkedIn URN</th>
+                  <th style={{ textAlign: 'left' }}>LinkedIn</th>
                   <th style={{ textAlign: 'left' }}>X handle</th>
-                  <th>Tracked</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {competitors.map(c => {
+                {active.map(c => {
                   const editing = editId === c.id
                   const isBusy = busyId === c.id
                   if (editing) {
                     return (
                       <tr key={c.id} className="comp-edit-row">
-                        <td><input name="name" value={editForm.name} onChange={onField(setEditForm)} /></td>
-                        <td><input name="domain" value={editForm.domain} onChange={onField(setEditForm)} /></td>
-                        <td><input name="linkedin_urn" value={editForm.linkedin_urn} onChange={onField(setEditForm)} /></td>
-                        <td><input name="x_handle" value={editForm.x_handle} onChange={onField(setEditForm)} /></td>
-                        <td style={{ textAlign: 'center' }}>—</td>
+                        <td><input name="name" value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} /></td>
+                        <td><input name="domain" value={editForm.domain} onChange={e => setEditForm(p => ({ ...p, domain: e.target.value }))} /></td>
+                        <td><input name="linkedin_url" value={editForm.linkedin_url} onChange={e => setEditForm(p => ({ ...p, linkedin_url: e.target.value }))} /></td>
+                        <td><input name="x_handle" value={editForm.x_handle} onChange={e => setEditForm(p => ({ ...p, x_handle: e.target.value }))} /></td>
                         <td style={{ textAlign: 'right' }}>
                           <div className="comp-actions">
                             <button className="icon-btn" title="Save" disabled={isBusy} onClick={() => saveEdit(c.id)}><Check size={14} /></button>
                             <button className="icon-btn" title="Cancel" onClick={() => setEditId(null)}><X size={14} /></button>
                           </div>
-                          {(editForm.aliases || editForm.subreddits || editForm.linkedin_url) && (
-                            <div className="comp-edit-extra">
-                              <input name="aliases" placeholder="aliases" value={editForm.aliases} onChange={onField(setEditForm)} />
-                              <input name="subreddits" placeholder="subreddits" value={editForm.subreddits} onChange={onField(setEditForm)} />
-                              <input name="linkedin_url" placeholder="linkedin url" value={editForm.linkedin_url} onChange={onField(setEditForm)} />
-                            </div>
-                          )}
                         </td>
                       </tr>
                     )
@@ -209,23 +219,14 @@ export default function Competitors({ onLogout, onNavigate }) {
                         {c.aliases?.length > 0 && <span className="comp-aliases"> ({c.aliases.join(', ')})</span>}
                       </td>
                       <td>{c.domain || '—'}</td>
-                      <td>{c.linkedin_urn || '—'}</td>
+                      <td>{c.linkedin_url ? <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer">page ↗</a> : '—'}</td>
                       <td>{c.x_handle ? `@${c.x_handle}` : '—'}</td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button
-                          className={`comp-toggle ${c.active !== false ? 'on' : 'off'}`}
-                          disabled={isBusy}
-                          onClick={() => toggleActive(c)}
-                          title={c.active !== false
-                            ? 'Tracked — click to remove from scraping + dashboard (data is kept)'
-                            : 'Removed — click to re-add to tracking'}
-                        >
-                          {c.active !== false ? 'Tracked' : 'Removed'}
-                        </button>
-                      </td>
                       <td style={{ textAlign: 'right' }}>
                         <div className="comp-actions">
                           <button className="icon-btn" title="Edit" disabled={isBusy} onClick={() => startEdit(c)}><Pencil size={14} /></button>
+                          {!c.is_self && (
+                            <button className="icon-btn danger" title="Remove (deactivate — history kept)" disabled={isBusy} onClick={() => setActive(c, false)}><Trash2 size={14} /></button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -233,6 +234,33 @@ export default function Competitors({ onLogout, onNavigate }) {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {removed.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <button className="comp-adv-toggle" onClick={() => setShowRemoved(s => !s)}>
+              {showRemoved ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Removed ({removed.length})
+            </button>
+            {showRemoved && (
+              <div className="table-wrap" style={{ marginTop: 8 }}>
+                <table className="breakdown-table comp-table">
+                  <tbody>
+                    {removed.map(c => (
+                      <tr key={c.id} style={{ opacity: 0.6 }}>
+                        <td className="col-company">{c.name}</td>
+                        <td>{c.domain || '—'}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button className="icon-btn" title="Re-add to tracking" disabled={busyId === c.id} onClick={() => setActive(c, true)}>
+                            <RotateCcw size={14} /> Re-add
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </GlassCard>
