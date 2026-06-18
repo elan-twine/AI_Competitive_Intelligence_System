@@ -260,7 +260,6 @@ function Dashboard({ onLogout, onNavigate }) {
             <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4}>
               <div className="card-header">
                 <span className="card-title">Platform Breakdown</span>
-                <span className="card-badge"><Globe size={11} style={{ marginRight: 4 }} />Sources</span>
               </div>
               <div className="platform-grid">
                 {Object.entries(PLATFORM_COLORS).map(([plat, color]) => {
@@ -284,17 +283,15 @@ function Dashboard({ onLogout, onNavigate }) {
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
               <span className="card-title">Share of Voice — Weekly Trend</span>
-              <span className="card-badge"><BarChart3 size={11} style={{ marginRight: 4 }} />Last 12 weeks</span>
             </div>
-            <SOVTrendChart posts={filtered} competitors={competitors} config={sovConfig} weeks={12} />
+            <SOVTrendChart competitors={competitors} />
           </GlassCard>
 
           {/* All-companies breakdown table */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
               <span className="card-title">All Companies · Breakdown</span>
-              <span className="card-badge"><ArrowUpDown size={11} style={{ marginRight: 4 }} />Sortable</span>
-            </div>
+                          </div>
             {sortedRanked.length === 0 ? (
               <div className="empty-state"><p>No data for the current filters</p></div>
             ) : (
@@ -334,8 +331,7 @@ function Dashboard({ onLogout, onNavigate }) {
           <GlassCard className="card feed-section" intensity={3} interactive>
             <div className="card-header">
               <span className="card-title">Recent Mentions</span>
-              <span className="card-badge"><SlidersHorizontal size={11} style={{ marginRight: 4 }} />Filterable</span>
-            </div>
+                          </div>
 
             <div className="feed-filters">
               <MultiSelectRow
@@ -404,8 +400,7 @@ function Dashboard({ onLogout, onNavigate }) {
         <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
           <div className="card-header">
             <span className="card-title">Head-to-head</span>
-            <span className="card-badge">Compare</span>
-          </div>
+                      </div>
           <div className="compare-pickers">
             <CompanyPicker label="Company A" companies={companies} value={compareA} onChange={setCompareA} />
             <div className="compare-vs">vs</div>
