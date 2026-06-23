@@ -33,7 +33,7 @@ function ThreatPill({ threat }) {
 }
 
 export default function Briefings() {
-  const { briefings, posts, urns, loading, refetch } = useBriefingsData()
+  const { briefings, urns, loading, refetch } = useBriefingsData()
   const [subtab, setSubtab] = useState('overview')
   const [activeBrief, setActiveBrief] = useState(null)
   const [toast, setToast] = useState(null)
@@ -63,7 +63,6 @@ export default function Briefings() {
           ['overview', 'Overview'],
           ['compare', 'Compare All'],
           ['briefs', 'Briefings'],
-          ['posts', 'Posts of Interest'],
         ].map(([t, label]) => (
           <button
             key={t}
@@ -77,7 +76,6 @@ export default function Briefings() {
         {subtab === 'overview' && (
           <Overview
             data={briefings}
-            posts={posts}
             urns={urns}
             loading={loading}
             openBrief={openBrief}
@@ -91,7 +89,6 @@ export default function Briefings() {
             ? <BriefDetail c={briefings[activeBrief]} onBack={() => setActiveBrief(null)} />
             : <BriefList data={briefings} loading={loading} openBrief={openBrief} />
         )}
-        {subtab === 'posts' && <PostsList posts={posts} loading={loading} />}
       </div>
 
       {toast && <div className={`bf-toast show ${toast.kind}`}>{toast.msg}</div>}
@@ -225,7 +222,7 @@ function NewCompetitorModal({ urns, onClose, onSubmit, busy }) {
   )
 }
 
-function Overview({ data, posts, urns, loading, openBrief, showToast, refetch }) {
+function Overview({ data, urns, loading, openBrief, showToast, refetch }) {
   const all = Object.values(data)
   const uniqProducts = new Set(all.flatMap(c => c.products || []))
   const highCount = all.filter(c => c.threat === 'high' || c.threat === 'critical').length
@@ -320,32 +317,6 @@ function Overview({ data, posts, urns, loading, openBrief, showToast, refetch })
         </div>
       )}
 
-      <GlassCard className="bf-card" intensity={3} interactive>
-        <h3>Recent Posts of Interest</h3>
-        {loading && <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '8px 0' }}>Loading…</div>}
-        {!loading && posts.length === 0 && (
-          <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '8px 0' }}>No posts of interest yet.</div>
-        )}
-        {posts.slice(0, 12).map((p, i) => (
-          <div key={p.id ?? i} style={{
-            display: 'flex',
-            gap: 14,
-            padding: '10px 0',
-            borderBottom: i === Math.min(posts.length, 12) - 1 ? 'none' : '1px solid var(--divider)',
-            fontSize: 12,
-            alignItems: 'flex-start',
-          }}>
-            <span style={{ color: 'var(--text-muted)', width: 90, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-              {(p.date || p.created_at || '').slice(0, 10)}
-            </span>
-            <span style={{ fontWeight: 600, width: 130, flexShrink: 0, color: 'var(--text-primary)' }}>{p.author}</span>
-            <span style={{ color: 'var(--text-secondary)', lineHeight: 1.5, flex: 1 }}>
-              {p.summary}{' '}
-              {p.url && <a href={p.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', whiteSpace: 'nowrap' }}>↗</a>}
-            </span>
-          </div>
-        ))}
-      </GlassCard>
     </>
   )
 }
@@ -429,38 +400,6 @@ function BriefList({ data, loading, openBrief }) {
         )
       })}
     </div>
-  )
-}
-
-function PostsList({ posts, loading }) {
-  if (loading) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div></GlassCard>
-  if (posts.length === 0) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>No posts of interest in Supabase.</div></GlassCard>
-  return (
-    <GlassCard className="bf-card" intensity={3} interactive>
-      <h3>Posts of Interest ({posts.length})</h3>
-      {posts.map((p, i) => (
-        <div key={p.id ?? i} style={{
-          display: 'flex',
-          gap: 14,
-          padding: '14px 0',
-          borderBottom: i === posts.length - 1 ? 'none' : '1px solid var(--divider)',
-          fontSize: 12,
-          alignItems: 'flex-start',
-        }}>
-          <span style={{ color: 'var(--text-muted)', width: 90, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-            {(p.date || p.created_at || '').slice(0, 10)}
-          </span>
-          <span style={{ fontWeight: 600, width: 140, flexShrink: 0, color: 'var(--text-primary)' }}>{p.author}</span>
-          <div style={{ flex: 1, lineHeight: 1.5 }}>
-            <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>{p.summary}</div>
-            {p.relevance_reason && (
-              <div style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>Relevance: {p.relevance_reason}</div>
-            )}
-            {p.url && <a href={p.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: 11 }}>open post ↗</a>}
-          </div>
-        </div>
-      ))}
-    </GlassCard>
   )
 }
 
