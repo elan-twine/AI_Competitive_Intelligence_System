@@ -5,6 +5,8 @@ import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
 import { GlassCard } from '../components/GlassCard'
 import { SOVTrendChart } from '../components/SOVTrendChart'
+import { GrowthStrategy } from '../components/GrowthStrategy'
+import { CompetitiveReview } from '../components/CompetitiveReview'
 import { applyFilters, rankings, companyRow, platformSplit, compare } from '../lib/metrics'
 import Briefings from './Briefings'
 import '../App.css'
@@ -16,20 +18,11 @@ const PLATFORM_COLORS = {
   'LinkedIn': '#0A66C2',
 }
 const PLATFORMS = ['All', 'X', 'Reddit', 'Google News', 'LinkedIn']
-const PLATFORMS_NO_ALL = ['X', 'Reddit', 'Google News', 'LinkedIn']
 const TIME_RANGES = [
   { label: 'All time', value: 0 },
   { label: '30d', value: 30 },
   { label: '7d', value: 7 },
 ]
-const SENTIMENT_KINDS = ['positive', 'neutral', 'negative']
-
-function SentimentLabel({ score }) {
-  if (score == null) return null
-  const cls = score > 0 ? 'pos' : score < 0 ? 'neg' : 'neu'
-  const label = score > 0 ? `+${score}` : `${score}`
-  return <span className={`feed-sentiment ${cls}`}>{label}</span>
-}
 
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
@@ -45,13 +38,6 @@ function CustomTooltip({ active, payload }) {
 function fmtSent(s) {
   const n = Number(s || 0)
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}`
-}
-
-function toggle(set, value) {
-  const next = new Set(set)
-  if (next.has(value)) next.delete(value)
-  else next.add(value)
-  return next
 }
 
 function Dashboard({ onLogout, onNavigate }) {
@@ -74,11 +60,6 @@ function Dashboard({ onLogout, onNavigate }) {
   // Compare
   const [compareA, setCompareA] = useState('')
   const [compareB, setCompareB] = useState('')
-
-  // Feed local multi-select filters
-  const [feedCompanies, setFeedCompanies] = useState(() => new Set())
-  const [feedPlatforms, setFeedPlatforms] = useState(() => new Set())
-  const [feedSentiments, setFeedSentiments] = useState(() => new Set())
 
   const [dark, setDark] = useState(() => localStorage.getItem('twine-sov-theme') === 'dark')
   useEffect(() => {
@@ -132,18 +113,6 @@ function Dashboard({ onLogout, onNavigate }) {
   const twineRow = twineIdx >= 0 ? ranked[twineIdx] : null
   const twineRank = twineIdx >= 0 ? twineIdx + 1 : null
   const platformCount = Object.keys(pb).length
-
-  // Feed-local filtering: apply on top of `filtered`
-  const feedPosts = filtered.filter(p => {
-    if (feedCompanies.size > 0 && !feedCompanies.has(p.companyName)) return false
-    if (feedPlatforms.size > 0 && !feedPlatforms.has(p.platform)) return false
-    if (feedSentiments.size > 0) {
-      if (p.sentiment == null) return false
-      const kind = p.sentiment > 0 ? 'positive' : p.sentiment < 0 ? 'negative' : 'neutral'
-      if (!feedSentiments.has(kind)) return false
-    }
-    return true
-  }).sort((a, b) => (b.unweightedSOV || b.sov || 0) - (a.unweightedSOV || a.sov || 0)).slice(0, 40)
 
   const cmp = compareA && compareB ? compare(filtered, compareA, compareB, sovConfig) : null
 
@@ -327,72 +296,13 @@ function Dashboard({ onLogout, onNavigate }) {
           </GlassCard>
 
 
-          {/* Recent mentions feed with local multi-select filters */}
-          <GlassCard className="card feed-section" intensity={3} interactive>
-            <div className="card-header">
-              <span className="card-title">Recent Mentions</span>
-                          </div>
+          {/* Twine growth strategy — where weak + how to climb (computed live, full dataset
+              so the cross-platform recommendation is independent of the active filter) */}
+          <GrowthStrategy posts={allPosts} config={sovConfig} />
 
-            <div className="feed-filters">
-              <MultiSelectRow
-                label="Company"
-                options={companies}
-                selected={feedCompanies}
-                onToggle={(v) => setFeedCompanies(s => toggle(s, v))}
-                onClear={() => setFeedCompanies(new Set())}
-              />
-              {platform === 'All' && (
-                <MultiSelectRow
-                  label="Platform"
-                  options={PLATFORMS_NO_ALL}
-                  selected={feedPlatforms}
-                  onToggle={(v) => setFeedPlatforms(s => toggle(s, v))}
-                  onClear={() => setFeedPlatforms(new Set())}
-                />
-              )}
-              <MultiSelectRow
-                label="Sentiment"
-                options={SENTIMENT_KINDS}
-                selected={feedSentiments}
-                onToggle={(v) => setFeedSentiments(s => toggle(s, v))}
-                onClear={() => setFeedSentiments(new Set())}
-              />
-            </div>
-
-            <div className="feed-list">
-              {feedPosts.length > 0 ? feedPosts.map((post, i) => {
-                // n8n leaves the URL columns empty for tweets, so synthesize
-                // from the post id when needed. X uses /i/web/status/<id>.
-                const directUrl = post.twitterUrl || post.permalink || post.url || post.post_url
-                const synthesized = post.platform === 'X' && post.id
-                  ? `https://x.com/i/web/status/${post.id}`
-                  : null
-                const url = directUrl || synthesized
-                const title = post.text || post.title || post.selfText || 'Untitled'
-                const company = post.companyName || '—'
-                const color = PLATFORM_COLORS[post.platform] || '#888'
-                const sov = post.rawWeightedSOV ?? 0
-                const Wrapper = url ? 'a' : 'div'
-                const linkProps = url ? { href: url, target: '_blank', rel: 'noopener noreferrer' } : {}
-                return (
-                  <Wrapper key={i} className="feed-item" {...linkProps}>
-                    <div className="feed-platform-dot" style={{ background: color }} />
-                    <div className="feed-content">
-                      <div className="feed-title">{title}</div>
-                      <div className="feed-meta">
-                        <span>{post.platform}</span>
-                        <span>{company}</span>
-                        <SentimentLabel score={post.sentiment} />
-                      </div>
-                    </div>
-                    <span className="feed-sov">{sov.toFixed(1)}</span>
-                  </Wrapper>
-                )
-              }) : (
-                <div className="empty-state"><p>No posts match these filters</p></div>
-              )}
-            </div>
-          </GlassCard>
+          {/* Competitive Review — weekly view of competitor-authored posts +
+              engagement (replaces the old Recent Mentions feed) */}
+          <CompetitiveReview posts={allPosts} competitors={competitors} />
         </>
       )}
 
@@ -419,28 +329,6 @@ function Dashboard({ onLogout, onNavigate }) {
       )}
       </>
       )}
-    </div>
-  )
-}
-
-function MultiSelectRow({ label, options, selected, onToggle, onClear }) {
-  return (
-    <div className="feed-filter-row">
-      <span className="filter-label">{label}</span>
-      <div className="chip-row">
-        {options.map(opt => (
-          <button
-            key={opt}
-            className={`chip ${selected.has(opt) ? 'active' : ''}`}
-            onClick={() => onToggle(opt)}
-          >
-            {opt}
-          </button>
-        ))}
-        {selected.size > 0 && (
-          <button className="chip clear" onClick={onClear}>Clear</button>
-        )}
-      </div>
     </div>
   )
 }
