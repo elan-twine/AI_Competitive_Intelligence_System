@@ -124,6 +124,22 @@ export function useSOVData(competitorsArg) {
   //                   downstream in metrics.computeWeightedSOV)
   //   postWeight    — explicit alias of the chosen weight for clarity
   //   rawWeightedSOV/sov — preserved for the feed's per-post display
+  // external = earned third-party chatter (vs the company's own page/employees).
+  // Only determinable on LinkedIn (author object); News/Reddit/X are all external.
+  // Drives the external-only sentiment metric (and matches the authorType used in
+  // post_weight). Company = author.profile_id is a tracked URN, or the company
+  // name appears in the author headline (employee).
+  const urnSet = new Set((competitors || []).filter(c => c.active !== false).map(c => String(c.linkedin_urn || '')).filter(Boolean))
+  const isExternal = (p) => {
+    if (p.platform !== 'LinkedIn') return true
+    const a = p.author && typeof p.author === 'object' ? p.author : {}
+    const prof = String(a.profile_id || '')
+    if (prof && urnSet.has(prof)) return false
+    const head = String(a.headline || '').toLowerCase()
+    const cn = String(p.companyName || '').toLowerCase()
+    if (cn && head.includes(cn)) return false
+    return true
+  }
   const totalPosts = rawPosts.length || 1
   const allPosts = rawPosts.map(p => {
     const w = postWeight(p)
@@ -134,6 +150,7 @@ export function useSOVData(competitorsArg) {
       unweightedSOV: 1 / totalPosts,
       weightedSOV: w,
       sov: 1 / totalPosts,
+      external: isExternal(p),
     }
   })
 

@@ -54,7 +54,10 @@ export function companyRow(posts, company) {
   const postCount = rows.length
   const unweightedSOV = rows.reduce((s, p) => s + (p.unweightedSOV || 0), 0)
   const weightedSOV = rows.reduce((s, p) => s + (p.weightedSOV || 0), 0)
-  const sentimentRows = rows.filter(p => p.sentiment != null)
+  // Sentiment = EXTERNAL posts only (earned perception; a company's own posts are
+  // self-promo and ~always positive). Posts without an `external` flag (legacy)
+  // are treated as external so nothing silently drops.
+  const sentimentRows = rows.filter(p => p.sentiment != null && p.external !== false)
   const avgSentiment = sentimentRows.length
     ? sentimentRows.reduce((s, p) => s + p.sentiment, 0) / sentimentRows.length
     : 0
