@@ -73,7 +73,25 @@ function Dashboard({ onLogout, onNavigate }) {
     [allPosts, platform, days]
   )
 
-  const ranked = useMemo(() => rankings(filtered, sovConfig), [filtered, sovConfig])
+  // Competitive view = DIRECT competitors only. Indirect competitors are still
+  // tracked, scored, and analyzed (Competitive Review + trend graph), but they
+  // never enter the SOV ranking/share. Missing `type` defaults to 'direct'.
+  const directNames = useMemo(
+    () => new Set((competitors || []).filter(c => (c.type || 'direct') !== 'indirect').map(c => c.name)),
+    [competitors]
+  )
+  const directPosts = useMemo(
+    () => filtered.filter(p => directNames.has(p.companyName)),
+    [filtered, directNames]
+  )
+  // Growth Strategy looks at the full picture (ignores the global platform/time
+  // filter), still direct-only.
+  const directAllPosts = useMemo(
+    () => allPosts.filter(p => directNames.has(p.companyName)),
+    [allPosts, directNames]
+  )
+
+  const ranked = useMemo(() => rankings(directPosts, sovConfig), [directPosts, sovConfig])
   const sortedRanked = useMemo(() => {
     const arr = [...ranked]
     arr.sort((a, b) => {
@@ -253,13 +271,21 @@ function Dashboard({ onLogout, onNavigate }) {
             <div className="card-header">
               <span className="card-title">Share of Voice — Weekly Trend</span>
             </div>
-            <SOVTrendChart competitors={competitors} />
+            <SOVTrendChart competitors={competitors} metric="overall" yLabel="SOV %" />
+          </GlassCard>
+
+          {/* Sentiment — its own weekly trend (separate from SOV per D3) */}
+          <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
+            <div className="card-header">
+              <span className="card-title">Sentiment — Weekly Trend</span>
+            </div>
+            <SOVTrendChart competitors={competitors} metric="sentiment_pct" yLabel="Sentiment (0–100)" />
           </GlassCard>
 
           {/* All-companies breakdown table */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
-              <span className="card-title">All Companies · Breakdown</span>
+              <span className="card-title">Direct competitors · SOV ranking</span>
                           </div>
             {sortedRanked.length === 0 ? (
               <div className="empty-state"><p>No data for the current filters</p></div>
@@ -298,7 +324,7 @@ function Dashboard({ onLogout, onNavigate }) {
 
           {/* Twine growth strategy — where weak + how to climb (computed live, full dataset
               so the cross-platform recommendation is independent of the active filter) */}
-          <GrowthStrategy posts={allPosts} config={sovConfig} />
+          <GrowthStrategy posts={directAllPosts} config={sovConfig} />
 
           {/* Competitive Review — weekly view of competitor-authored posts +
               engagement (replaces the old Recent Mentions feed) */}
