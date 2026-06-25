@@ -57,11 +57,12 @@ function TrendTooltip({ active, payload, label }) {
 
 // `competitors` — the active competitor list (drives which lines to draw).
 // Data comes from the immutable weekly snapshots (sov_weekly) via useWeeklySOV.
-export function SOVTrendChart({ competitors = [] }) {
-  const { series } = useWeeklySOV('overall')
+export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %' }) {
+  const { series } = useWeeklySOV(metric)
   const [rangeKey, setRangeKey] = useState('3m')
   const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
   const [active, setActive] = useState(null)              // legend-hovered company (spotlight)
+  const [scope, setScope] = useState('all')               // 'all' | 'direct' — which competitor lines to draw
 
   const range = RANGES.find(r => r.key === rangeKey) || RANGES[1]
   const data = useMemo(() => {
@@ -74,13 +75,19 @@ export function SOVTrendChart({ competitors = [] }) {
     const present = new Set()
     for (const row of data) for (const k of Object.keys(row)) if (k !== 'week') present.add(k)
     const activeNames = (competitors || []).filter(c => c && c.active !== false).map(c => c.name)
-    const names = activeNames.length ? activeNames.filter(n => present.has(n)) : [...present]
+    let names = activeNames.length ? activeNames.filter(n => present.has(n)) : [...present]
+    if (scope === 'direct') {
+      const directNames = new Set(
+        (competitors || []).filter(c => c && c.active !== false && (c.type || 'direct') !== 'indirect').map(c => c.name)
+      )
+      names = names.filter(n => directNames.has(n) || isTwine(n))
+    }
     return names.sort((a, b) => {
       if (isTwine(a) && !isTwine(b)) return -1
       if (isTwine(b) && !isTwine(a)) return 1
       return a.localeCompare(b)
     })
-  }, [data, competitors])
+  }, [data, competitors, scope])
 
   // Zoom the Y-axis to the visible band so tightly-packed lines spread out
   // (only across lines that are currently shown).
@@ -123,16 +130,30 @@ export function SOVTrendChart({ competitors = [] }) {
   let colorIdx = 0
   return (
     <div className="trend-chart-wrap">
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginBottom: 10 }}>
-        {RANGES.map(r => (
-          <button
-            key={r.key}
-            onClick={() => setRangeKey(r.key)}
-            style={{ ...pill, ...(r.key === rangeKey ? activePill : null) }}
-          >
-            {r.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[['direct', 'Direct'], ['all', 'All']].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setScope(key)}
+              style={{ ...pill, ...(scope === key ? activePill : null) }}
+              title={key === 'direct' ? 'Direct competitors only' : 'All tracked companies (incl. indirect)'}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {RANGES.map(r => (
+            <button
+              key={r.key}
+              onClick={() => setRangeKey(r.key)}
+              style={{ ...pill, ...(r.key === rangeKey ? activePill : null) }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
       </div>
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: -8 }}>
@@ -151,7 +172,7 @@ export function SOVTrendChart({ competitors = [] }) {
             tickLine={false}
             axisLine={false}
             label={{
-              value: 'SOV score',
+              value: yLabel,
               angle: -90,
               position: 'insideLeft',
               style: { fill: 'var(--text-secondary)', fontSize: 12 },

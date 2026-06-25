@@ -195,19 +195,40 @@ export function sentimentDimension(posts, company) {
 //   weighted   = methodology-driven cross-platform SOV (size of conversation)
 //   sentiment  = average tone, rescaled -3..+3 → 0..100 (its own dimension,
 //                bounded so a negative spike never inflates SOV)
-const OVERALL_W = { unweighted: 0.30, weighted: 0.40, sentiment: 0.30 }
+// OKR-aligned comparative SOV%: 80% engagement-weighted share ("seen") + 20%
+// decayed mention-count share ("talked about"). Sentiment is NOT in the headline
+// — it's its own dimension/graph. Per-post weight already carries the author
+// baseline + multiplier (external earns more than company-authored) via post_weight.
+const OVERALL_W = { unweighted: 0.20, weighted: 0.80, sentiment: 0 }
+
+// Decayed mention count: each post contributes decay(age) instead of 1, so
+// "talked about" means recently (7-day grace, then 2^(-age/halfLife) per platform).
+function countWeightOf(p, config) {
+  const hl = (config.halfLifeDays && config.halfLifeDays[p.platform]) || 14
+  const t = p.ts ? new Date(p.ts).getTime() : NaN
+  if (isNaN(t)) return 1
+  const age = Math.max(0, (Date.now() - t) / 86400000)
+  return age <= 7 ? 1 : Math.pow(2, -age / hl)
+}
 
 export function rankings(posts, config = DEFAULT_SOV_CONFIG) {
   const companies = [...new Set(posts.map(p => p.companyName).filter(Boolean))]
   const rows = companies.map(c => companyRow(posts, c))
-  const totalUnweighted = rows.reduce((s, r) => s + r.unweightedSOV, 0) || 1
+
+  // Decayed count-share per company ("talked about", recency-weighted).
+  const countW = {}
+  for (const p of posts) {
+    if (!p.companyName) continue
+    countW[p.companyName] = (countW[p.companyName] || 0) + countWeightOf(p, config)
+  }
+  const totalCount = Object.values(countW).reduce((s, v) => s + v, 0) || 1
 
   // Cross-platform weighted SOV (within-platform share → weighted average).
   const { weightedPct: weightedMap } = computeWeightedSOV(posts, config)
 
   return rows
     .map(r => {
-      const unweightedPct = (r.unweightedSOV / totalUnweighted) * 100
+      const unweightedPct = ((countW[r.company] || 0) / totalCount) * 100
       const weightedPct = weightedMap.get(r.company) || 0
       const sentimentScaled = ((r.avgSentiment + 3) / 6) * 100
       const sentiment = sentimentDimension(posts, r.company)

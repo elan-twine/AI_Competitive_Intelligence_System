@@ -132,3 +132,11 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Direct/indirect classification badge */
+.comp-type {
+  display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 6px;
+  text-transform: capitalize; font-weight: 600; line-height: 1.5;
+}
+.comp-type.direct { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.comp-type.indirect { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border); }

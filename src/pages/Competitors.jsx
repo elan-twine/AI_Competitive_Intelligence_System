@@ -28,10 +28,11 @@ export default function Competitors({ onLogout, onNavigate }) {
   const [showAdv, setShowAdv] = useState(false)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState(null)
+  const [addType, setAddType] = useState('direct')   // direct = counted in SOV ranking; indirect = tracked/analyzed only
 
   // List / edit
   const [editId, setEditId] = useState(null)
-  const [editForm, setEditForm] = useState({ name: '', aliases: '', linkedin_urn: '', linkedin_url: '', domain: '', x_handle: '', subreddits: '' })
+  const [editForm, setEditForm] = useState({ name: '', aliases: '', linkedin_urn: '', linkedin_url: '', domain: '', x_handle: '', subreddits: '', type: 'direct' })
   const [busyId, setBusyId] = useState(null)
   const [showRemoved, setShowRemoved] = useState(false)
 
@@ -63,10 +64,11 @@ export default function Competitors({ onLogout, onNavigate }) {
         domain: adv.domain.trim() || null,
         x_handle: adv.x_handle.trim().replace(/^@/, '') || null,
         subreddits: toList(adv.subreddits),
+        type: addType,
         is_self: false,
         active: true,
       })
-      setUrl(''); setName(''); setNameAuto(true); setAdv(EMPTY_ADV); setShowAdv(false)
+      setUrl(''); setName(''); setNameAuto(true); setAdv(EMPTY_ADV); setShowAdv(false); setAddType('direct')
     } catch (err) {
       setAddError(err.message || 'Failed to add competitor')
     } finally {
@@ -86,7 +88,7 @@ export default function Competitors({ onLogout, onNavigate }) {
     setEditForm({
       name: c.name || '', aliases: fromList(c.aliases), linkedin_urn: c.linkedin_urn || '',
       linkedin_url: c.linkedin_url || '', domain: c.domain || '', x_handle: c.x_handle || '',
-      subreddits: fromList(c.subreddits),
+      subreddits: fromList(c.subreddits), type: c.type || 'direct',
     })
   }
   const saveEdit = async (id) => {
@@ -97,7 +99,7 @@ export default function Competitors({ onLogout, onNavigate }) {
         name: editForm.name.trim(), aliases: toList(editForm.aliases),
         linkedin_urn: editForm.linkedin_urn.trim() || null, linkedin_url: editForm.linkedin_url.trim() || null,
         domain: editForm.domain.trim() || null, x_handle: editForm.x_handle.trim().replace(/^@/, '') || null,
-        subreddits: toList(editForm.subreddits),
+        subreddits: toList(editForm.subreddits), type: editForm.type,
       })
       setEditId(null)
     } catch (err) { alert(err.message || 'Failed to save') }
@@ -142,6 +144,13 @@ export default function Competitors({ onLogout, onNavigate }) {
             <Field label="LinkedIn company URL *" value={url} onChange={onUrlChange}
               placeholder="https://www.linkedin.com/company/orchid-security" autoFocus />
             <Field label="Name" value={name} onChange={onNameChange} placeholder="(auto-filled from the URL)" />
+            <label className="auth-field comp-field">
+              <span>Type</span>
+              <select value={addType} onChange={e => setAddType(e.target.value)}>
+                <option value="direct">Direct — counted in SOV ranking</option>
+                <option value="indirect">Indirect — track &amp; learn only</option>
+              </select>
+            </label>
           </div>
 
           <button type="button" className="comp-adv-toggle" onClick={() => setShowAdv(s => !s)}>
@@ -186,6 +195,7 @@ export default function Competitors({ onLogout, onNavigate }) {
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left' }}>Name</th>
+                  <th style={{ textAlign: 'left' }}>Type</th>
                   <th style={{ textAlign: 'left' }}>Domain</th>
                   <th style={{ textAlign: 'left' }}>LinkedIn</th>
                   <th style={{ textAlign: 'left' }}>X handle</th>
@@ -200,6 +210,12 @@ export default function Competitors({ onLogout, onNavigate }) {
                     return (
                       <tr key={c.id} className="comp-edit-row">
                         <td><input name="name" value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} /></td>
+                        <td>
+                          <select value={editForm.type} onChange={e => setEditForm(p => ({ ...p, type: e.target.value }))}>
+                            <option value="direct">direct</option>
+                            <option value="indirect">indirect</option>
+                          </select>
+                        </td>
                         <td><input name="domain" value={editForm.domain} onChange={e => setEditForm(p => ({ ...p, domain: e.target.value }))} /></td>
                         <td><input name="linkedin_url" value={editForm.linkedin_url} onChange={e => setEditForm(p => ({ ...p, linkedin_url: e.target.value }))} /></td>
                         <td><input name="x_handle" value={editForm.x_handle} onChange={e => setEditForm(p => ({ ...p, x_handle: e.target.value }))} /></td>
@@ -218,6 +234,7 @@ export default function Competitors({ onLogout, onNavigate }) {
                         {c.name}
                         {c.aliases?.length > 0 && <span className="comp-aliases"> ({c.aliases.join(', ')})</span>}
                       </td>
+                      <td><span className={`comp-type ${(c.type || 'direct') === 'indirect' ? 'indirect' : 'direct'}`}>{c.type || 'direct'}</span></td>
                       <td>{c.domain || '—'}</td>
                       <td>{c.linkedin_url ? <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer">page ↗</a> : '—'}</td>
                       <td>{c.x_handle ? `@${c.x_handle}` : '—'}</td>
