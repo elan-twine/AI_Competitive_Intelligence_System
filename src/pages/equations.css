@@ -1,0 +1,497 @@
+/* ================================================================== */
+/*  Methodology / Equations page — page-scoped styles.                */
+/*  Imports App.css first (via JS import order) for all base tokens.  */
+/* ================================================================== */
+
+/* ---- Layout: sticky rail + single readable column ---- */
+.meth-layout {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 880px);
+  gap: 24px;
+  justify-content: center;
+  align-items: start;
+}
+
+.meth-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.meth-card { scroll-margin-top: 96px; }
+.meth-card-header { margin-bottom: 14px; }
+
+/* ---- Sticky flow rail ---- */
+.meth-rail {
+  position: sticky;
+  top: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-top: 8px;
+}
+.meth-rail::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 50%;
+  width: 1px;
+  background: var(--divider);
+  transform: translateX(-50%);
+}
+.meth-rail-dot {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.meth-rail-tick {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  opacity: 0.5;
+  transition: all 0.2s;
+}
+.meth-rail-dot:hover .meth-rail-tick { opacity: 1; }
+.meth-rail-dot.active .meth-rail-tick {
+  background: var(--accent);
+  opacity: 1;
+  box-shadow: 0 0 10px var(--glow-color-hover);
+  transform: scale(1.3);
+}
+
+/* ---- Intro strip ---- */
+.meth-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.meth-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  line-height: 1.15;
+}
+.meth-thesis {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 18px;
+  max-width: 70ch;
+}
+
+/* ---- Stage scaffolding ---- */
+.meth-intuition {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin-bottom: 16px;
+}
+.meth-body {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 4px 0 14px;
+}
+.meth-example-line {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.meth-example-line strong { color: var(--accent); }
+.meth-halflives {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 4px 0 14px;
+}
+
+/* ---- Equation rows ---- */
+.eq-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  margin-bottom: 8px;
+}
+.eq-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 74px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.eq-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+.eq-formula {
+  font-family: 'Space Grotesk', monospace;
+  font-size: 14px;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  flex: 1;
+  min-width: 0;
+}
+.eq-formula sub { font-size: 0.72em; opacity: 0.85; }
+.eq-row-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.eq-inline {
+  font-family: 'Space Grotesk', monospace;
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 0.92em;
+  color: var(--accent);
+}
+
+/* ---- Callout ---- */
+.meth-callout {
+  background: var(--inner-bg);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 11px 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin: 12px 0;
+}
+.meth-callout strong { color: var(--text-primary); }
+
+/* ---- Trace pill (running example) ---- */
+.meth-trace-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--divider);
+}
+.meth-trace-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.trace-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--accent);
+  color: #0B0D00;
+  border-radius: 999px;
+  padding: 4px 12px 4px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.trace-pill-tag {
+  background: #0B0D00;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.trace-pill-val { font-weight: 700; }
+.trace-pill-unit { font-weight: 500; opacity: 0.75; font-size: 12px; }
+
+/* ---- Fraction ---- */
+.meth-fraction {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 4px;
+  text-align: center;
+}
+.meth-frac-num, .meth-frac-den {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.meth-frac-rule {
+  width: 100%;
+  height: 1px;
+  background: var(--text-muted);
+  margin: 3px 0;
+}
+.eq-frac-block {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+.eq-frac-block sub { font-size: 0.72em; }
+
+/* ================================================================== */
+/*  HERO pipeline                                                     */
+/* ================================================================== */
+.hero-wrap { margin: 8px 0 4px; }
+.hero-svg { display: block; }
+.hero-node-text { font-size: 10.5px; font-weight: 600; font-family: 'Space Grotesk', sans-serif; }
+.hero-disc-text { font-size: 14px; font-weight: 700; }
+.hero-disc-sub { font-size: 10px; font-weight: 600; }
+.hero-mini { font-size: 9.5px; font-weight: 600; font-family: 'Space Grotesk', sans-serif; }
+.hero-caption {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+/* ================================================================== */
+/*  Engagement weight bars                                            */
+/* ================================================================== */
+.eng-bars { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 12px 0; }
+.eng-set-name { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.eng-svg { display: block; }
+.eng-term { font-size: 10px; fill: var(--text-muted); font-family: 'Space Grotesk', monospace; }
+.eng-coef { font-size: 10px; fill: var(--text-secondary); font-weight: 600; font-family: 'Space Grotesk', monospace; }
+
+/* ================================================================== */
+/*  Charts — clip wrapper (glass-card is overflow:visible)            */
+/* ================================================================== */
+.chart-clip { overflow: hidden; border-radius: var(--radius-sm); }
+.chart-note {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: 8px;
+}
+.chart-legend-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+.cl-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.cl-grace { color: var(--text-muted); font-style: italic; }
+
+/* ================================================================== */
+/*  sentMult ramp                                                     */
+/* ================================================================== */
+.ramp-wrap { margin: 14px 0 4px; overflow: visible; }
+.ramp-tick { font-size: 10px; fill: var(--text-muted); font-family: 'Space Grotesk', monospace; }
+.ramp-out { font-size: 11px; fill: var(--text-secondary); font-weight: 600; }
+.ramp-mark { font-size: 10px; fill: var(--accent); font-weight: 700; }
+
+/* ================================================================== */
+/*  Per-post weight bus                                               */
+/* ================================================================== */
+.bus-wrap { margin: 12px 0 4px; }
+.bus-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bus-tile {
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-family: 'Space Grotesk', monospace;
+  color: var(--text-primary);
+}
+.bus-core { display: inline-flex; align-items: center; gap: 8px; padding: 5px; border: 1px dashed var(--accent); border-radius: 10px; }
+.bus-prefix { color: var(--linkedin-color); border-color: color-mix(in srgb, var(--linkedin-color) 50%, transparent); }
+.bus-op, .bus-eq { font-size: 13px; color: var(--text-muted); font-weight: 600; }
+.bus-out { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.bus-core-label { font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 8px; }
+.bus-example { font-size: 13px; color: var(--text-secondary); margin: 10px 0; font-variant-numeric: tabular-nums; }
+.bus-example strong { color: var(--accent); }
+
+/* ---- Mini tables ---- */
+.meth-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
+.meth-table th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--divider);
+}
+.meth-table td {
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--divider);
+  font-variant-numeric: tabular-nums;
+}
+.meth-table tr:last-child td { border-bottom: none; }
+.meth-table-hl td { color: var(--accent); }
+
+/* ================================================================== */
+/*  Author fork                                                       */
+/* ================================================================== */
+.fork-wrap { margin: 12px 0 4px; }
+.fork-q { font-size: 13px; font-weight: 600; color: var(--text-primary); text-align: center; margin-bottom: 16px; }
+.fork-q-sub { font-size: 11px; font-weight: 400; color: var(--text-muted); }
+.fork-branches { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.fork-branch { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.fork-yn { font-size: 10px; font-weight: 700; letter-spacing: 0.8px; padding: 3px 10px; border-radius: 999px; }
+.fork-yes { background: var(--inner-bg); color: var(--text-muted); border: 1px solid var(--divider); }
+.fork-no { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); }
+.fork-pill {
+  width: 100%;
+  text-align: center;
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+.fork-pill-accent { border-color: var(--accent); background: var(--accent-dim); }
+.fork-pill-title { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; color: var(--text-primary); }
+.fork-pill-accent .fork-pill-title { color: var(--accent); }
+.fork-pill-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.fork-pill-note { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-style: italic; }
+
+/* ================================================================== */
+/*  Within-platform share pool                                        */
+/* ================================================================== */
+.pool-wrap { margin: 12px 0 4px; }
+.pool-seg-text { font-size: 11px; font-weight: 700; }
+.pool-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 14px 0 10px;
+}
+.pool-note strong { color: var(--accent); }
+.pool-note sub { font-size: 0.72em; }
+.pool-guard { display: inline-block; cursor: default; text-transform: none; }
+
+/* ================================================================== */
+/*  Cross-platform blend                                              */
+/* ================================================================== */
+.blend-wrap { margin: 12px 0 4px; display: flex; flex-direction: column; gap: 14px; }
+.blend-bar-label { font-size: 11.5px; color: var(--text-muted); margin-bottom: 6px; }
+.blend-seg-text { font-size: 11px; font-weight: 700; fill: #fff; }
+.blend-legend { display: flex; flex-wrap: wrap; gap: 12px; }
+
+/* ================================================================== */
+/*  Loudness vs breadth                                               */
+/* ================================================================== */
+.lvb-wrap { margin: 12px 0 4px; display: flex; flex-direction: column; gap: 12px; }
+.lvb-row { display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center; }
+.lvb-meta { display: flex; flex-direction: column; }
+.lvb-label { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.lvb-sub { font-size: 11px; color: var(--text-muted); }
+.lvb-val { font-size: 11px; fill: var(--text-secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ================================================================== */
+/*  80/20 SOV keystone                                                */
+/* ================================================================== */
+.sov-split-wrap { margin: 12px 0 4px; display: flex; flex-direction: column; align-items: center; }
+.sov-split-pct { font-size: 14px; font-weight: 700; }
+.sov-split-lbl { font-size: 9.5px; font-weight: 600; }
+.sov-arrow { font-size: 22px; color: var(--accent); line-height: 1; margin: 4px 0; }
+.sov-stat { width: 260px; max-width: 100%; }
+.sov-micro {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 12px;
+  line-height: 1.5;
+}
+
+/* ================================================================== */
+/*  Sentiment fence                                                   */
+/* ================================================================== */
+.meth-fence-label {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 4px 12px;
+  margin-bottom: 12px;
+}
+
+/* ================================================================== */
+/*  Footer glossary                                                   */
+/* ================================================================== */
+.meth-glossary { display: flex; flex-direction: column; gap: 8px; }
+.meth-gloss-item { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.meth-gloss-term { cursor: default; text-transform: none; flex: 0 0 auto; }
+.meth-gloss-def { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+.meth-footer { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.meth-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--divider);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.meth-back-link:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ================================================================== */
+/*  Responsive — hide rail on narrow widths                           */
+/* ================================================================== */
+@media (max-width: 720px) {
+  .meth-layout { grid-template-columns: 1fr; }
+  .meth-rail { display: none; }
+  .fork-branches { grid-template-columns: 1fr; }
+  .lvb-row { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,850 @@
+import { useState, useEffect, useRef } from 'react'
+import { ArrowLeft, LogOut } from 'lucide-react'
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, ReferenceArea, ReferenceDot,
+} from 'recharts'
+import { GlassCard } from '../components/GlassCard'
+import '../App.css'
+import './equations.css'
+
+/* ------------------------------------------------------------------ */
+/*  Canonical worked example — ONE post followed end-to-end.          */
+/*  Numbers are precomputed module constants (labelled "example"),    */
+/*  never recomputed live, so display math can never drift.           */
+/* ------------------------------------------------------------------ */
+const EXAMPLE = {
+  blurb: 'a competitor’s LinkedIn reshare — 40 reactions, 6 comments, 3 reshares, has image, sentiment +1, 6 days old, posted by an external commentator.',
+  stages: [
+    { id: 'engagement', value: '89.5',  unit: 'eng' },
+    { id: 'reach',      value: '81.8',  unit: 'reach' },
+    { id: 'sentiment',  value: '1.03',  unit: '× sentMult' },
+    { id: 'decay',      value: '1.0',   unit: '× decay' },
+    { id: 'weight',     value: '131.5', unit: 'post_weight' },
+    { id: 'author',     value: 'external', unit: 'B=5 · M=1.5' },
+    { id: 'share',      value: '24.4%', unit: 'LinkedIn share' },
+    { id: 'blend',      value: '→', unit: 'feeds weighted-share' },
+    { id: 'count',      value: '→', unit: 'feeds count-share' },
+    { id: 'sov',        value: 'SOV%',  unit: '0.8 loud + 0.2 often' },
+  ],
+}
+const trace = (id) => EXAMPLE.stages.find(s => s.id === id)
+
+/* ------------------------------------------------------------------ */
+/*  Small primitives                                                  */
+/* ------------------------------------------------------------------ */
+function TracePill({ value, unit }) {
+  return (
+    <span className="trace-pill" title="Running worked-example value">
+      <span className="trace-pill-tag">EX</span>
+      <span className="trace-pill-val">{value}</span>
+      {unit && <span className="trace-pill-unit">{unit}</span>}
+    </span>
+  )
+}
+
+function Stage({ number, id, title, intuition, pill, children }) {
+  return (
+    <GlassCard className="card meth-card" style={{ scrollMarginTop: '96px' }} {...{ id }}>
+      <div className="card-header meth-card-header">
+        <div className="card-title">{title}</div>
+        <span className="card-badge">{number}</span>
+      </div>
+      <p className="meth-intuition">{intuition}</p>
+      {children}
+      {pill && (
+        <div className="meth-trace-row">
+          <span className="meth-trace-label">running example</span>
+          <TracePill value={pill.value} unit={pill.unit} />
+        </div>
+      )}
+    </GlassCard>
+  )
+}
+
+function EquationRow({ label, color, children, note }) {
+  return (
+    <div className="eq-row">
+      {label && (
+        <span className="eq-row-label">
+          <span className="eq-dot" style={{ background: color }} />
+          {label}
+        </span>
+      )}
+      <code className="eq-formula">{children}</code>
+      {note && <span className="eq-row-note">{note}</span>}
+    </div>
+  )
+}
+
+function Callout({ children }) {
+  return <div className="meth-callout">{children}</div>
+}
+
+function Fraction({ num, den }) {
+  return (
+    <span className="meth-fraction">
+      <span className="meth-frac-num">{num}</span>
+      <span className="meth-frac-rule" />
+      <span className="meth-frac-den">{den}</span>
+    </span>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Chart tooltips (themed per SOVTrendChart conventions)             */
+/* ------------------------------------------------------------------ */
+function ReachTip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="chart-tooltip">
+      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>eng = {label}</div>
+      {payload.map(p => (
+        <div key={p.dataKey} className="chart-tooltip-value" style={{ color: 'var(--text-secondary)', display: 'flex', gap: 10, justifyContent: 'space-between' }}>
+          <span style={{ color: p.color }}>{p.name}</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(p.value).toFixed(1)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DecayTip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const rows = [...payload].sort((a, b) => (b.value || 0) - (a.value || 0))
+  return (
+    <div className="chart-tooltip">
+      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>day {label}</div>
+      {rows.map(p => (
+        <div key={p.dataKey} className="chart-tooltip-value" style={{ color: 'var(--text-secondary)', display: 'flex', gap: 10, justifyContent: 'space-between' }}>
+          <span style={{ color: p.color }}>{p.name}</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(p.value).toFixed(2)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 1 — HERO pipeline (pure inline SVG, doubles as visual TOC) */
+/* ------------------------------------------------------------------ */
+const HERO_NODES = [
+  { id: 'engagement', label: 'Engagement', x: 18,  y: 70 },
+  { id: 'reach',      label: 'Reach',      x: 138, y: 70 },
+  { id: 'sentiment',  label: '× Sentiment', x: 258, y: 70 },
+  { id: 'decay',      label: '× Decay', x: 388, y: 70 },
+  { id: 'weight',     label: 'Per-post Weight', x: 510, y: 70 },
+  { id: 'share',      label: 'Within-platform Share', x: 648, y: 70 },
+]
+
+function Hero({ active, onJump }) {
+  const nodeW = 96, nodeH = 34
+  const fill = (id) => (active === id ? 'var(--accent-dim)' : 'var(--inner-bg)')
+  const stroke = (id) => (active === id ? 'var(--accent)' : 'var(--divider)')
+  const txt = (id) => (active === id ? 'var(--accent)' : 'var(--text-secondary)')
+
+  return (
+    <div className="hero-wrap">
+      <svg viewBox="0 0 860 230" width="100%" role="img" aria-label="SOV pipeline flow diagram" className="hero-svg">
+        {/* main flow rail */}
+        <path d="M114 87 H138 M234 87 H258 M354 87 H388 M484 87 H510 M606 87 H648" stroke="var(--accent)" strokeWidth="2" fill="none" opacity="0.55" />
+
+        {/* author fork: splits before weight, rejoins at weight */}
+        <path d="M450 87 C470 40, 488 40, 500 56" stroke="var(--text-muted)" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <path d="M450 87 C470 134, 488 134, 500 118" stroke="var(--accent)" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <text x="468" y="34" className="hero-mini" fill="var(--text-muted)">company</text>
+        <text x="466" y="150" className="hero-mini" fill="var(--accent)">external</text>
+
+        {/* sentiment side-channel peels off and dead-ends */}
+        <path d="M306 104 C320 150, 320 165, 350 168" stroke="var(--neutral)" strokeWidth="1.4" strokeDasharray="3 3" fill="none" opacity="0.8" />
+        <g>
+          <rect x="350" y="156" width="150" height="26" rx="13" fill="var(--inner-bg)" stroke="var(--neutral)" strokeWidth="1" opacity="0.9" />
+          <text x="425" y="173" textAnchor="middle" className="hero-mini" fill="var(--neutral)">Sentiment · display only</text>
+        </g>
+
+        {/* count-share parallel lower track */}
+        <path d="M66 196 H760" stroke="var(--text-muted)" strokeWidth="1.4" strokeDasharray="4 4" fill="none" opacity="0.55" />
+        <text x="74" y="189" className="hero-mini" fill="var(--text-muted)">count-share (breadth) — decayed post volume</text>
+
+        {/* nodes */}
+        {HERO_NODES.map(n => (
+          <a key={n.id} onClick={() => onJump(n.id)} style={{ cursor: 'pointer' }}>
+            <rect x={n.x} y={n.y} width={nodeW} height={nodeH} rx="9" fill={fill(n.id)} stroke={stroke(n.id)} strokeWidth="1" />
+            <text x={n.x + nodeW / 2} y={n.y + nodeH / 2 + 4} textAnchor="middle" className="hero-node-text" fill={txt(n.id)}>{n.label}</text>
+          </a>
+        ))}
+
+        {/* blend junction */}
+        <path d="M744 87 C770 87, 770 140, 778 140" stroke="var(--accent)" strokeWidth="2" fill="none" opacity="0.55" />
+        <path d="M760 196 C772 196, 772 152, 778 150" stroke="var(--text-muted)" strokeWidth="1.4" fill="none" opacity="0.55" />
+
+        {/* final SOV disc */}
+        <a onClick={() => onJump('sov')} style={{ cursor: 'pointer' }}>
+          <circle cx="808" cy="140" r="36" fill="var(--accent-dim)" stroke="var(--accent)" strokeWidth="1.5" />
+          <text x="808" y="137" textAnchor="middle" className="hero-disc-text" fill="var(--accent)">SOV</text>
+          <text x="808" y="151" textAnchor="middle" className="hero-disc-sub" fill="var(--accent)">%</text>
+        </a>
+
+        {/* entering post chip */}
+        <g>
+          <rect x="6" y="22" width="62" height="22" rx="11" fill="var(--inner-bg)" stroke="var(--divider)" strokeWidth="1" />
+          <text x="37" y="37" textAnchor="middle" className="hero-mini" fill="var(--text-secondary)">1 post</text>
+          <path d="M37 44 V62" stroke="var(--accent)" strokeWidth="1.4" opacity="0.5" />
+        </g>
+      </svg>
+      <div className="hero-caption">Click any node to jump to its formula. Lime = the signal rail; the fork is author type; sentiment peels off as a display-only readout.</div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 2 — Engagement weight bars                                 */
+/* ------------------------------------------------------------------ */
+function EngWeightBars() {
+  const sets = [
+    { name: 'LinkedIn', color: 'var(--linkedin-color)', terms: [['reactions', 1], ['comments', 3], ['reshares', 10], ['image', 1.5]] },
+    { name: 'X', color: 'var(--x-color)', terms: [['likes', 1], ['replies', 2], ['quotes', 4], ['reposts', 10]] },
+    { name: 'Reddit', color: 'var(--reddit-color)', terms: [['upvotes', 1], ['comments', 3]] },
+  ]
+  const max = 10, trackW = 220, barH = 13, gap = 8, labelW = 96
+  return (
+    <div className="eng-bars">
+      {sets.map(set => (
+        <div key={set.name} className="eng-set">
+          <div className="eng-set-name"><span className="eq-dot" style={{ background: set.color }} />{set.name}</div>
+          <svg viewBox={`0 0 ${labelW + trackW + 40} ${set.terms.length * (barH + gap)}`} width="100%" className="eng-svg" role="img" aria-label={`${set.name} engagement coefficients`}>
+            {set.terms.map((t, i) => {
+              const [term, coef] = t
+              const w = (coef / max) * trackW
+              const big = coef === 10
+              const y = i * (barH + gap)
+              return (
+                <g key={term}>
+                  <text x={labelW - 8} y={y + barH - 2} textAnchor="end" className="eng-term">{term}</text>
+                  <rect x={labelW} y={y} width={w} height={barH} rx="3" fill={big ? 'var(--accent)' : set.color} opacity={big ? 1 : 0.45} />
+                  <text x={labelW + w + 6} y={y + barH - 2} className="eng-coef">×{coef}</text>
+                </g>
+              )
+            })}
+          </svg>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 3 — Reach curve                                            */
+/* ------------------------------------------------------------------ */
+const REACH_DATA = (() => {
+  const out = []
+  for (let e = 0; e <= 500; e += 20) {
+    out.push({ eng: e, reach: e === 0 ? 0 : Math.pow(e, 49 / 50), linear: e })
+  }
+  return out
+})()
+
+function ReachCurve() {
+  return (
+    <div className="trend-chart-wrap">
+      <div className="chart-clip">
+        <ResponsiveContainer width="100%" height={170}>
+          <LineChart data={REACH_DATA} margin={{ top: 8, right: 18, bottom: 4, left: -10 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} vertical={false} />
+            <XAxis dataKey="eng" type="number" domain={[0, 500]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} tickLine={false} axisLine={{ stroke: 'var(--border)', opacity: 0.4 }} />
+            <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} tickLine={false} axisLine={false} width={42} />
+            <Tooltip content={<ReachTip />} />
+            <Line type="monotone" dataKey="linear" name="y = x (linear ref)" stroke="var(--text-muted)" strokeWidth={1.4} strokeDasharray="4 4" dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="reach" name="reach = eng^(49/50)" stroke="var(--accent)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+            <ReferenceDot x={89.5} y={81.8} r={4} fill="var(--accent)" stroke="#0B0D00" strokeWidth={1} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="chart-note">exponent 49/50 ≈ 0.98 — almost linear; the bend just keeps a viral outlier from dwarfing everything. Dot = example (eng 89.5 → reach ≈ 81.8).</div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 4 — sentMult mapping ramp                                  */
+/* ------------------------------------------------------------------ */
+function SentMultRamp() {
+  // sentiment -3..+3 mapped to x; example +1 → 1.03
+  const W = 700, H = 64, padL = 8, padR = 8
+  const span = W - padL - padR
+  const xAt = (s) => padL + ((s + 3) / 6) * span
+  const ticks = [
+    { s: -3, out: '0.5' },
+    { s: 0, out: '0.9' },
+    { s: 3, out: '1.3' },
+  ]
+  return (
+    <div className="ramp-wrap">
+      <svg viewBox={`0 0 ${W} ${H + 34}`} width="100%" role="img" aria-label="sentiment multiplier ramp">
+        <defs>
+          <linearGradient id="sentGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="var(--negative)" />
+            <stop offset="50%" stopColor="var(--neutral)" />
+            <stop offset="100%" stopColor="var(--positive)" />
+          </linearGradient>
+        </defs>
+        <rect x={padL} y="8" width={span} height="20" rx="10" fill="url(#sentGrad)" opacity="0.85" />
+        {ticks.map(t => (
+          <g key={t.s}>
+            <line x1={xAt(t.s)} y1="4" x2={xAt(t.s)} y2="32" stroke="var(--text-muted)" strokeWidth="1" />
+            <text x={xAt(t.s)} y="46" textAnchor="middle" className="ramp-tick">sent {t.s > 0 ? '+' : ''}{t.s}</text>
+            <text x={xAt(t.s)} y="60" textAnchor="middle" className="ramp-out">→ {t.out}</text>
+          </g>
+        ))}
+        {/* example marker at +1 */}
+        <g>
+          <polygon points={`${xAt(1)},2 ${xAt(1) - 5},-6 ${xAt(1) + 5},-6`} fill="var(--accent)" transform="translate(0,8)" />
+          <circle cx={xAt(1)} cy="18" r="5" fill="#0B0D00" stroke="var(--accent)" strokeWidth="1.5" />
+          <text x={xAt(1)} y="60" textAnchor="middle" className="ramp-mark">+1 → 1.03</text>
+        </g>
+      </svg>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 5 — Decay curves                                           */
+/* ------------------------------------------------------------------ */
+const DECAY_PLATFORMS = [
+  { key: 'X', half: 7, color: 'var(--x-color)' },
+  { key: 'Reddit', half: 10, color: 'var(--reddit-color)' },
+  { key: 'LinkedIn', half: 14, color: 'var(--linkedin-color)' },
+  { key: 'News', half: 30, color: 'var(--news-color)' },
+]
+const DECAY_DATA = (() => {
+  const out = []
+  for (let d = 0; d <= 60; d += 2) {
+    const row = { day: d }
+    for (const p of DECAY_PLATFORMS) row[p.key] = d <= 7 ? 1 : Math.pow(2, -d / p.half)
+    out.push(row)
+  }
+  return out
+})()
+
+function DecayCurves() {
+  return (
+    <div className="trend-chart-wrap">
+      <div className="chart-clip">
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={DECAY_DATA} margin={{ top: 8, right: 18, bottom: 4, left: -12 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} vertical={false} />
+            <ReferenceArea x1={0} x2={7} fill="var(--accent)" fillOpacity={0.08} />
+            <XAxis dataKey="day" type="number" domain={[0, 60]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} tickLine={false} axisLine={{ stroke: 'var(--border)', opacity: 0.4 }} ticks={[0, 7, 14, 30, 45, 60]} />
+            <YAxis domain={[0, 1]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} tickLine={false} axisLine={false} width={40} />
+            <Tooltip content={<DecayTip />} />
+            {DECAY_PLATFORMS.map(p => (
+              <Line key={p.key} type="monotone" dataKey={p.key} name={`${p.key} (${p.half}d)`} stroke={p.color} strokeWidth={p.key === 'X' ? 2.5 : 1.8} dot={false} isAnimationActive={false} />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="chart-legend-inline">
+        {DECAY_PLATFORMS.map(p => (
+          <span key={p.key} className="cl-item"><span className="eq-dot" style={{ background: p.color }} />{p.key} · {p.half}d</span>
+        ))}
+        <span className="cl-item cl-grace">shaded = 7-day grace (decay = 1.0)</span>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 6 — Per-post weight assembly bus                           */
+/* ------------------------------------------------------------------ */
+function WeightBus() {
+  return (
+    <div className="bus-wrap">
+      <div className="bus-row">
+        <span className="bus-tile bus-prefix">B + reach·M</span>
+        <span className="bus-op">×</span>
+        <span className="bus-core">
+          <span className="bus-tile">reach</span>
+          <span className="bus-op">×</span>
+          <span className="bus-tile">sentMult</span>
+          <span className="bus-op">×</span>
+          <span className="bus-tile">decay</span>
+        </span>
+        <span className="bus-eq">=</span>
+        <span className="bus-tile bus-out">post_weight</span>
+      </div>
+      <div className="bus-core-label">shared core (reach · sentMult · decay) is identical on every platform; only the front factor changes</div>
+      <div className="bus-example">
+        example (external author): (5 + 81.8·1.5) · 1.03 · 1.0 ≈ <strong>131.5</strong>
+      </div>
+      <table className="meth-table">
+        <thead>
+          <tr><th>LinkedIn author</th><th>B (baseline)</th><th>M (reach mult)</th><th>why</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>own post</td><td>1</td><td>1.0</td><td>impressions floor</td></tr>
+          <tr className="meth-table-hl"><td>external / earned</td><td>5</td><td>1.5</td><td>new eyes worth more</td></tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 7 — Author-type fork                                       */
+/* ------------------------------------------------------------------ */
+function AuthorFork() {
+  return (
+    <div className="fork-wrap">
+      <div className="fork-q">Own page or employee?<br /><span className="fork-q-sub">matched by LinkedIn URN · company name in headline · employee classifier</span></div>
+      <div className="fork-branches">
+        <div className="fork-branch">
+          <span className="fork-yn fork-yes">YES</span>
+          <div className="fork-pill">
+            <div className="fork-pill-title">COMPANY</div>
+            <div className="fork-pill-sub">B = 1 · M = 1.0</div>
+            <div className="fork-pill-note">impressions floor</div>
+          </div>
+        </div>
+        <div className="fork-branch">
+          <span className="fork-yn fork-no">NO</span>
+          <div className="fork-pill fork-pill-accent">
+            <div className="fork-pill-title">EXTERNAL</div>
+            <div className="fork-pill-sub">B = 5 · M = 1.5</div>
+            <div className="fork-pill-note">earned = new eyes</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 8 — Within-platform share pool                             */
+/* ------------------------------------------------------------------ */
+function SharePoolBar() {
+  // one LinkedIn pool of 540 weight; Twine/example = 131.5 → 24.4%
+  const segments = [
+    { name: 'this company', val: 131.5, accent: true },
+    { name: 'competitor B', val: 150 },
+    { name: 'competitor C', val: 128 },
+    { name: 'others', val: 130.5 },
+  ]
+  const total = segments.reduce((s, seg) => s + seg.val, 0)
+  const W = 700, H = 38
+  // Pre-compute each segment's left offset (purely functional render).
+  const offsets = segments.reduce((acc, seg) => [...acc, acc[acc.length - 1] + (seg.val / total) * W], [0])
+  return (
+    <div className="pool-wrap">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="within-platform share pool">
+        {segments.map((seg, i) => {
+          const w = (seg.val / total) * W
+          const x = offsets[i]
+          return (
+            <g key={seg.name}>
+              <rect x={x} y="0" width={w - 1.5} height={H} rx="5" fill={seg.accent ? 'var(--accent)' : 'var(--inner-bg)'} stroke={seg.accent ? 'var(--accent)' : 'var(--divider)'} strokeWidth="1" />
+              <text x={x + (w / 2)} y={H / 2 + 4} textAnchor="middle" className="pool-seg-text" fill={seg.accent ? '#0B0D00' : 'var(--text-secondary)'}>
+                {seg.accent ? '24.4%' : ''}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+      <div className="pool-note">
+        share<sub>LinkedIn</sub> = <Fraction num="131.5 (this company)" den="540 (all direct competitors on LinkedIn)" /> = <strong>24.4%</strong>
+      </div>
+      <div className="chip pool-guard">min-volume guard: drop platform if total weight &lt; 3 — one stray post can’t swing the board</div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 9 — Cross-platform blend + renormalization                 */
+/* ------------------------------------------------------------------ */
+const BLEND = [
+  { name: 'LinkedIn', w: 0.35, color: 'var(--linkedin-color)' },
+  { name: 'Google News', w: 0.30, color: 'var(--news-color)' },
+  { name: 'Reddit', w: 0.20, color: 'var(--reddit-color)' },
+  { name: 'X', w: 0.15, color: 'var(--x-color)' },
+]
+function BlendStackedBar({ data, label }) {
+  const W = 700, H = 30
+  // Pre-compute each segment's left offset so the render is purely functional.
+  const offsets = data.reduce((acc, b) => [...acc, acc[acc.length - 1] + b.w * W], [0])
+  return (
+    <div className="blend-bar-block">
+      <div className="blend-bar-label">{label}</div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label}>
+        {data.map((b, i) => {
+          const w = b.w * W
+          const x = offsets[i]
+          return (
+            <g key={b.name}>
+              <rect x={x} y="0" width={w - 1.5} height={H} rx="4" fill={b.color} opacity="0.85" />
+              <text x={x + w / 2} y={H / 2 + 4} textAnchor="middle" className="blend-seg-text">{(b.w * 100).toFixed(0)}%</text>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+function BlendWeights() {
+  const renorm = (() => {
+    // drop X → renormalize remaining three to sum 1
+    const kept = BLEND.filter(b => b.name !== 'X')
+    const sum = kept.reduce((s, b) => s + b.w, 0)
+    return kept.map(b => ({ ...b, w: b.w / sum }))
+  })()
+  return (
+    <div className="blend-wrap">
+      <BlendStackedBar data={BLEND} label="Base weights (all 4 platforms eligible)" />
+      <BlendStackedBar data={renorm} label="X dropped → remaining three renormalized to sum 1" />
+      <div className="blend-legend">
+        {BLEND.map(b => (
+          <span key={b.name} className="cl-item"><span className="eq-dot" style={{ background: b.color }} />{b.name} {b.w}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 10a — Loudness vs breadth                                  */
+/* ------------------------------------------------------------------ */
+function LoudVsBreadth() {
+  const bars = [
+    { label: 'weighted-share', sub: 'how loud', val: 26.4, color: 'var(--accent)' },
+    { label: 'count-share', sub: 'how often', val: 19.1, color: 'var(--neutral)' },
+  ]
+  const max = 30, W = 300, H = 18
+  return (
+    <div className="lvb-wrap">
+      {bars.map(b => (
+        <div key={b.label} className="lvb-row">
+          <div className="lvb-meta"><span className="lvb-label">{b.label}</span><span className="lvb-sub">{b.sub}</span></div>
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="lvb-svg" role="img" aria-label={`${b.label} ${b.val}`}>
+            <rect x="0" y="0" width={W} height={H} rx="5" fill="var(--inner-bg)" />
+            <rect x="0" y="0" width={(b.val / max) * W} height={H} rx="5" fill={b.color} opacity="0.85" />
+            <text x={(b.val / max) * W + 6} y={H / 2 + 4} className="lvb-val">{b.val}%</text>
+          </svg>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 10b — 80/20 SOV composition keystone                       */
+/* ------------------------------------------------------------------ */
+function SovSplitBar() {
+  const W = 700, H = 44
+  const loudW = 0.8 * W
+  return (
+    <div className="sov-split-wrap">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="80/20 SOV composition">
+        <rect x="0" y="0" width={loudW - 2} height={H} rx="6" fill="var(--accent)" />
+        <text x={loudW / 2} y={H / 2 - 2} textAnchor="middle" className="sov-split-pct" fill="#0B0D00">80%</text>
+        <text x={loudW / 2} y={H / 2 + 13} textAnchor="middle" className="sov-split-lbl" fill="#0B0D00">weighted-share (loud)</text>
+        <rect x={loudW} y="0" width={W - loudW} height={H} rx="6" fill="var(--accent-dim)" stroke="var(--accent)" strokeWidth="1" />
+        <text x={loudW + (W - loudW) / 2} y={H / 2 - 2} textAnchor="middle" className="sov-split-pct" fill="var(--accent)">20%</text>
+        <text x={loudW + (W - loudW) / 2} y={H / 2 + 13} textAnchor="middle" className="sov-split-lbl" fill="var(--accent)">count (often)</text>
+      </svg>
+      <div className="sov-arrow">↓</div>
+      <GlassCard className="stat-card sov-stat" intensity={8}>
+        <div className="label">HEADLINE SOV%</div>
+        <div className="value accent">24.9</div>
+        <div className="sub">0.8 · weighted-share + 0.2 · count-share</div>
+      </GlassCard>
+      <div className="sov-micro">Direct competitors sum to exactly 100%. Indirect competitors are scored + graphed but excluded from the %.</div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Visual 11 — Sentiment side-channel sparkline                      */
+/* ------------------------------------------------------------------ */
+const SENT_DATA = [
+  { w: 'W1', s: 0.4 }, { w: 'W2', s: 0.7 }, { w: 'W3', s: 0.5 },
+  { w: 'W4', s: 0.9 }, { w: 'W5', s: 1.1 }, { w: 'W6', s: 0.8 }, { w: 'W7', s: 1.2 },
+]
+function SentimentSpark() {
+  return (
+    <div className="trend-chart-wrap">
+      <div className="chart-clip">
+        <ResponsiveContainer width="100%" height={120}>
+          <LineChart data={SENT_DATA} margin={{ top: 8, right: 18, bottom: 4, left: -16 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} vertical={false} />
+            <XAxis dataKey="w" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} tickLine={false} axisLine={{ stroke: 'var(--border)', opacity: 0.4 }} />
+            <YAxis domain={[-3, 3]} ticks={[-3, 0, 3]} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} tickLine={false} axisLine={false} width={28} />
+            <Tooltip content={<ReachTip />} />
+            <Line type="monotone" dataKey="s" name="avg external sentiment" stroke="var(--accent)" strokeWidth={2.5} dot={{ r: 2.5, fill: 'var(--accent)', strokeWidth: 0 }} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="chart-note">Illustrative weekly trend over EXTERNAL posts/news only.</div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Footer glossary                                                   */
+/* ------------------------------------------------------------------ */
+const GLOSSARY = [
+  ['direct competitor', 'counted in the SOV %; the set sums to 100%'],
+  ['indirect competitor', 'tracked + graphed, excluded from the %'],
+  ['eng', 'weighted interaction count per post'],
+  ['reach', 'eng^(49/50) — eyeballs with mild diminishing returns'],
+  ['sentMult', '0.5–1.3 tone multiplier'],
+  ['decay', 'age weighting; 7-day grace then halving'],
+  ['post_weight', 'reach × sentMult × decay, scaled by author'],
+  ['share_p', 'a company’s post_weight ÷ the platform pool'],
+]
+
+/* ------------------------------------------------------------------ */
+/*  Rail (sticky mini-TOC)                                            */
+/* ------------------------------------------------------------------ */
+const STAGE_IDS = [
+  'intro', 'engagement', 'reach', 'sentiment', 'decay', 'weight',
+  'author', 'share', 'blend', 'count', 'sov', 'sentiment-metric',
+]
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                              */
+/* ------------------------------------------------------------------ */
+export default function Equations({ onLogout, onNavigate }) {
+  const [activeStage, setActiveStage] = useState('intro')
+  const obsRef = useRef(null)
+
+  useEffect(() => {
+    const els = STAGE_IDS.map(id => document.getElementById(id)).filter(Boolean)
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter(e => e.isIntersecting)
+        if (visible.length) {
+          // pick the topmost intersecting section
+          visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+          setActiveStage(visible[0].target.id)
+        }
+      },
+      { rootMargin: '-30% 0px -60% 0px', threshold: 0 }
+    )
+    els.forEach(el => observer.observe(el))
+    obsRef.current = observer
+    return () => observer.disconnect()
+  }, [])
+
+  const jump = (id) => {
+    const el = document.getElementById(id)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  // hero highlight maps the author/blend/count/sov ids back to a hero node
+  const heroActive = ['engagement', 'reach', 'sentiment', 'decay', 'weight', 'share'].includes(activeStage)
+    ? activeStage
+    : (activeStage === 'author' ? 'weight' : (['blend', 'count', 'sov', 'sentiment-metric'].includes(activeStage) ? 'sov' : null))
+
+  return (
+    <div className="app">
+      <header className="header">
+        <div className="header-left">
+          <img src="/twine-logo.svg" alt="Twine" className="header-logo" />
+          <h1>Twine <span>Methodology</span></h1>
+        </div>
+        <div className="header-right">
+          {onNavigate && (
+            <button className="theme-btn" onClick={() => onNavigate('dashboard')} aria-label="Back to dashboard" title="Back to dashboard">
+              <ArrowLeft size={16} />
+            </button>
+          )}
+          {onLogout && (
+            <button className="theme-btn" onClick={onLogout} aria-label="Log out" title="Log out">
+              <LogOut size={16} />
+            </button>
+          )}
+        </div>
+      </header>
+
+      <div className="meth-layout">
+        {/* sticky flow rail */}
+        <nav className="meth-rail" aria-label="Pipeline stages">
+          {STAGE_IDS.map((id, i) => (
+            <button
+              key={id}
+              className={`meth-rail-dot ${activeStage === id ? 'active' : ''}`}
+              onClick={() => jump(id)}
+              aria-label={`Jump to stage ${i}`}
+              title={id}
+            >
+              <span className="meth-rail-tick" />
+            </button>
+          ))}
+        </nav>
+
+        <main className="meth-page">
+          {/* 0 — INTRO */}
+          <GlassCard className="card meth-card" style={{ scrollMarginTop: '96px' }} id="intro">
+            <div className="meth-eyebrow">THE MATH</div>
+            <h2 className="meth-title">How a post becomes Share of Voice</h2>
+            <p className="meth-thesis">
+              Every week the workflow reads thousands of mentions and answers one question — who owns the conversation?
+              Each mention is scored as a signal, decayed by age, weighted by who said it, pooled per platform, then blended
+              into one number. Follow one post down the line.
+            </p>
+            <Hero active={heroActive} onJump={jump} />
+            <Callout>
+              <strong>The example we’ll follow:</strong> {EXAMPLE.blurb}
+            </Callout>
+          </GlassCard>
+
+          {/* 1 — ENGAGEMENT */}
+          <Stage number="1" id="engagement" title="Engagement (per post)"
+            intuition="Count the interactions, but weight the ones that spread reach."
+            pill={trace('engagement')}>
+            <EquationRow label="LinkedIn" color="var(--linkedin-color)">
+              eng = 1·reactions + 3·comments + 10·reshares (+1.5 if image)
+            </EquationRow>
+            <EquationRow label="X" color="var(--x-color)">
+              eng = 1·likes + 2·replies + 10·reposts + 4·quotes
+            </EquationRow>
+            <EquationRow label="Reddit" color="var(--reddit-color)">
+              eng = 1·upvotes + 3·comments
+            </EquationRow>
+            <Callout>Reshares / reposts ×10 — they manufacture new reach, not just register approval.</Callout>
+            <EngWeightBars />
+            <div className="meth-example-line">example: 40 + 3·6 + 10·3 + 1.5 = <strong>89.5</strong></div>
+          </Stage>
+
+          {/* 2 — REACH */}
+          <Stage number="2" id="reach" title="Reach"
+            intuition="Engagement turned into eyeballs, with mild diminishing returns."
+            pill={trace('reach')}>
+            <EquationRow label="default" color="var(--text-muted)">reach = eng^(49/50)</EquationRow>
+            <EquationRow label="X" color="var(--x-color)" note="X gives real impressions">reach = (viewCount + eng)^(49/50)</EquationRow>
+            <EquationRow label="News" color="var(--news-color)" note="presence is the signal">reach = 1</EquationRow>
+            <ReachCurve />
+            <div className="meth-example-line">example: 89.5^0.98 ≈ <strong>81.8</strong></div>
+          </Stage>
+
+          {/* 3 — SENTIMENT MULTIPLIER */}
+          <Stage number="3" id="sentiment" title="Sentiment multiplier"
+            intuition="Tone scales the score up or down, never erases it."
+            pill={trace('sentiment')}>
+            <EquationRow>sentMult = 0.5 + ((clamp(sentiment, −3, 3) + 3) / 6) · 0.8</EquationRow>
+            <Callout>Range 0.5 (very neg) → 0.9 (neutral) → 1.3 (very pos): a glowing post is worth ≈2.6× a trashed one of identical size.</Callout>
+            <SentMultRamp />
+            <div className="meth-example-line">example: sentiment +1 → 0.5 + (4/6)·0.8 = <strong>1.03</strong></div>
+          </Stage>
+
+          {/* 4 — TIME DECAY */}
+          <Stage number="4" id="decay" title="Time decay"
+            intuition="Full strength for a week, then it halves every half-life."
+            pill={trace('decay')}>
+            <EquationRow>decay = ageDays ≤ 7 ? 1 : 2^(−ageDays / halfLife)</EquationRow>
+            <div className="meth-halflives">
+              Half-lives: <b style={{ color: 'var(--linkedin-color)' }}>LinkedIn 14d</b> · <b style={{ color: 'var(--news-color)' }}>Google News 30d</b> · <b style={{ color: 'var(--reddit-color)' }}>Reddit 10d</b> · <b style={{ color: 'var(--x-color)' }}>X 7d</b> (X fastest / ephemeral, News slowest / evergreen)
+            </div>
+            <DecayCurves />
+            <div className="meth-example-line">example: 6 days ≤ 7 → decay = <strong>1.0</strong></div>
+          </Stage>
+
+          {/* 5 — PER-POST WEIGHT */}
+          <Stage number="5" id="weight" title="Per-post weight"
+            intuition="Bundle reach × tone × freshness, scaled by who’s talking."
+            pill={trace('weight')}>
+            <EquationRow label="LinkedIn" color="var(--linkedin-color)">
+              post_weight = (B<sub>author</sub> + reach·M<sub>author</sub>) · sentMult · decay
+            </EquationRow>
+            <EquationRow label="X" color="var(--x-color)">post_weight = reach · authorWeight · sentMult · decay</EquationRow>
+            <EquationRow label="Reddit" color="var(--reddit-color)">post_weight = reach · sentMult · decay</EquationRow>
+            <EquationRow label="News" color="var(--news-color)">post_weight = 1 · authorityMult · sentMult · decay</EquationRow>
+            <WeightBus />
+            <div className="meth-example-line">example (external author): (5 + 81.8·1.5) · 1.03 · 1.0 ≈ <strong>131.5</strong></div>
+          </Stage>
+
+          {/* 6 — AUTHOR TYPE */}
+          <Stage number="6" id="author" title="Author type"
+            intuition="Is this the company’s own megaphone, or someone else talking about it?"
+            pill={trace('author')}>
+            <p className="meth-body">
+              <code className="eq-inline">‘company’</code> if the author is the company’s own page OR an employee
+              (matched by LinkedIn URN, company name in the author headline, or the employee classifier); otherwise
+              <code className="eq-inline">‘external’</code>. This switch picks B/M and authorWeight in stage 5.
+            </p>
+            <AuthorFork />
+            <div className="meth-example-line">example: posted by external commentator → <strong>external (B=5, M=1.5)</strong></div>
+          </Stage>
+
+          {/* 7 — WITHIN-PLATFORM SHARE */}
+          <Stage number="7" id="share" title="Within-platform share"
+            intuition="Your slice of the conversation on one platform."
+            pill={trace('share')}>
+            <div className="eq-frac-block">
+              share<sub>p</sub>(co) = <Fraction num="that company’s summed post_weight on platform p" den="summed post_weight over all DIRECT competitors on p" />
+            </div>
+            <SharePoolBar />
+            <div className="meth-example-line">example: 131.5 of a 540 LinkedIn pool → <strong>24.4%</strong> LinkedIn share</div>
+          </Stage>
+
+          {/* 8 — CROSS-PLATFORM BLEND */}
+          <Stage number="8" id="blend" title="Cross-platform blend"
+            intuition="Combine the four platforms by how much each matters."
+            pill={trace('blend')}>
+            <EquationRow>weighted-share = Σ (normWeight<sub>p</sub> · share<sub>p</sub>) · 100</EquationRow>
+            <Callout>Base weights LinkedIn 0.35 · Google News 0.30 · Reddit 0.20 · X 0.15, RENORMALIZED over eligible platforms. Weights always re-sum to 1 across survivors (if X drops, its 0.15 redistributes).</Callout>
+            <BlendWeights />
+          </Stage>
+
+          {/* 9 — COUNT-SHARE */}
+          <Stage number="9" id="count" title="Count-share (breadth)"
+            intuition="How often you’re talked about, decayed by age."
+            pill={trace('count')}>
+            <div className="eq-frac-block">
+              count-share = <Fraction num="Σ decay(age) over ALL the company’s posts" den="Σ over all DIRECT competitors" /> · 100
+            </div>
+            <Callout>A decayed post COUNT (volume, not weight); includes the company’s OWN posts (producing content is part of the OKR). weighted-share = how loud; count-share = how often.</Callout>
+            <LoudVsBreadth />
+          </Stage>
+
+          {/* 10 — HEADLINE SOV% */}
+          <Stage number="10" id="sov" title="Headline SOV%"
+            intuition="80% loudness, 20% breadth — the one number."
+            pill={trace('sov')}>
+            <EquationRow>SOV% = 0.8 · weighted-share + 0.2 · count-share</EquationRow>
+            <SovSplitBar />
+          </Stage>
+
+          {/* 11 — SENTIMENT (display metric) */}
+          <Stage number="11" id="sentiment-metric" title="Sentiment (display metric)"
+            intuition="Earned market perception, tracked beside the score — not inside it.">
+            <div className="meth-fence-label">DISPLAY METRIC · NOT IN SOV%</div>
+            <p className="meth-body">
+              Average sentiment over <strong>EXTERNAL</strong> posts / news only — earned perception, not your own megaphone.
+              Shown on the dashboard as its own column + weekly trend.
+            </p>
+            <SentimentSpark />
+          </Stage>
+
+          {/* 12 — FOOTER GLOSSARY */}
+          <GlassCard className="card meth-card" id="glossary">
+            <div className="meth-eyebrow">GLOSSARY</div>
+            <div className="meth-glossary">
+              {GLOSSARY.map(([term, def]) => (
+                <div key={term} className="meth-gloss-item">
+                  <span className="chip meth-gloss-term">{term}</span>
+                  <span className="meth-gloss-def">{def}</span>
+                </div>
+              ))}
+            </div>
+            <div className="growth-footnote meth-footer">
+              <span>Static reference — no live data. Numbers labelled “example” are illustrative.</span>
+              {onNavigate && (
+                <button className="meth-back-link" onClick={() => onNavigate('dashboard')}>
+                  <ArrowLeft size={14} /> Back to dashboard
+                </button>
+              )}
+            </div>
+          </GlassCard>
+        </main>
+      </div>
+    </div>
+  )
+}

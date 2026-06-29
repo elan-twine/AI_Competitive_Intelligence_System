@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { BarChart3, Globe, Moon, Sun, LogOut, Filter, ArrowUpDown, SlidersHorizontal, Users } from 'lucide-react'
+import { BarChart3, Globe, Moon, Sun, LogOut, Filter, ArrowUpDown, SlidersHorizontal, Users, Sigma } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
@@ -146,6 +146,11 @@ function Dashboard({ onLogout, onNavigate }) {
           <button className={`view-seg ${view === 'briefings' ? 'active' : ''}`} onClick={() => setView('briefings')}>Briefings</button>
         </div>
         <div className="header-right">
+          {onNavigate && (
+            <button className="theme-btn" onClick={() => onNavigate('methodology')} aria-label="The Math — how SOV is computed" title="The Math">
+              <Sigma size={16} />
+            </button>
+          )}
           {onNavigate && (
             <button className="theme-btn" onClick={() => onNavigate('competitors')} aria-label="Manage competitors" title="Manage competitors">
               <Users size={16} />
