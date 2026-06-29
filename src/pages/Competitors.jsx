@@ -34,7 +34,12 @@ export default function Competitors({ onLogout, onNavigate }) {
   const [editId, setEditId] = useState(null)
   const [editForm, setEditForm] = useState({ name: '', aliases: '', linkedin_urn: '', linkedin_url: '', domain: '', x_handle: '', subreddits: '', type: 'direct' })
   const [busyId, setBusyId] = useState(null)
-  const [showRemoved, setShowRemoved] = useState(false)
+
+  // Roster controls (net-new state)
+  const [filter, setFilter] = useState('all')        // 'all' | 'direct' | 'indirect' | 'removed'
+  const [confirmId, setConfirmId] = useState(null)    // id awaiting remove-confirm
+  const [rowError, setRowError] = useState(null)      // { id, msg } | null — inline per-tile error
+  const [editError, setEditError] = useState(null)    // string | null — inline edit error
 
   const onUrlChange = (e) => {
     const v = e.target.value
@@ -78,13 +83,16 @@ export default function Competitors({ onLogout, onNavigate }) {
 
   const setActive = async (c, active) => {
     setBusyId(c.id)
+    setRowError(null)
+    setConfirmId(null)
     try { await updateCompetitor(c.id, { active }) }
-    catch (err) { alert(err.message || 'Failed to update') }
+    catch (err) { setRowError({ id: c.id, msg: err.message || 'Failed to update' }) }
     finally { setBusyId(null) }
   }
 
   const startEdit = (c) => {
     setEditId(c.id)
+    setEditError(null)
     setEditForm({
       name: c.name || '', aliases: fromList(c.aliases), linkedin_urn: c.linkedin_urn || '',
       linkedin_url: c.linkedin_url || '', domain: c.domain || '', x_handle: c.x_handle || '',
@@ -92,7 +100,8 @@ export default function Competitors({ onLogout, onNavigate }) {
     })
   }
   const saveEdit = async (id) => {
-    if (!editForm.name.trim()) return
+    if (!editForm.name.trim()) { setEditError('Name is required'); return }
+    setEditError(null)
     setBusyId(id)
     try {
       await updateCompetitor(id, {
@@ -102,12 +111,20 @@ export default function Competitors({ onLogout, onNavigate }) {
         subreddits: toList(editForm.subreddits), type: editForm.type,
       })
       setEditId(null)
-    } catch (err) { alert(err.message || 'Failed to save') }
+    } catch (err) { setRowError({ id, msg: err.message || 'Failed to save' }) }
     finally { setBusyId(null) }
   }
 
+  // Derivations (semantics unchanged) — '!== false' keeps null/undefined active.
   const active = competitors.filter(c => c.active !== false)
   const removed = competitors.filter(c => c.active === false)
+  const directCount = active.filter(c => (c.type || 'direct') !== 'indirect').length
+  const indirectCount = active.filter(c => (c.type || 'direct') === 'indirect').length
+  const visible = filter === 'removed'
+    ? removed
+    : filter === 'all'
+      ? active
+      : active.filter(c => (c.type || 'direct') === filter)
 
   return (
     <div className="app">
@@ -130,13 +147,32 @@ export default function Competitors({ onLogout, onNavigate }) {
         </div>
       </header>
 
-      {/* Quick add by LinkedIn URL */}
+      {/* ZONE 1 — stat strip (read-only summary) */}
+      <div className="comp-stats">
+        <GlassCard className="stat-card" intensity={10}>
+          <div className="label">TRACKED</div>
+          <div className="value">{active.length}</div>
+          <div className="sub">competitors in rotation</div>
+        </GlassCard>
+        <GlassCard className="stat-card" intensity={10}>
+          <div className="label">DIRECT</div>
+          <div className="value accent">{directCount}</div>
+          <div className="sub">counted in SOV ranking</div>
+        </GlassCard>
+        <GlassCard className="stat-card" intensity={10}>
+          <div className="label">INDIRECT</div>
+          <div className="value">{indirectCount}</div>
+          <div className="sub">track &amp; learn only</div>
+        </GlassCard>
+      </div>
+
+      {/* ZONE 2 — add a competitor */}
       <GlassCard className="card" style={{ marginBottom: 32 }} intensity={3} interactive>
         <div className="card-header">
           <span className="card-title">Add a competitor</span>
           <span className="card-badge"><Plus size={11} style={{ marginRight: 4 }} />New</span>
         </div>
-        <p className="muted" style={{ margin: '0 0 14px', fontSize: 13 }}>
+        <p className="comp-help muted">
           Paste a LinkedIn company URL and click Add — the name fills in automatically, and the LinkedIn ID is resolved on the next run.
         </p>
         <form className="comp-form" onSubmit={handleAdd}>
@@ -144,14 +180,9 @@ export default function Competitors({ onLogout, onNavigate }) {
             <Field label="LinkedIn company URL *" value={url} onChange={onUrlChange}
               placeholder="https://www.linkedin.com/company/orchid-security" autoFocus />
             <Field label="Name" value={name} onChange={onNameChange} placeholder="(auto-filled from the URL)" />
-            <label className="auth-field comp-field">
-              <span>Type</span>
-              <select value={addType} onChange={e => setAddType(e.target.value)}>
-                <option value="direct">Direct — counted in SOV ranking</option>
-                <option value="indirect">Indirect — track &amp; learn only</option>
-              </select>
-            </label>
           </div>
+
+          <TypeChoice value={addType} onChange={setAddType} />
 
           <button type="button" className="comp-adv-toggle" onClick={() => setShowAdv(s => !s)}>
             {showAdv ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Advanced (aliases, domain, X, subreddits)
@@ -173,13 +204,19 @@ export default function Competitors({ onLogout, onNavigate }) {
         </form>
       </GlassCard>
 
-      {/* Tracked competitors (active only by default) */}
+      {/* ZONE 3 — roster toolbar (title + segmented filter) */}
+      <div className="comp-roster-bar">
+        <span className="card-title">Tracked competitors</span>
+        <SegFilter
+          value={filter}
+          onChange={setFilter}
+          counts={{ all: active.length, direct: directCount, indirect: indirectCount, removed: removed.length }}
+        />
+      </div>
+
+      {/* ZONE 4 — roster card */}
       <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
-        <div className="card-header">
-          <span className="card-title">Tracked competitors</span>
-          <span className="card-badge">{active.length} tracked</span>
-        </div>
-        <p className="muted" style={{ margin: '0 0 12px', fontSize: 13 }}>
+        <p className="comp-help muted">
           Remove drops a competitor from scraping and the dashboard immediately. History is kept, so you can re-add it anytime.
         </p>
 
@@ -187,97 +224,39 @@ export default function Competitors({ onLogout, onNavigate }) {
           <div className="empty-state"><p>Loading…</p></div>
         ) : error ? (
           <div className="empty-state"><p>Error: {error}</p></div>
-        ) : active.length === 0 ? (
-          <div className="empty-state"><p>No competitors yet — add one above.</p></div>
-        ) : (
-          <div className="table-wrap">
-            <table className="breakdown-table comp-table">
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left' }}>Name</th>
-                  <th style={{ textAlign: 'left' }}>Type</th>
-                  <th style={{ textAlign: 'left' }}>Domain</th>
-                  <th style={{ textAlign: 'left' }}>LinkedIn</th>
-                  <th style={{ textAlign: 'left' }}>X handle</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {active.map(c => {
-                  const editing = editId === c.id
-                  const isBusy = busyId === c.id
-                  if (editing) {
-                    return (
-                      <tr key={c.id} className="comp-edit-row">
-                        <td><input name="name" value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} /></td>
-                        <td>
-                          <select value={editForm.type} onChange={e => setEditForm(p => ({ ...p, type: e.target.value }))}>
-                            <option value="direct">direct</option>
-                            <option value="indirect">indirect</option>
-                          </select>
-                        </td>
-                        <td><input name="domain" value={editForm.domain} onChange={e => setEditForm(p => ({ ...p, domain: e.target.value }))} /></td>
-                        <td><input name="linkedin_url" value={editForm.linkedin_url} onChange={e => setEditForm(p => ({ ...p, linkedin_url: e.target.value }))} /></td>
-                        <td><input name="x_handle" value={editForm.x_handle} onChange={e => setEditForm(p => ({ ...p, x_handle: e.target.value }))} /></td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div className="comp-actions">
-                            <button className="icon-btn" title="Save" disabled={isBusy} onClick={() => saveEdit(c.id)}><Check size={14} /></button>
-                            <button className="icon-btn" title="Cancel" onClick={() => setEditId(null)}><X size={14} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  }
-                  return (
-                    <tr key={c.id} className={c.is_self ? 'is-twine' : ''}>
-                      <td className="col-company">
-                        {c.name}
-                        {c.aliases?.length > 0 && <span className="comp-aliases"> ({c.aliases.join(', ')})</span>}
-                      </td>
-                      <td><span className={`comp-type ${(c.type || 'direct') === 'indirect' ? 'indirect' : 'direct'}`}>{c.type || 'direct'}</span></td>
-                      <td>{c.domain || '—'}</td>
-                      <td>{c.linkedin_url ? <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer">page ↗</a> : '—'}</td>
-                      <td>{c.x_handle ? `@${c.x_handle}` : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div className="comp-actions">
-                          <button className="icon-btn" title="Edit" disabled={isBusy} onClick={() => startEdit(c)}><Pencil size={14} /></button>
-                          {!c.is_self && (
-                            <button className="icon-btn danger" title="Remove (deactivate — history kept)" disabled={isBusy} onClick={() => setActive(c, false)}><Trash2 size={14} /></button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+        ) : visible.length === 0 ? (
+          <div className="empty-state">
+            <p>
+              {filter === 'removed'
+                ? 'No removed competitors.'
+                : (filter === 'direct' || filter === 'indirect')
+                  ? `No ${filter} competitors.`
+                  : 'No competitors yet — add one above.'}
+            </p>
           </div>
-        )}
-
-        {removed.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <button className="comp-adv-toggle" onClick={() => setShowRemoved(s => !s)}>
-              {showRemoved ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Removed ({removed.length})
-            </button>
-            {showRemoved && (
-              <div className="table-wrap" style={{ marginTop: 8 }}>
-                <table className="breakdown-table comp-table">
-                  <tbody>
-                    {removed.map(c => (
-                      <tr key={c.id} style={{ opacity: 0.6 }}>
-                        <td className="col-company">{c.name}</td>
-                        <td>{c.domain || '—'}</td>
-                        <td style={{ textAlign: 'right' }}>
-                          <button className="icon-btn" title="Re-add to tracking" disabled={busyId === c.id} onClick={() => setActive(c, true)}>
-                            <RotateCcw size={14} /> Re-add
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        ) : (
+          <div className="comp-grid">
+            {visible.map(c => (
+              <CompetitorTile
+                key={c.id}
+                c={c}
+                removedView={filter === 'removed'}
+                editing={editId === c.id}
+                isBusy={busyId === c.id}
+                confirming={confirmId === c.id}
+                editForm={editForm}
+                setEditForm={setEditForm}
+                editError={editError}
+                rowError={rowError && rowError.id === c.id ? rowError.msg : null}
+                onEdit={() => startEdit(c)}
+                onCancelEdit={() => { setEditId(null); setEditError(null) }}
+                onSave={() => saveEdit(c.id)}
+                onAskRemove={() => { setConfirmId(c.id); setRowError(null) }}
+                onCancelRemove={() => setConfirmId(null)}
+                onRemove={() => setActive(c, false)}
+                onReadd={() => setActive(c, true)}
+              />
+            ))}
           </div>
         )}
       </GlassCard>
@@ -285,11 +264,174 @@ export default function Competitors({ onLogout, onNavigate }) {
   )
 }
 
+/* ---- in-file sub-components (pure markup over parent state/handlers) ---- */
+
 function Field({ label, ...props }) {
   return (
     <label className="auth-field comp-field">
       <span>{label}</span>
       <input type="text" {...props} />
     </label>
+  )
+}
+
+// Descriptive direct/indirect chip pair — shared by add form AND edit drawer so labels never diverge.
+function TypeChoice({ value, onChange }) {
+  return (
+    <div className="comp-type-choice chip-row">
+      <button
+        type="button"
+        className={`chip ${value === 'direct' ? 'active' : ''}`}
+        onClick={() => onChange('direct')}
+      >
+        Direct — counted in SOV ranking
+      </button>
+      <button
+        type="button"
+        className={`chip ${value === 'indirect' ? 'active' : ''}`}
+        onClick={() => onChange('indirect')}
+      >
+        Indirect — track &amp; learn only
+      </button>
+    </div>
+  )
+}
+
+function MetaChip({ dotColor, href, children }) {
+  const dot = <span className="comp-meta-dot" style={{ background: dotColor }} />
+  if (href) {
+    return (
+      <a className="comp-meta" href={href} target="_blank" rel="noopener noreferrer">
+        {dot}{children}
+      </a>
+    )
+  }
+  return <span className="comp-meta">{dot}{children}</span>
+}
+
+function SegFilter({ value, onChange, counts }) {
+  const opts = [
+    { key: 'all', label: 'All', count: counts.all },
+    { key: 'direct', label: 'Direct', count: counts.direct },
+    { key: 'indirect', label: 'Indirect', count: counts.indirect },
+    { key: 'removed', label: 'Removed', count: counts.removed },
+  ]
+  return (
+    <div className="comp-seg">
+      {opts.map(o => (
+        <button
+          key={o.key}
+          type="button"
+          className={`comp-seg-btn ${value === o.key ? 'active' : ''}`}
+          onClick={() => onChange(o.key)}
+        >
+          {o.label} <span className="comp-seg-count">({o.count})</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function CompetitorTile({
+  c, removedView, editing, isBusy, confirming,
+  editForm, setEditForm, editError, rowError,
+  onEdit, onCancelEdit, onSave, onAskRemove, onCancelRemove, onRemove, onReadd,
+}) {
+  const setF = (k) => (e) => setEditForm(p => ({ ...p, [k]: e.target.value }))
+  const typeClass = (c.type || 'direct') === 'indirect' ? 'indirect' : 'direct'
+
+  // REMOVED VIEW
+  if (removedView) {
+    return (
+      <div className="comp-tile is-removed">
+        <div className="comp-tile-head">
+          <span className="comp-tile-name">{c.name}</span>
+        </div>
+        <div className="comp-tile-meta">
+          {c.domain
+            ? <MetaChip dotColor="var(--text-muted)">{c.domain}</MetaChip>
+            : <span className="comp-meta is-empty"><span className="comp-meta-dot" style={{ background: 'var(--text-muted)' }} />No domain</span>}
+        </div>
+        {rowError && <div className="auth-error">{rowError}</div>}
+        <div className="comp-tile-actions">
+          <button className="icon-btn comp-readd" title="Re-add to tracking" disabled={isBusy} onClick={onReadd}>
+            <RotateCcw size={14} /> Re-add
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // EDIT MODE
+  if (editing) {
+    return (
+      <div className="comp-tile is-editing">
+        <div className="comp-edit-grid">
+          <Field label="Name" value={editForm.name} onChange={setF('name')} />
+          <div className="comp-edit-type">
+            <span className="comp-edit-type-label">Type</span>
+            <TypeChoice value={editForm.type} onChange={(v) => setEditForm(p => ({ ...p, type: v }))} />
+          </div>
+          <Field label="Domain" value={editForm.domain} onChange={setF('domain')} placeholder="orchid.security" />
+          <Field label="LinkedIn URL" value={editForm.linkedin_url} onChange={setF('linkedin_url')} placeholder="https://www.linkedin.com/company/…" />
+          <Field label="X handle" value={editForm.x_handle} onChange={setF('x_handle')} placeholder="orchidsec" />
+          <Field label="Aliases (comma-separated)" value={editForm.aliases} onChange={setF('aliases')} placeholder="Orchid, Orchid Sec" />
+          <Field label="Subreddits (comma-separated)" value={editForm.subreddits} onChange={setF('subreddits')} placeholder="cybersecurity, netsec" />
+          <Field label="LinkedIn URN (optional — auto-resolved)" value={editForm.linkedin_urn} onChange={setF('linkedin_urn')} placeholder="1234567" />
+        </div>
+        {editError && <div className="auth-error">{editError}</div>}
+        {rowError && <div className="auth-error">{rowError}</div>}
+        <div className="comp-tile-actions">
+          <button className="icon-btn" title="Save" disabled={isBusy} onClick={onSave}><Check size={14} /></button>
+          <button className="icon-btn" title="Cancel" onClick={onCancelEdit}><X size={14} /></button>
+        </div>
+      </div>
+    )
+  }
+
+  // DISPLAY MODE
+  const hasLinks = c.domain || c.linkedin_url || c.x_handle
+  return (
+    <div className={`comp-tile ${c.is_self ? 'is-twine' : ''}`}>
+      <div className="comp-tile-head">
+        <span className="comp-tile-name">
+          {c.name}
+          {c.is_self && <span className="comp-you">You</span>}
+        </span>
+        <span className={`comp-type ${typeClass}`}>{c.type || 'direct'}</span>
+      </div>
+
+      {c.aliases?.length > 0 && <div className="comp-tile-aliases">{c.aliases.join(', ')}</div>}
+
+      <div className="comp-tile-meta">
+        {c.domain && <MetaChip dotColor="var(--text-muted)">{c.domain}</MetaChip>}
+        {c.linkedin_url && <MetaChip dotColor="var(--linkedin-color)" href={c.linkedin_url}>page ↗</MetaChip>}
+        {c.x_handle && <MetaChip dotColor="var(--x-color)">@{c.x_handle}</MetaChip>}
+        {!hasLinks && (
+          <span className="comp-meta is-empty">
+            <span className="comp-meta-dot" style={{ background: 'var(--text-muted)' }} />No links yet
+          </span>
+        )}
+      </div>
+
+      {rowError && <div className="auth-error">{rowError}</div>}
+
+      <div className="comp-tile-actions">
+        {confirming ? (
+          <div className="comp-confirm">
+            <span className="comp-confirm-msg">Remove from tracking?</span>
+            <button className="icon-btn comp-readd" title="Cancel" onClick={onCancelRemove}>Cancel</button>
+            <button className="icon-btn comp-readd danger" title="Confirm remove" disabled={isBusy} onClick={onRemove}>Remove</button>
+          </div>
+        ) : (
+          <>
+            <button className="icon-btn" title="Edit" disabled={isBusy} onClick={onEdit}><Pencil size={14} /></button>
+            {!c.is_self && (
+              <button className="icon-btn danger" title="Remove (deactivate — history kept)" disabled={isBusy} onClick={onAskRemove}><Trash2 size={14} /></button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   )
 }

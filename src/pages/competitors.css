@@ -32,7 +32,7 @@
   .comp-quickadd { grid-template-columns: 1fr; }
 }
 
-/* subtle text button for "Advanced" + "Removed" disclosures */
+/* subtle text button for the "Advanced" disclosure */
 .comp-adv-toggle {
   display: inline-flex;
   align-items: center;
@@ -55,23 +55,7 @@
   font-size: 12px;
 }
 
-.comp-table input {
-  width: 100%;
-  background: var(--inner-bg, var(--bg-card));
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
-  border-radius: 6px;
-  padding: 6px 8px;
-  color: var(--text-primary);
-  font-size: 13px;
-}
-
-.comp-edit-extra {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-  flex-wrap: wrap;
-}
-
+/* shared action-cluster + icon button idiom */
 .comp-actions {
   display: inline-flex;
   gap: 6px;
@@ -107,32 +91,6 @@
   cursor: not-allowed;
 }
 
-.comp-toggle {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.comp-toggle.on {
-  color: var(--positive);
-  background: color-mix(in srgb, var(--positive) 12%, transparent);
-  border-color: color-mix(in srgb, var(--positive) 35%, transparent);
-}
-
-.comp-toggle.off {
-  color: var(--text-secondary);
-  background: var(--bg-card);
-}
-
-.comp-toggle:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 /* Direct/indirect classification badge */
 .comp-type {
   display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 6px;
@@ -140,3 +98,258 @@
 }
 .comp-type.direct { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 .comp-type.indirect { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border); }
+
+/* ============================================================
+   ZONE 1 — stat strip (reuses Dashboard .stat-card recipe)
+   ============================================================ */
+.comp-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+@media (max-width: 640px) {
+  .comp-stats { grid-template-columns: 1fr; }
+}
+
+/* helper copy — replaces scattered inline fontSize:13 */
+.comp-help {
+  margin: 0 0 14px;
+  font-size: 13px;
+}
+
+/* ============================================================
+   ZONE 3 — roster toolbar + segmented filter (clone of view-switch)
+   ============================================================ */
+.comp-roster-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.comp-seg {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+}
+
+.comp-seg-btn {
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.comp-seg-btn:hover {
+  color: var(--text-primary);
+  background: var(--inner-bg);
+}
+
+.comp-seg-btn.active {
+  background: var(--accent);
+  color: #0B0D00;
+}
+
+.comp-seg-count {
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* ============================================================
+   ZONE 4 — roster grid of glass tiles
+   ============================================================ */
+.comp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 560px) {
+  .comp-grid { grid-template-columns: 1fr; }
+}
+
+/* competitor tile — mirrors .platform-card nested-panel idiom */
+.comp-tile {
+  background: var(--inner-bg);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.25s;
+}
+
+.comp-tile:hover {
+  background: var(--inner-bg-hover);
+  border-color: var(--glow-color-hover);
+  box-shadow: 0 0 15px var(--glow-color);
+}
+
+/* self / Twine highlight — mirrors breakdown-table .is-twine */
+.comp-tile.is-twine { background: var(--accent-dim); }
+.comp-tile.is-twine .comp-tile-name { color: var(--accent); font-weight: 700; }
+
+[data-theme="light"] .comp-tile.is-twine { background: rgba(139, 166, 0, 0.15); }
+[data-theme="light"] .comp-tile.is-twine .comp-tile-name { color: #3f4a00; }
+
+.comp-tile.is-removed { opacity: 0.55; }
+
+/* the one sanctioned hardcode: dark-on-lime "You" pill */
+.comp-you {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #0B0D00;
+}
+
+.comp-tile-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.comp-tile-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comp-tile-aliases {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.comp-tile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.comp-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-card);
+  border: 1px solid var(--divider);
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+a.comp-meta:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.comp-meta-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.comp-meta.is-empty { color: var(--text-muted); }
+
+.comp-tile-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--divider);
+}
+
+/* inline edit drawer */
+.comp-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.comp-edit-type {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comp-edit-type-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* descriptive direct/indirect chip pair (add + edit) */
+.comp-type-choice {
+  align-self: flex-start;
+}
+
+/* inline confirm strip + widened text actions */
+.comp-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.comp-confirm-msg {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* widen .icon-btn to size an icon+text label (Re-add / confirm buttons) */
+.comp-readd {
+  width: auto;
+  padding: 6px 12px;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.comp-readd.danger {
+  border-color: var(--negative);
+  color: var(--negative);
+}
+
+.comp-readd.danger:hover {
+  background: color-mix(in srgb, var(--negative) 12%, transparent);
+  border-color: var(--negative);
+  color: var(--negative);
+}
+
+/* drawer entrance — self-contained, no landing.css dependency */
+@keyframes compDrawerIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.comp-tile.is-editing .comp-edit-grid {
+  animation: compDrawerIn 0.2s ease;
+}
