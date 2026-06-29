@@ -126,6 +126,11 @@ export default function Competitors({ onLogout, onNavigate }) {
       ? active
       : active.filter(c => (c.type || 'direct') === filter)
 
+  // When viewing "All", split the roster into Direct / Indirect groups so the
+  // distinction is unmistakable; any specific filter renders one flat group.
+  const directList = visible.filter(c => (c.type || 'direct') !== 'indirect')
+  const indirectList = visible.filter(c => (c.type || 'direct') === 'indirect')
+
   return (
     <div className="app">
       <header className="header">
@@ -235,8 +240,9 @@ export default function Competitors({ onLogout, onNavigate }) {
             </p>
           </div>
         ) : (
-          <div className="comp-grid">
-            {visible.map(c => (
+          (() => {
+            // Shared per-tile render so grouped and flat views stay identical.
+            const renderTile = (c) => (
               <CompetitorTile
                 key={c.id}
                 c={c}
@@ -256,8 +262,30 @@ export default function Competitors({ onLogout, onNavigate }) {
                 onRemove={() => setActive(c, false)}
                 onReadd={() => setActive(c, true)}
               />
-            ))}
-          </div>
+            )
+
+            // "All" → two labeled groups; a specific filter → one flat grid.
+            if (filter === 'all') {
+              return (
+                <div className="comp-groups">
+                  {directList.length > 0 && (
+                    <section className="comp-group">
+                      <GroupHeader kind="direct" label="Direct competitors" count={directList.length} hint="counted in SOV ranking" />
+                      <div className="comp-grid">{directList.map(renderTile)}</div>
+                    </section>
+                  )}
+                  {indirectList.length > 0 && (
+                    <section className="comp-group">
+                      <GroupHeader kind="indirect" label="Indirect competitors" count={indirectList.length} hint="track & learn only" />
+                      <div className="comp-grid">{indirectList.map(renderTile)}</div>
+                    </section>
+                  )}
+                </div>
+              )
+            }
+
+            return <div className="comp-grid">{visible.map(renderTile)}</div>
+          })()
         )}
       </GlassCard>
     </div>
@@ -328,6 +356,20 @@ function SegFilter({ value, onChange, counts }) {
           {o.label} <span className="comp-seg-count">({o.count})</span>
         </button>
       ))}
+    </div>
+  )
+}
+
+// Subtle labeled divider that splits the roster into Direct / Indirect groups.
+// Thin rule + small-caps label + count; lime accent reserved for the Direct dot.
+function GroupHeader({ kind, label, count, hint }) {
+  return (
+    <div className={`comp-group-head ${kind}`}>
+      <span className="comp-group-dot" aria-hidden="true" />
+      <span className="comp-group-label">{label}</span>
+      <span className="comp-group-count">{count}</span>
+      {hint && <span className="comp-group-hint">{hint}</span>}
+      <span className="comp-group-rule" aria-hidden="true" />
     </div>
   )
 }

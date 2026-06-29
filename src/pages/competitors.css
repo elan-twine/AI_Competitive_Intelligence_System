@@ -68,17 +68,26 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 7px;
+  border: 1px solid var(--divider);
   background: var(--bg-card);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .icon-btn:hover {
   color: var(--accent);
   background: var(--bg-card-hover);
+  border-color: var(--glow-color-hover);
+  box-shadow: 0 0 10px var(--glow-color);
+}
+
+/* light mode: lime icon on a pale hover bg is too low-contrast — darken it */
+[data-theme="light"] .icon-btn:hover {
+  color: #5a6b00;
+  border-color: rgba(139, 166, 0, 0.5);
+  box-shadow: none;
 }
 
 .icon-btn.danger:hover {
@@ -93,11 +102,31 @@
 
 /* Direct/indirect classification badge */
 .comp-type {
-  display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 6px;
-  text-transform: capitalize; font-weight: 600; line-height: 1.5;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; padding: 2px 9px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; line-height: 1.6;
+  flex-shrink: 0;
 }
-.comp-type.direct { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-.comp-type.indirect { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border); }
+.comp-type::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+}
+.comp-type.direct {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.comp-type.indirect {
+  background: var(--inner-bg);
+  color: var(--text-muted);
+  border: 1px solid var(--divider);
+}
+
+/* light mode: lime-on-pale badge text washes out — darken it */
+[data-theme="light"] .comp-type.direct {
+  color: #5a6b00;
+  background: rgba(139, 166, 0, 0.16);
+  border-color: rgba(139, 166, 0, 0.4);
+}
 
 /* ============================================================
    ZONE 1 — stat strip (reuses Dashboard .stat-card recipe)
@@ -164,11 +193,17 @@
 .comp-seg-btn.active {
   background: var(--accent);
   color: #0B0D00;
+  box-shadow: 0 1px 8px var(--glow-color);
 }
 
 .comp-seg-count {
   font-weight: 400;
   opacity: 0.8;
+}
+
+/* segmented count keeps a touch of contrast when its button is active */
+.comp-seg-btn.active .comp-seg-count {
+  opacity: 0.65;
 }
 
 /* ============================================================
@@ -184,34 +219,154 @@
   .comp-grid { grid-template-columns: 1fr; }
 }
 
+/* ---- Direct / Indirect groups (only in the "All" view) ---- */
+.comp-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* subtle labeled divider: dot + small-caps label + count + hint + thin rule */
+.comp-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.comp-group-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.comp-group-head.direct .comp-group-dot {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--glow-color-hover);
+}
+
+.comp-group-head.indirect .comp-group-dot {
+  background: var(--text-muted);
+}
+
+.comp-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.comp-group-head.direct .comp-group-label {
+  color: var(--text-primary);
+}
+
+.comp-group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+}
+
+.comp-group-head.direct .comp-group-count {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.comp-group-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.comp-group-rule {
+  flex: 1;
+  height: 1px;
+  min-width: 16px;
+  background: linear-gradient(90deg, var(--divider), transparent);
+}
+
+.comp-group-head.direct .comp-group-rule {
+  background: linear-gradient(90deg, var(--glow-color-hover), transparent);
+}
+
+/* light mode: keep the lime count legible (lime-on-pale washes out) */
+[data-theme="light"] .comp-group-head.direct .comp-group-count {
+  color: #5a6b00;
+  background: rgba(139, 166, 0, 0.16);
+  border-color: rgba(139, 166, 0, 0.4);
+}
+
+[data-theme="light"] .comp-group-head.direct .comp-group-rule {
+  background: linear-gradient(90deg, rgba(139, 166, 0, 0.5), transparent);
+}
+
+@media (max-width: 480px) {
+  .comp-group-hint { display: none; }
+}
+
 /* competitor tile — mirrors .platform-card nested-panel idiom */
 .comp-tile {
   background: var(--inner-bg);
-  border: 1px solid transparent;
+  border: 1px solid var(--divider);
   border-radius: var(--radius-sm);
-  padding: 16px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  transition: all 0.25s;
+  gap: 11px;
+  transition: background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.25s;
 }
 
 .comp-tile:hover {
   background: var(--inner-bg-hover);
   border-color: var(--glow-color-hover);
-  box-shadow: 0 0 15px var(--glow-color);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06), 0 0 15px var(--glow-color);
+  transform: translateY(-2px);
+}
+
+[data-theme="dark"] .comp-tile:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 15px var(--glow-color);
 }
 
 /* self / Twine highlight — mirrors breakdown-table .is-twine */
-.comp-tile.is-twine { background: var(--accent-dim); }
+.comp-tile.is-twine {
+  background: var(--accent-dim);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.comp-tile.is-twine:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
 .comp-tile.is-twine .comp-tile-name { color: var(--accent); font-weight: 700; }
 
-[data-theme="light"] .comp-tile.is-twine { background: rgba(139, 166, 0, 0.15); }
+[data-theme="light"] .comp-tile.is-twine {
+  background: rgba(139, 166, 0, 0.15);
+  border-color: rgba(139, 166, 0, 0.45);
+}
 [data-theme="light"] .comp-tile.is-twine .comp-tile-name { color: #3f4a00; }
 
 .comp-tile.is-removed { opacity: 0.55; }
+.comp-tile.is-removed:hover {
+  opacity: 0.8;
+  transform: none;
+  box-shadow: none;
+  border-color: var(--divider);
+}
 
-/* the one sanctioned hardcode: dark-on-lime "You" pill */
+/* the one sanctioned hardcode: dark-on-lime "You" pill (lime is identical in
+   both themes, so #0B0D00 text stays correct light + dark) */
 .comp-you {
   font-size: 10px;
   font-weight: 700;
@@ -221,13 +376,15 @@
   border-radius: 999px;
   background: var(--accent);
   color: #0B0D00;
+  box-shadow: 0 0 10px var(--glow-color-hover);
+  flex-shrink: 0;
 }
 
 .comp-tile-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
 .comp-tile-name {
@@ -238,11 +395,13 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .comp-tile-aliases {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  margin-top: -4px;
 }
 
 .comp-tile-meta {
@@ -262,10 +421,12 @@
   border: 1px solid var(--divider);
   color: var(--text-secondary);
   text-decoration: none;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
 a.comp-meta:hover {
-  border-color: var(--accent);
+  border-color: var(--glow-color-hover);
+  background: var(--bg-card-hover);
   color: var(--text-primary);
 }
 
