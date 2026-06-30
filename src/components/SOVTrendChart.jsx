@@ -3,23 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer,
 } from 'recharts'
 import { useWeeklySOV } from '../hooks/useWeeklySOV'
-
-// Distinct line colors for competitors. Twine is handled separately (it gets
-// the accent token + a thicker stroke), so this palette is for everyone else.
-const LINE_COLORS = [
-  '#0A66C2', // LinkedIn blue
-  '#FF4500', // reddit orange
-  '#34D399', // green
-  '#A855F7', // purple
-  '#F59E0B', // amber
-  '#EC4899', // pink
-  '#14B8A6', // teal
-  '#6366F1', // indigo
-  '#EF4444', // red
-  '#8B5CF6', // violet
-]
-
-const isTwine = (name) => /twine/i.test(name || '')
+import { colorForCompany, isTwine } from '../lib/colors'
 
 // Time-range options. weeks = how many trailing weekly snapshots to show.
 const RANGES = [
@@ -62,7 +46,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const [rangeKey, setRangeKey] = useState('3m')
   const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
   const [active, setActive] = useState(null)              // legend-hovered company (spotlight)
-  const [scope, setScope] = useState('all')               // 'all' | 'direct' — which competitor lines to draw
+  const [scope, setScope] = useState('direct')             // 'all' | 'direct' — which competitor lines to draw (default: direct)
 
   const range = RANGES.find(r => r.key === rangeKey) || RANGES[1]
   const data = useMemo(() => {
@@ -127,7 +111,6 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   }
   const activePill = { borderColor: 'var(--accent)', color: 'var(--accent)' }
 
-  let colorIdx = 0
   return (
     <div className="trend-chart-wrap">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -195,7 +178,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
           />
           {lines.map(name => {
             const twine = isTwine(name)
-            const color = twine ? 'var(--accent)' : LINE_COLORS[colorIdx++ % LINE_COLORS.length]
+            const color = colorForCompany(name)   // stable per-company color, independent of filter/order
             const dim = active && active !== name
             return (
               <Line
