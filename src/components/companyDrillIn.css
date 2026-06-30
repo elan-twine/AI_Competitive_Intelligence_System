@@ -230,7 +230,6 @@
   gap: 5px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  cursor: help;
 }
 .cdi-weight-val {
   font-size: 0.74rem;
