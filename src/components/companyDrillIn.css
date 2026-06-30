@@ -1,0 +1,290 @@
+/* Company drill-in — overlay panel opened from the SOV ranking rows.
+   Theme-safe: every color references a CSS variable from index.css so light
+   and dark both resolve automatically. */
+
+.cdi-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 20px;
+  overflow-y: auto;
+  animation: cdiFadeIn 0.18s ease;
+}
+
+.cdi-panel {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  animation: cdiPanelIn 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+  overflow: hidden;
+}
+
+.cdi-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  z-index: 5;
+}
+.cdi-close:hover {
+  color: var(--text-primary);
+  background: var(--inner-bg-hover);
+  border-color: var(--accent);
+}
+
+/* --- Header --- */
+.cdi-head {
+  padding: 28px 28px 20px;
+  border-bottom: 1px solid var(--divider);
+}
+.cdi-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-right: 40px; /* clear the close button */
+}
+.cdi-company {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.cdi-sov {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.cdi-sov-val {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.cdi-sov-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.cdi-why {
+  margin: 14px 0 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.cdi-why-stats {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.cdi-why-stats strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.cdi-dot { color: var(--divider); }
+
+/* --- Body / weeks --- */
+.cdi-body {
+  padding: 8px 28px 28px;
+  max-height: min(64vh, 760px);
+  overflow-y: auto;
+}
+.cdi-week { margin-top: 20px; }
+.cdi-week-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  padding: 8px 0 6px;
+  z-index: 1;
+}
+.cdi-week-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+.cdi-week-count {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.cdi-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* --- Post row --- */
+.cdi-post {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  background: var(--inner-bg);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, border-color 0.15s;
+}
+.cdi-post:hover {
+  background: var(--inner-bg-hover);
+  border-color: var(--accent);
+}
+.cdi-post-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  width: 64px;
+  padding-top: 2px;
+}
+.cdi-plat-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.cdi-plat-name {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.1;
+}
+.cdi-post-main {
+  flex: 1;
+  min-width: 0;
+}
+.cdi-post-metaline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.cdi-author {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.cdi-author-muted { color: var(--text-muted); font-weight: 500; }
+.cdi-source {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.cdi-weight {
+  margin-left: auto;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cdi-post-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  line-height: 1.35;
+}
+.cdi-post-text {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  word-break: break-word;
+}
+.cdi-post-text em { color: var(--text-muted); }
+.cdi-post-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cdi-eng {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.cdi-eng-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.cdi-eng-none {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.cdi-foot-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cdi-sent {
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cdi-sent.positive { color: var(--positive); }
+.cdi-sent.negative { color: var(--negative); }
+.cdi-sent.neutral { color: var(--neutral); }
+.cdi-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+.cdi-link:hover { color: var(--accent); }
+
+/* --- Clickable ranking rows (lives on the dashboard table) --- */
+.breakdown-table tbody tr.cdi-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.breakdown-table tbody tr.cdi-row:hover {
+  background: var(--inner-bg-hover);
+}
+
+@keyframes cdiFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes cdiPanelIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

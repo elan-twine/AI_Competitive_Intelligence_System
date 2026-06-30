@@ -5,8 +5,8 @@ import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
 import { GlassCard } from '../components/GlassCard'
 import { SOVTrendChart } from '../components/SOVTrendChart'
-import { GrowthStrategy } from '../components/GrowthStrategy'
 import { CompetitiveReview } from '../components/CompetitiveReview'
+import { CompanyDrillIn } from '../components/CompanyDrillIn'
 import { applyFilters, rankings, companyRow, platformSplit, compare } from '../lib/metrics'
 import Briefings from './Briefings'
 import '../App.css'
@@ -56,6 +56,8 @@ function Dashboard({ onLogout, onNavigate }) {
 
   // Overview
   const [sortKey, setSortKey] = useState('overall')
+  // Per-company drill-in (window into WHY a company's SOV is what it is)
+  const [drilledCompany, setDrilledCompany] = useState(null)
 
   // Compare
   const [compareA, setCompareA] = useState('')
@@ -84,13 +86,6 @@ function Dashboard({ onLogout, onNavigate }) {
     () => filtered.filter(p => directNames.has(p.companyName)),
     [filtered, directNames]
   )
-  // Growth Strategy looks at the full picture (ignores the global platform/time
-  // filter), still direct-only.
-  const directAllPosts = useMemo(
-    () => allPosts.filter(p => directNames.has(p.companyName)),
-    [allPosts, directNames]
-  )
-
   const ranked = useMemo(() => rankings(directPosts, sovConfig), [directPosts, sovConfig])
   const sortedRanked = useMemo(() => {
     const arr = [...ranked]
@@ -309,7 +304,12 @@ function Dashboard({ onLogout, onNavigate }) {
                   </thead>
                   <tbody>
                     {sortedRanked.map(r => (
-                      <tr key={r.company} className={isTwine(r.company) ? 'is-twine' : ''}>
+                      <tr
+                        key={r.company}
+                        className={`cdi-row ${isTwine(r.company) ? 'is-twine' : ''}`}
+                        onClick={() => setDrilledCompany(r.company)}
+                        title={`Why is ${r.company}'s SOV ${r.weightedPct.toFixed(1)}%? — click to drill in`}
+                      >
                         <td className="col-company">{r.company}</td>
                         <td>{r.postCount}</td>
                         <td><strong>{r.unweightedPct.toFixed(1)}%</strong></td>
@@ -325,11 +325,6 @@ function Dashboard({ onLogout, onNavigate }) {
               </div>
             )}
           </GlassCard>
-
-
-          {/* Twine growth strategy — where weak + how to climb (computed live, full dataset
-              so the cross-platform recommendation is independent of the active filter) */}
-          <GrowthStrategy posts={directAllPosts} config={sovConfig} />
 
           {/* Competitive Review — weekly view of competitor-authored posts +
               engagement (replaces the old Recent Mentions feed) */}
@@ -357,6 +352,16 @@ function Dashboard({ onLogout, onNavigate }) {
             <div className="empty-state"><p>Pick two different companies to compare</p></div>
           )}
         </GlassCard>
+      )}
+
+      {drilledCompany && (
+        <CompanyDrillIn
+          company={drilledCompany}
+          posts={directPosts}
+          allDirectPosts={directPosts}
+          config={sovConfig}
+          onClose={() => setDrilledCompany(null)}
+        />
       )}
       </>
       )}
