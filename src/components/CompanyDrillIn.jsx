@@ -369,7 +369,7 @@ function StandoutChip({ post }) {
             <Flame size={11} /> outlier
           </span>
         )}
-        <span className="cdi-chip-weight" title="This post's contribution to the SOV score">
+        <span className="cdi-chip-weight" title="This post's impact on the company's Share of Voice">
           ⚡ {Math.round(post.weight * 100) / 100}
         </span>
       </div>
@@ -408,10 +408,10 @@ function PostRow({ post }) {
           )}
           <span
             className="cdi-weight"
-            title="This post's contribution to the SOV score — engagement, reach, sentiment, recency, and who posted it."
+            title="This post's impact — how much it adds to the company's Share of Voice (engagement, reach, sentiment, recency, and who posted it). Not a percentage — a raw weight."
           >
             <span className="cdi-weight-val">⚡ {Math.round(post.weight * 100) / 100}</span>
-            <span className="cdi-weight-label">SOV score</span>
+            <span className="cdi-weight-label">impact</span>
           </span>
         </div>
         {headline && <div className="cdi-post-title">{headline}</div>}
