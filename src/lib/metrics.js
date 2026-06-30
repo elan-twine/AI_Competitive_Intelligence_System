@@ -54,7 +54,10 @@ export function companyRow(posts, company) {
   const postCount = rows.length
   const unweightedSOV = rows.reduce((s, p) => s + (p.unweightedSOV || 0), 0)
   const weightedSOV = rows.reduce((s, p) => s + (p.weightedSOV || 0), 0)
-  const sentimentRows = rows.filter(p => p.sentiment != null)
+  // Sentiment = EXTERNAL posts only (earned perception; a company's own posts are
+  // self-promo and ~always positive). Posts without an `external` flag (legacy)
+  // are treated as external so nothing silently drops.
+  const sentimentRows = rows.filter(p => p.sentiment != null && p.external !== false)
   const avgSentiment = sentimentRows.length
     ? sentimentRows.reduce((s, p) => s + p.sentiment, 0) / sentimentRows.length
     : 0
@@ -195,11 +198,13 @@ export function sentimentDimension(posts, company) {
 //   weighted   = methodology-driven cross-platform SOV (size of conversation)
 //   sentiment  = average tone, rescaled -3..+3 → 0..100 (its own dimension,
 //                bounded so a negative spike never inflates SOV)
-// OKR-aligned comparative SOV%: 80% engagement-weighted share ("seen") + 20%
-// decayed mention-count share ("talked about"). Sentiment is NOT in the headline
-// — it's its own dimension/graph. Per-post weight already carries the author
-// baseline + multiplier (external earns more than company-authored) via post_weight.
-const OVERALL_W = { unweighted: 0.20, weighted: 0.80, sentiment: 0 }
+// OKR-aligned comparative SOV% = the engagement-weighted cross-platform share
+// ("seen" / size of conversation). The decayed mention-count term was REMOVED
+// (2026-06-30): post quantity is already rewarded inside weighted (more posts →
+// larger post_weight sum → larger within-platform share), so a separate count
+// term double-counted volume and over-credited zero-engagement / noisy mentions.
+// count-share + sentiment remain as their own display dimensions, NOT in the headline.
+const OVERALL_W = { unweighted: 0, weighted: 1.0, sentiment: 0 }
 
 // Decayed mention count: each post contributes decay(age) instead of 1, so
 // "talked about" means recently (7-day grace, then 2^(-age/halfLife) per platform).
