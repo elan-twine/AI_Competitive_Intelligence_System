@@ -91,8 +91,13 @@
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-secondary);
-  margin-bottom: 18px;
+  margin-bottom: 12px;
   max-width: 70ch;
+}
+.meth-thesis:last-of-type { margin-bottom: 18px; }
+.meth-lede {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* ---- Stage scaffolding ---- */
@@ -419,30 +424,20 @@
 .blend-legend { display: flex; flex-wrap: wrap; gap: 12px; }
 
 /* ================================================================== */
-/*  Loudness vs breadth                                               */
+/*  SOV% keystone                                                     */
 /* ================================================================== */
-.lvb-wrap { margin: 12px 0 4px; display: flex; flex-direction: column; gap: 12px; }
-.lvb-row { display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center; }
-.lvb-meta { display: flex; flex-direction: column; }
-.lvb-label { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
-.lvb-sub { font-size: 11px; color: var(--text-muted); }
-.lvb-val { font-size: 11px; fill: var(--text-secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
-
-/* ================================================================== */
-/*  80/20 SOV keystone                                                */
-/* ================================================================== */
-.sov-split-wrap { margin: 12px 0 4px; display: flex; flex-direction: column; align-items: center; }
-.sov-split-pct { font-size: 14px; font-weight: 700; }
-.sov-split-lbl { font-size: 9.5px; font-weight: 600; }
-.sov-arrow { font-size: 22px; color: var(--accent); line-height: 1; margin: 4px 0; }
-.sov-stat { width: 260px; max-width: 100%; }
+.sov-key-wrap { margin: 14px 0 4px; display: flex; flex-direction: column; align-items: center; }
+.sov-stat { width: 280px; max-width: 100%; text-align: center; }
 .sov-micro {
-  font-size: 11.5px;
-  color: var(--text-muted);
+  font-size: 12.5px;
+  color: var(--text-secondary);
   text-align: center;
-  margin-top: 12px;
-  line-height: 1.5;
+  margin-top: 14px;
+  line-height: 1.55;
+  max-width: 56ch;
 }
+.sov-micro strong { color: var(--text-primary); }
+.sov-micro em { color: var(--accent); font-style: normal; font-weight: 600; }
 
 /* ================================================================== */
 /*  Sentiment fence                                                   */
@@ -493,5 +488,4 @@
   .meth-layout { grid-template-columns: 1fr; }
   .meth-rail { display: none; }
   .fork-branches { grid-template-columns: 1fr; }
-  .lvb-row { grid-template-columns: 1fr; }
 }
