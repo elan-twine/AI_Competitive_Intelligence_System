@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react'
-import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink, ChevronRight, Flame, Star } from 'lucide-react'
 import { computeWeightedSOV, postWeightOf } from '../lib/metrics'
 import './companyDrillIn.css'
 
@@ -158,6 +158,68 @@ function whyString(f) {
   return `${driver}, fueled mainly by ${fuel}${topW}.`
 }
 
+// --- "Why it did well": one short phrase per standout post, derived purely
+//     from that post's own data. Pick the single dominant driver. The engagement
+//     array is platform-normalized in normalizePost, so we read it by `key`. ---
+function engVal(np, key) {
+  const e = np.engagement.find(e => e.key === key)
+  return e && e.value != null ? e.value : 0
+}
+
+function whyDidWell(np) {
+  const reshares = engVal(np, 'reshares') // LinkedIn
+  const reposts = engVal(np, 'reposts')   // X
+  const quotes = engVal(np, 'quotes')     // X
+  const comments = engVal(np, 'comments') + engVal(np, 'replies') // LinkedIn / X / Reddit
+  const views = engVal(np, 'views')       // X
+  const reactions = engVal(np, 'reactions') + engVal(np, 'likes') + engVal(np, 'upvotes')
+
+  // Amplification (others spreading it) is the strongest organic-reach signal.
+  if (reposts >= 5) return { phrase: `viral on X (${fmtNum(reposts)} reposts)`, kind: 'reach' }
+  if (reshares >= 3) return { phrase: `amplified by ${fmtNum(reshares)} reshares`, kind: 'reach' }
+  if (quotes >= 3) return { phrase: `${fmtNum(quotes)} quote-posts spread it`, kind: 'reach' }
+  // Earned, external reach is worth flagging even at modest engagement.
+  if (np.external !== false && views >= 5000) return { phrase: `high earned reach (${fmtNum(views)} views)`, kind: 'reach' }
+  if (comments >= 8) return { phrase: `sparked discussion (${fmtNum(comments)} comments)`, kind: 'engage' }
+  if (reactions >= 50) return { phrase: `lots of engagement (${fmtNum(reactions)} reactions)`, kind: 'engage' }
+  if (views >= 5000) return { phrase: `wide reach (${fmtNum(views)} views)`, kind: 'reach' }
+  // Tone / source fallbacks when raw engagement is unremarkable.
+  if (np.sentiment != null && np.sentiment >= 2) return { phrase: 'strong positive sentiment', kind: 'tone' }
+  if (np.external === false) return { phrase: 'company announcement that landed', kind: 'own' }
+  if (reactions > 0 || comments > 0) return { phrase: `steady engagement (${fmtNum(reactions + comments)})`, kind: 'engage' }
+  return { phrase: 'high weighted contribution', kind: 'weight' }
+}
+
+// --- Standouts: the company's few highest-impact posts + statistical outliers.
+//     Outlier = post_weight clearly above this company's own typical level
+//     (mean + 1·stddev, with a sane floor). We always surface the top posts by
+//     weight; outliers among them get a flag. Returns up to `max` items. ---
+function deriveStandouts(weeks, max = 5) {
+  const all = []
+  for (const w of weeks) for (const p of w.posts) all.push({ ...p, weekLabel: w.label })
+  if (all.length < 4) {
+    // Too few posts for a meaningful "typical" — show top posts only, no outlier claims.
+    return {
+      items: [...all].sort((a, b) => b.weight - a.weight).slice(0, Math.min(3, all.length))
+        .map(p => ({ ...p, isOutlier: false })),
+      hasOutliers: false,
+    }
+  }
+  const weights = all.map(p => p.weight)
+  const n = weights.length
+  const mean = weights.reduce((s, v) => s + v, 0) / n
+  const variance = weights.reduce((s, v) => s + (v - mean) ** 2, 0) / n
+  const std = Math.sqrt(variance)
+  const threshold = mean + std // ~1σ above this company's own typical post
+
+  const ranked = [...all].sort((a, b) => b.weight - a.weight)
+  const items = ranked.slice(0, max).map(p => ({
+    ...p,
+    isOutlier: p.weight > threshold && p.weight > mean,
+  }))
+  return { items, hasOutliers: items.some(i => i.isOutlier) }
+}
+
 export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose }) {
   // Esc to close.
   useEffect(() => {
@@ -196,6 +258,26 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
 
   const totalPosts = weeks.reduce((s, w) => s + w.posts.length, 0)
 
+  // Top posts & outliers (highest-impact + statistical standouts vs this
+  // company's own typical post). Computed off the same normalized weeks.
+  const standouts = useMemo(() => deriveStandouts(weeks), [weeks])
+
+  // Collapsible week sections: only the most recent (first) week is open on mount;
+  // every other week starts collapsed. Toggling is per-week via the header.
+  const [expandedWeeks, setExpandedWeeks] = useState(() => new Set())
+  useEffect(() => {
+    // Re-seed when the company (and thus its weeks) changes: open just the latest.
+    setExpandedWeeks(weeks.length ? new Set([weeks[0].key]) : new Set())
+  }, [weeks])
+  const toggleWeek = (key) => {
+    setExpandedWeeks(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   return (
     <div className="cdi-backdrop" onClick={onClose}>
       <div className="cdi-panel" role="dialog" aria-modal="true" aria-label={`${company} drill-in`} onClick={e => e.stopPropagation()}>
@@ -222,23 +304,87 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
         <div className="cdi-body">
           {totalPosts === 0 ? (
             <div className="empty-state"><p>No posts for this company in the current filter.</p></div>
-          ) : weeks.map(w => (
-            <div className="cdi-week" key={w.key}>
-              <div className="cdi-week-head">
-                <span className="cdi-week-label">{w.label}</span>
-                <span className="cdi-week-count">{w.posts.length} post{w.posts.length === 1 ? '' : 's'}</span>
-              </div>
-              <div className="cdi-posts">
-                {w.posts.map((p, i) => (
-                  <PostRow post={p} key={i} />
-                ))}
-              </div>
-            </div>
-          ))}
+          ) : (
+            <>
+              {standouts.items.length > 0 && (
+                <div className="cdi-standouts">
+                  <div className="cdi-standouts-head">
+                    <span className="cdi-standouts-title">
+                      {standouts.hasOutliers ? 'Top posts & outliers' : 'Top posts'}
+                    </span>
+                    <span className="cdi-standouts-sub">the standouts driving its score</span>
+                  </div>
+                  <div className="cdi-standouts-list">
+                    {standouts.items.map((p, i) => (
+                      <StandoutChip post={p} key={i} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {weeks.map(w => {
+                const open = expandedWeeks.has(w.key)
+                return (
+                  <div className={`cdi-week${open ? ' open' : ''}`} key={w.key}>
+                    <button
+                      type="button"
+                      className="cdi-week-head"
+                      onClick={() => toggleWeek(w.key)}
+                      aria-expanded={open}
+                    >
+                      <ChevronRight size={14} className="cdi-week-caret" />
+                      <span className="cdi-week-label">{w.label}</span>
+                      <span className="cdi-week-count">{w.posts.length} post{w.posts.length === 1 ? '' : 's'}</span>
+                    </button>
+                    {open && (
+                      <div className="cdi-posts">
+                        {w.posts.map((p, i) => (
+                          <PostRow post={p} key={i} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </>
+          )}
         </div>
       </div>
     </div>
   )
+}
+
+function StandoutChip({ post }) {
+  const color = PLATFORM_COLOR[post.platform] || 'var(--text-muted)'
+  const preview = (post.title || post.text || '(no preview text)').trim()
+  const short = preview.length > 90 ? preview.slice(0, 90) + '…' : preview
+  const { phrase } = whyDidWell(post)
+  const Body = (
+    <>
+      <div className="cdi-chip-top">
+        <span className="cdi-plat-dot" style={{ background: color }} />
+        <span className="cdi-chip-plat">{post.platform}</span>
+        {post.isOutlier && (
+          <span className="cdi-chip-outlier" title="Statistical outlier — well above this company's typical post">
+            <Flame size={11} /> outlier
+          </span>
+        )}
+        <span className="cdi-chip-weight" title="This post's contribution to the SOV score">
+          ⚡ {Math.round(post.weight * 100) / 100}
+        </span>
+      </div>
+      <div className="cdi-chip-text">{short}</div>
+      <div className="cdi-chip-why"><Star size={11} /> {phrase}</div>
+    </>
+  )
+  if (post.url) {
+    return (
+      <a className="cdi-chip" href={post.url} target="_blank" rel="noopener noreferrer" title="Open original">
+        {Body}
+      </a>
+    )
+  }
+  return <div className="cdi-chip">{Body}</div>
 }
 
 function PostRow({ post }) {
@@ -260,8 +406,12 @@ function PostRow({ post }) {
               {post.external === false ? 'Own page / employee' : 'External'}
             </span>
           )}
-          <span className={`cdi-weight`} title="post_weight — contribution to the weighted score">
-            ⚡ {Math.round(post.weight * 100) / 100}
+          <span
+            className="cdi-weight"
+            title="This post's contribution to the SOV score — engagement, reach, sentiment, recency, and who posted it."
+          >
+            <span className="cdi-weight-val">⚡ {Math.round(post.weight * 100) / 100}</span>
+            <span className="cdi-weight-label">SOV score</span>
           </span>
         </div>
         {headline && <div className="cdi-post-title">{headline}</div>}
