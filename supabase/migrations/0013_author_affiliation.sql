@@ -7,7 +7,7 @@
 -- classifies authors NOT already in this table, so cost stays ~0 ongoing.
 -- The verdict drives authorType in post-weight scoring: an author who is an
 -- 'employee' of the competitor they posted about is treated as company-authored,
--- not external. Server-side only (service_role); RLS on, no public policies.
+-- not external. RLS on: reads public (frontend labels posts), writes service_role-only.
 
 create table if not exists public.author_affiliation (
   key         text primary key,        -- author.profile_id, or author.name if no id

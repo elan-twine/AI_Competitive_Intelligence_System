@@ -33,6 +33,7 @@ export function useSOVData(competitorsArg) {
   const [redditPosts, setRedditPosts] = useState([])
   const [googleNews, setGoogleNews] = useState([])
   const [linkedinPosts, setLinkedinPosts] = useState([])
+  const [authorAff, setAuthorAff] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -63,19 +64,23 @@ export function useSOVData(competitorsArg) {
           safeQuery('reddit_posts', 'createdAt'),
           safeQuery('googlenews', 'publishedAt'),
           safeQuery('linkedin_posts', 'posted_at'),
+          // author-affiliation classifier cache (employee vs external). Public-read;
+          // returns [] if the table isn't applied yet, so the heuristic still works.
+          safeQuery('author_affiliation', 'checked_at'),
         ]),
         timeout,
       ])
 
       if (result === 'timeout') {
         console.warn('[SOV] fetch timed out after 8s — rendering empty state')
-        setTweets([]); setRedditPosts([]); setGoogleNews([]); setLinkedinPosts([])
+        setTweets([]); setRedditPosts([]); setGoogleNews([]); setLinkedinPosts([]); setAuthorAff([])
       } else {
-        const [tw, rd, gn, li] = result
+        const [tw, rd, gn, li, aff] = result
         setTweets(tw)
         setRedditPosts(rd)
         setGoogleNews(gn)
         setLinkedinPosts(li)
+        setAuthorAff(aff)
       }
     } catch (err) {
       setError(err.message)
@@ -124,6 +129,30 @@ export function useSOVData(competitorsArg) {
   //                   downstream in metrics.computeWeightedSOV)
   //   postWeight    — explicit alias of the chosen weight for clarity
   //   rawWeightedSOV/sov — preserved for the feed's per-post display
+  // external = earned third-party chatter (vs the company's own page/employees).
+  // Only determinable on LinkedIn (author object); News/Reddit/X are all external.
+  // Drives the external-only sentiment metric (and matches the authorType used in
+  // post_weight). Company = author.profile_id is a tracked URN, the company name
+  // appears in the author headline, OR the classifier flagged the author as an
+  // employee of the competitor the post is about (author_affiliation cache).
+  const urnSet = new Set((competitors || []).filter(c => c.active !== false).map(c => String(c.linkedin_urn || '')).filter(Boolean))
+  // employee key set: `${competitor.toLowerCase()}|${profile_id}` from the classifier.
+  const empKeys = new Set(
+    (authorAff || [])
+      .filter(r => r.verdict === 'employee' && r.profile_id && r.competitor)
+      .map(r => `${String(r.competitor).trim().toLowerCase()}|${String(r.profile_id)}`)
+  )
+  const isExternal = (p) => {
+    if (p.platform !== 'LinkedIn') return true
+    const a = p.author && typeof p.author === 'object' ? p.author : {}
+    const prof = String(a.profile_id || '')
+    if (prof && urnSet.has(prof)) return false
+    const head = String(a.headline || '').toLowerCase()
+    const cn = String(p.companyName || '').toLowerCase()
+    if (cn && head.includes(cn)) return false
+    if (prof && cn && empKeys.has(`${cn}|${prof}`)) return false  // classifier-confirmed employee
+    return true
+  }
   const totalPosts = rawPosts.length || 1
   const allPosts = rawPosts.map(p => {
     const w = postWeight(p)
@@ -134,6 +163,7 @@ export function useSOVData(competitorsArg) {
       unweightedSOV: 1 / totalPosts,
       weightedSOV: w,
       sov: 1 / totalPosts,
+      external: isExternal(p),
     }
   })
 
