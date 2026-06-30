@@ -13,7 +13,7 @@ import './equations.css'
 /*  never recomputed live, so display math can never drift.           */
 /* ------------------------------------------------------------------ */
 const EXAMPLE = {
-  blurb: 'a competitor’s LinkedIn reshare — 40 reactions, 6 comments, 3 reshares, has image, sentiment +1, 6 days old, posted by an external commentator.',
+  blurb: 'one competitor’s LinkedIn reshare — 40 reactions, 6 comments, 3 reshares, has an image, sentiment +1, 6 days old, posted by someone outside the company.',
   stages: [
     { id: 'engagement', value: '89.5',  unit: 'eng' },
     { id: 'reach',      value: '81.8',  unit: 'reach' },
@@ -22,9 +22,7 @@ const EXAMPLE = {
     { id: 'weight',     value: '131.5', unit: 'post_weight' },
     { id: 'author',     value: 'external', unit: 'B=5 · M=1.5' },
     { id: 'share',      value: '24.4%', unit: 'LinkedIn share' },
-    { id: 'blend',      value: '→', unit: 'feeds weighted-share' },
-    { id: 'count',      value: '→', unit: 'feeds count-share' },
-    { id: 'sov',        value: 'SOV%',  unit: '0.8 loud + 0.2 often' },
+    { id: 'sov',        value: '→ SOV%', unit: 'this share, combined across platforms' },
   ],
 }
 const trace = (id) => EXAMPLE.stages.find(s => s.id === id)
@@ -128,12 +126,12 @@ function DecayTip({ active, payload, label }) {
 /*  Visual 1 — HERO pipeline (pure inline SVG, doubles as visual TOC) */
 /* ------------------------------------------------------------------ */
 const HERO_NODES = [
-  { id: 'engagement', label: 'Engagement', x: 18,  y: 70 },
-  { id: 'reach',      label: 'Reach',      x: 138, y: 70 },
-  { id: 'sentiment',  label: '× Sentiment', x: 258, y: 70 },
-  { id: 'decay',      label: '× Decay', x: 388, y: 70 },
-  { id: 'weight',     label: 'Per-post Weight', x: 510, y: 70 },
-  { id: 'share',      label: 'Within-platform Share', x: 648, y: 70 },
+  { id: 'engagement', label: 'Engagement', x: 18,  y: 88 },
+  { id: 'reach',      label: 'Reach',      x: 138, y: 88 },
+  { id: 'sentiment',  label: '× Sentiment', x: 258, y: 88 },
+  { id: 'decay',      label: '× Decay', x: 388, y: 88 },
+  { id: 'weight',     label: 'Per-post Weight', x: 510, y: 88 },
+  { id: 'share',      label: 'Platform Share', x: 648, y: 88 },
 ]
 
 function Hero({ active, onJump }) {
@@ -144,26 +142,22 @@ function Hero({ active, onJump }) {
 
   return (
     <div className="hero-wrap">
-      <svg viewBox="0 0 860 230" width="100%" role="img" aria-label="SOV pipeline flow diagram" className="hero-svg">
-        {/* main flow rail */}
-        <path d="M114 87 H138 M234 87 H258 M354 87 H388 M484 87 H510 M606 87 H648" stroke="var(--accent)" strokeWidth="2" fill="none" opacity="0.55" />
+      <svg viewBox="0 0 860 200" width="100%" role="img" aria-label="Share of Voice pipeline flow diagram" className="hero-svg">
+        {/* main flow rail: post → … → share → SOV */}
+        <path d="M114 105 H138 M234 105 H258 M354 105 H388 M484 105 H510 M606 105 H648 M744 105 H772" stroke="var(--accent)" strokeWidth="2" fill="none" opacity="0.55" />
 
         {/* author fork: splits before weight, rejoins at weight */}
-        <path d="M450 87 C470 40, 488 40, 500 56" stroke="var(--text-muted)" strokeWidth="1.4" fill="none" opacity="0.7" />
-        <path d="M450 87 C470 134, 488 134, 500 118" stroke="var(--accent)" strokeWidth="1.4" fill="none" opacity="0.7" />
-        <text x="468" y="34" className="hero-mini" fill="var(--text-muted)">company</text>
-        <text x="466" y="150" className="hero-mini" fill="var(--accent)">external</text>
+        <path d="M450 105 C470 58, 488 58, 500 74" stroke="var(--text-muted)" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <path d="M450 105 C470 152, 488 152, 500 136" stroke="var(--accent)" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <text x="468" y="52" className="hero-mini" fill="var(--text-muted)">company</text>
+        <text x="466" y="168" className="hero-mini" fill="var(--accent)">external</text>
 
         {/* sentiment side-channel peels off and dead-ends */}
-        <path d="M306 104 C320 150, 320 165, 350 168" stroke="var(--neutral)" strokeWidth="1.4" strokeDasharray="3 3" fill="none" opacity="0.8" />
+        <path d="M306 122 C320 162, 320 176, 350 178" stroke="var(--neutral)" strokeWidth="1.4" strokeDasharray="3 3" fill="none" opacity="0.8" />
         <g>
-          <rect x="350" y="156" width="150" height="26" rx="13" fill="var(--inner-bg)" stroke="var(--neutral)" strokeWidth="1" opacity="0.9" />
-          <text x="425" y="173" textAnchor="middle" className="hero-mini" fill="var(--neutral)">Sentiment · display only</text>
+          <rect x="350" y="166" width="150" height="26" rx="13" fill="var(--inner-bg)" stroke="var(--neutral)" strokeWidth="1" opacity="0.9" />
+          <text x="425" y="183" textAnchor="middle" className="hero-mini" fill="var(--neutral)">Sentiment · display only</text>
         </g>
-
-        {/* count-share parallel lower track */}
-        <path d="M66 196 H760" stroke="var(--text-muted)" strokeWidth="1.4" strokeDasharray="4 4" fill="none" opacity="0.55" />
-        <text x="74" y="189" className="hero-mini" fill="var(--text-muted)">count-share (breadth) — decayed post volume</text>
 
         {/* nodes */}
         {HERO_NODES.map(n => (
@@ -173,25 +167,21 @@ function Hero({ active, onJump }) {
           </a>
         ))}
 
-        {/* blend junction */}
-        <path d="M744 87 C770 87, 770 140, 778 140" stroke="var(--accent)" strokeWidth="2" fill="none" opacity="0.55" />
-        <path d="M760 196 C772 196, 772 152, 778 150" stroke="var(--text-muted)" strokeWidth="1.4" fill="none" opacity="0.55" />
-
         {/* final SOV disc */}
         <a onClick={() => onJump('sov')} style={{ cursor: 'pointer' }}>
-          <circle cx="808" cy="140" r="36" fill="var(--accent-dim)" stroke="var(--accent)" strokeWidth="1.5" />
-          <text x="808" y="137" textAnchor="middle" className="hero-disc-text" fill="var(--accent)">SOV</text>
-          <text x="808" y="151" textAnchor="middle" className="hero-disc-sub" fill="var(--accent)">%</text>
+          <circle cx="810" cy="105" r="34" fill="var(--accent-dim)" stroke="var(--accent)" strokeWidth="1.5" />
+          <text x="810" y="102" textAnchor="middle" className="hero-disc-text" fill="var(--accent)">SOV</text>
+          <text x="810" y="116" textAnchor="middle" className="hero-disc-sub" fill="var(--accent)">%</text>
         </a>
 
         {/* entering post chip */}
         <g>
-          <rect x="6" y="22" width="62" height="22" rx="11" fill="var(--inner-bg)" stroke="var(--divider)" strokeWidth="1" />
-          <text x="37" y="37" textAnchor="middle" className="hero-mini" fill="var(--text-secondary)">1 post</text>
-          <path d="M37 44 V62" stroke="var(--accent)" strokeWidth="1.4" opacity="0.5" />
+          <rect x="6" y="40" width="62" height="22" rx="11" fill="var(--inner-bg)" stroke="var(--divider)" strokeWidth="1" />
+          <text x="37" y="55" textAnchor="middle" className="hero-mini" fill="var(--text-secondary)">1 post</text>
+          <path d="M37 62 V80" stroke="var(--accent)" strokeWidth="1.4" opacity="0.5" />
         </g>
       </svg>
-      <div className="hero-caption">Click any node to jump to its formula. Lime = the signal rail; the fork is author type; sentiment peels off as a display-only readout.</div>
+      <div className="hero-caption">One post, left to right. The lime rail is the score; the fork up top is who posted it; sentiment peels off as a display-only readout. Click any step to jump to it.</div>
     </div>
   )
 }
@@ -449,9 +439,9 @@ function SharePoolBar() {
         })}
       </svg>
       <div className="pool-note">
-        share<sub>LinkedIn</sub> = <Fraction num="131.5 (this company)" den="540 (all direct competitors on LinkedIn)" /> = <strong>24.4%</strong>
+        LinkedIn share = <Fraction num="131.5 (this company)" den="540 (all direct competitors on LinkedIn)" /> = <strong>24.4%</strong>
       </div>
-      <div className="chip pool-guard">min-volume guard: drop platform if total weight &lt; 3 — one stray post can’t swing the board</div>
+      <div className="chip pool-guard">quiet-platform guard: a platform with almost no posts is dropped, so one stray post can’t swing the board</div>
     </div>
   )
 }
@@ -508,53 +498,19 @@ function BlendWeights() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Visual 10a — Loudness vs breadth                                  */
+/*  Visual 10 — SOV% keystone (weighted-share IS the number)          */
 /* ------------------------------------------------------------------ */
-function LoudVsBreadth() {
-  const bars = [
-    { label: 'weighted-share', sub: 'how loud', val: 26.4, color: 'var(--accent)' },
-    { label: 'count-share', sub: 'how often', val: 19.1, color: 'var(--neutral)' },
-  ]
-  const max = 30, W = 300, H = 18
+function SovKeystone() {
   return (
-    <div className="lvb-wrap">
-      {bars.map(b => (
-        <div key={b.label} className="lvb-row">
-          <div className="lvb-meta"><span className="lvb-label">{b.label}</span><span className="lvb-sub">{b.sub}</span></div>
-          <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="lvb-svg" role="img" aria-label={`${b.label} ${b.val}`}>
-            <rect x="0" y="0" width={W} height={H} rx="5" fill="var(--inner-bg)" />
-            <rect x="0" y="0" width={(b.val / max) * W} height={H} rx="5" fill={b.color} opacity="0.85" />
-            <text x={(b.val / max) * W + 6} y={H / 2 + 4} className="lvb-val">{b.val}%</text>
-          </svg>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Visual 10b — 80/20 SOV composition keystone                       */
-/* ------------------------------------------------------------------ */
-function SovSplitBar() {
-  const W = 700, H = 44
-  const loudW = 0.8 * W
-  return (
-    <div className="sov-split-wrap">
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="80/20 SOV composition">
-        <rect x="0" y="0" width={loudW - 2} height={H} rx="6" fill="var(--accent)" />
-        <text x={loudW / 2} y={H / 2 - 2} textAnchor="middle" className="sov-split-pct" fill="#0B0D00">80%</text>
-        <text x={loudW / 2} y={H / 2 + 13} textAnchor="middle" className="sov-split-lbl" fill="#0B0D00">weighted-share (loud)</text>
-        <rect x={loudW} y="0" width={W - loudW} height={H} rx="6" fill="var(--accent-dim)" stroke="var(--accent)" strokeWidth="1" />
-        <text x={loudW + (W - loudW) / 2} y={H / 2 - 2} textAnchor="middle" className="sov-split-pct" fill="var(--accent)">20%</text>
-        <text x={loudW + (W - loudW) / 2} y={H / 2 + 13} textAnchor="middle" className="sov-split-lbl" fill="var(--accent)">count (often)</text>
-      </svg>
-      <div className="sov-arrow">↓</div>
+    <div className="sov-key-wrap">
       <GlassCard className="stat-card sov-stat" intensity={8}>
         <div className="label">HEADLINE SOV%</div>
-        <div className="value accent">24.9</div>
-        <div className="sub">0.8 · weighted-share + 0.2 · count-share</div>
+        <div className="value accent">24.4</div>
+        <div className="sub">your weighted share of the conversation</div>
       </GlassCard>
-      <div className="sov-micro">Direct competitors sum to exactly 100%. Indirect competitors are scored + graphed but excluded from the %.</div>
+      <div className="sov-micro">
+        That’s it — SOV% <em>is</em> the cross-platform weighted share. <strong>Direct</strong> competitors sum to exactly 100%; <strong>indirect</strong> ones are tracked and graphed but left out of the %.
+      </div>
     </div>
   )
 }
@@ -589,14 +545,15 @@ function SentimentSpark() {
 /*  Footer glossary                                                   */
 /* ------------------------------------------------------------------ */
 const GLOSSARY = [
-  ['direct competitor', 'counted in the SOV %; the set sums to 100%'],
-  ['indirect competitor', 'tracked + graphed, excluded from the %'],
-  ['eng', 'weighted interaction count per post'],
-  ['reach', 'eng^(49/50) — eyeballs with mild diminishing returns'],
-  ['sentMult', '0.5–1.3 tone multiplier'],
+  ['Share of Voice', 'your slice of the competitor conversation, 0–100%'],
+  ['direct competitor', 'counted in SOV%; the set sums to 100%'],
+  ['indirect competitor', 'tracked and graphed, but left out of SOV%'],
+  ['eng', 'a post’s interactions, weighted by type'],
+  ['reach', 'eng^(49/50) — eyeballs, gently flattened'],
+  ['sentMult', 'tone multiplier, 0.5–1.3'],
   ['decay', 'age weighting; 7-day grace then halving'],
-  ['post_weight', 'reach × sentMult × decay, scaled by author'],
-  ['share_p', 'a company’s post_weight ÷ the platform pool'],
+  ['post_weight', 'one post’s final score (reach × tone × freshness, scaled by author)'],
+  ['platform share', 'a company’s post_weight ÷ the platform pool'],
 ]
 
 /* ------------------------------------------------------------------ */
@@ -604,7 +561,7 @@ const GLOSSARY = [
 /* ------------------------------------------------------------------ */
 const STAGE_IDS = [
   'intro', 'engagement', 'reach', 'sentiment', 'decay', 'weight',
-  'author', 'share', 'blend', 'count', 'sov', 'sentiment-metric',
+  'author', 'share', 'blend', 'sov', 'sentiment-metric',
 ]
 
 /* ------------------------------------------------------------------ */
@@ -637,10 +594,10 @@ export default function Equations({ onLogout, onNavigate }) {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  // hero highlight maps the author/blend/count/sov ids back to a hero node
+  // hero highlight maps the author/blend/sov ids back to a hero node
   const heroActive = ['engagement', 'reach', 'sentiment', 'decay', 'weight', 'share'].includes(activeStage)
     ? activeStage
-    : (activeStage === 'author' ? 'weight' : (['blend', 'count', 'sov', 'sentiment-metric'].includes(activeStage) ? 'sov' : null))
+    : (activeStage === 'author' ? 'weight' : (['blend', 'sov', 'sentiment-metric'].includes(activeStage) ? 'sov' : null))
 
   return (
     <div className="app">
@@ -685,19 +642,23 @@ export default function Equations({ onLogout, onNavigate }) {
             <div className="meth-eyebrow">THE MATH</div>
             <h2 className="meth-title">How a post becomes Share of Voice</h2>
             <p className="meth-thesis">
-              Every week the workflow reads thousands of mentions and answers one question — who owns the conversation?
-              Each mention is scored as a signal, decayed by age, weighted by who said it, pooled per platform, then blended
-              into one number. Follow one post down the line.
+              <strong className="meth-lede">Share of Voice is how much of the conversation you own versus your direct competitors.</strong>
+              {' '}Think of one big room where everyone’s talking about the market: SOV% is the share of that noise that’s about you.
+            </p>
+            <p className="meth-thesis">
+              Each week we read every public mention across LinkedIn, Google News, Reddit, and X, score it by how much
+              attention it actually earned, and add up each company’s share. Below: follow one post from raw likes to a
+              single percentage.
             </p>
             <Hero active={heroActive} onJump={jump} />
             <Callout>
-              <strong>The example we’ll follow:</strong> {EXAMPLE.blurb}
+              <strong>The post we’ll follow:</strong> {EXAMPLE.blurb}
             </Callout>
           </GlassCard>
 
           {/* 1 — ENGAGEMENT */}
-          <Stage number="1" id="engagement" title="Engagement (per post)"
-            intuition="Count the interactions, but weight the ones that spread reach."
+          <Stage number="1" id="engagement" title="Engagement"
+            intuition="Add up the interactions — but the ones that spread a post count for more."
             pill={trace('engagement')}>
             <EquationRow label="LinkedIn" color="var(--linkedin-color)">
               eng = 1·reactions + 3·comments + 10·reshares (+1.5 if image)
@@ -708,14 +669,14 @@ export default function Equations({ onLogout, onNavigate }) {
             <EquationRow label="Reddit" color="var(--reddit-color)">
               eng = 1·upvotes + 3·comments
             </EquationRow>
-            <Callout>Reshares / reposts ×10 — they manufacture new reach, not just register approval.</Callout>
+            <Callout>A reshare counts ×10 — it puts the post in front of a whole new audience, not just a thumbs-up.</Callout>
             <EngWeightBars />
             <div className="meth-example-line">example: 40 + 3·6 + 10·3 + 1.5 = <strong>89.5</strong></div>
           </Stage>
 
           {/* 2 — REACH */}
           <Stage number="2" id="reach" title="Reach"
-            intuition="Engagement turned into eyeballs, with mild diminishing returns."
+            intuition="Turn engagement into a rough audience size, so one viral post can’t dominate."
             pill={trace('reach')}>
             <EquationRow label="default" color="var(--text-muted)">reach = eng^(49/50)</EquationRow>
             <EquationRow label="X" color="var(--x-color)" note="X gives real impressions">reach = (viewCount + eng)^(49/50)</EquationRow>
@@ -726,17 +687,17 @@ export default function Equations({ onLogout, onNavigate }) {
 
           {/* 3 — SENTIMENT MULTIPLIER */}
           <Stage number="3" id="sentiment" title="Sentiment multiplier"
-            intuition="Tone scales the score up or down, never erases it."
+            intuition="Positive buzz is worth more than a pile-on — tone nudges the score, never zeroes it."
             pill={trace('sentiment')}>
             <EquationRow>sentMult = 0.5 + ((clamp(sentiment, −3, 3) + 3) / 6) · 0.8</EquationRow>
-            <Callout>Range 0.5 (very neg) → 0.9 (neutral) → 1.3 (very pos): a glowing post is worth ≈2.6× a trashed one of identical size.</Callout>
+            <Callout>Runs 0.5 (very negative) → 0.9 (neutral) → 1.3 (very positive). A glowing post is worth ≈2.6× a trashed one of the same size.</Callout>
             <SentMultRamp />
             <div className="meth-example-line">example: sentiment +1 → 0.5 + (4/6)·0.8 = <strong>1.03</strong></div>
           </Stage>
 
           {/* 4 — TIME DECAY */}
           <Stage number="4" id="decay" title="Time decay"
-            intuition="Full strength for a week, then it halves every half-life."
+            intuition="Recent buzz matters most. Full credit for a week, then it fades."
             pill={trace('decay')}>
             <EquationRow>decay = ageDays ≤ 7 ? 1 : 2^(−ageDays / halfLife)</EquationRow>
             <div className="meth-halflives">
@@ -748,7 +709,7 @@ export default function Equations({ onLogout, onNavigate }) {
 
           {/* 5 — PER-POST WEIGHT */}
           <Stage number="5" id="weight" title="Per-post weight"
-            intuition="Bundle reach × tone × freshness, scaled by who’s talking."
+            intuition="One post’s final score: reach × tone × freshness, scaled by who posted it."
             pill={trace('weight')}>
             <EquationRow label="LinkedIn" color="var(--linkedin-color)">
               post_weight = (B<sub>author</sub> + reach·M<sub>author</sub>) · sentMult · decay
@@ -761,64 +722,58 @@ export default function Equations({ onLogout, onNavigate }) {
           </Stage>
 
           {/* 6 — AUTHOR TYPE */}
-          <Stage number="6" id="author" title="Author type"
-            intuition="Is this the company’s own megaphone, or someone else talking about it?"
+          <Stage number="6" id="author" title="Who posted it?"
+            intuition="Your own page bragging counts for less than someone else choosing to talk about you."
             pill={trace('author')}>
             <p className="meth-body">
-              <code className="eq-inline">‘company’</code> if the author is the company’s own page OR an employee
-              (matched by LinkedIn URN, company name in the author headline, or the employee classifier); otherwise
-              <code className="eq-inline">‘external’</code>. This switch picks B/M and authorWeight in stage 5.
+              A post is <code className="eq-inline">company</code> if it comes from the company’s own page or an
+              employee (matched by profile, headline, or an employee classifier); otherwise it’s
+              {' '}<code className="eq-inline">external</code> — earned attention, worth more. This switch sets the
+              B and M factors in step 5.
             </p>
             <AuthorFork />
-            <div className="meth-example-line">example: posted by external commentator → <strong>external (B=5, M=1.5)</strong></div>
+            <div className="meth-example-line">example: posted by an outsider → <strong>external (B=5, M=1.5)</strong></div>
           </Stage>
 
           {/* 7 — WITHIN-PLATFORM SHARE */}
-          <Stage number="7" id="share" title="Within-platform share"
-            intuition="Your slice of the conversation on one platform."
+          <Stage number="7" id="share" title="Share on one platform"
+            intuition="On each platform, your total score ÷ everyone’s total score = your slice."
             pill={trace('share')}>
             <div className="eq-frac-block">
-              share<sub>p</sub>(co) = <Fraction num="that company’s summed post_weight on platform p" den="summed post_weight over all DIRECT competitors on p" />
+              platform share = <Fraction num="this company’s total post_weight on the platform" den="total post_weight of all DIRECT competitors there" />
             </div>
             <SharePoolBar />
-            <div className="meth-example-line">example: 131.5 of a 540 LinkedIn pool → <strong>24.4%</strong> LinkedIn share</div>
+            <div className="meth-example-line">example: 131.5 out of a ~540 LinkedIn pool → <strong>24.4%</strong> of the LinkedIn conversation</div>
           </Stage>
 
           {/* 8 — CROSS-PLATFORM BLEND */}
-          <Stage number="8" id="blend" title="Cross-platform blend"
-            intuition="Combine the four platforms by how much each matters."
+          <Stage number="8" id="blend" title="Blend the platforms"
+            intuition="Combine the four platform shares, weighting each by how much it matters."
             pill={trace('blend')}>
-            <EquationRow>weighted-share = Σ (normWeight<sub>p</sub> · share<sub>p</sub>) · 100</EquationRow>
-            <Callout>Base weights LinkedIn 0.35 · Google News 0.30 · Reddit 0.20 · X 0.15, RENORMALIZED over eligible platforms. Weights always re-sum to 1 across survivors (if X drops, its 0.15 redistributes).</Callout>
+            <EquationRow>weighted-share = Σ (weight<sub>p</sub> · share<sub>p</sub>) · 100</EquationRow>
+            <Callout>Weights: LinkedIn 0.35 · Google News 0.30 · Reddit 0.20 · X 0.15. If a platform is too quiet to be reliable, it’s dropped and the rest re-balance to sum to 1.</Callout>
             <BlendWeights />
           </Stage>
 
-          {/* 9 — COUNT-SHARE */}
-          <Stage number="9" id="count" title="Count-share (breadth)"
-            intuition="How often you’re talked about, decayed by age."
-            pill={trace('count')}>
-            <div className="eq-frac-block">
-              count-share = <Fraction num="Σ decay(age) over ALL the company’s posts" den="Σ over all DIRECT competitors" /> · 100
-            </div>
-            <Callout>A decayed post COUNT (volume, not weight); includes the company’s OWN posts (producing content is part of the OKR). weighted-share = how loud; count-share = how often.</Callout>
-            <LoudVsBreadth />
-          </Stage>
-
-          {/* 10 — HEADLINE SOV% */}
-          <Stage number="10" id="sov" title="Headline SOV%"
-            intuition="80% loudness, 20% breadth — the one number."
+          {/* 9 — HEADLINE SOV% */}
+          <Stage number="9" id="sov" title="The number: SOV%"
+            intuition="The blended share IS your Share of Voice. No extra step."
             pill={trace('sov')}>
-            <EquationRow>SOV% = 0.8 · weighted-share + 0.2 · count-share</EquationRow>
-            <SovSplitBar />
+            <EquationRow>SOV% = weighted-share</EquationRow>
+            <Callout>
+              <strong>Why nothing else?</strong> Posting more already lifts your score — more posts means more total
+              weight in step 7. Adding a separate “how often” term would count volume twice, so we don’t.
+            </Callout>
+            <SovKeystone />
           </Stage>
 
-          {/* 11 — SENTIMENT (display metric) */}
-          <Stage number="11" id="sentiment-metric" title="Sentiment (display metric)"
-            intuition="Earned market perception, tracked beside the score — not inside it.">
+          {/* 10 — SENTIMENT (display metric) */}
+          <Stage number="10" id="sentiment-metric" title="Sentiment (shown, not scored)"
+            intuition="How the market feels about you — tracked next to SOV%, never folded into it.">
             <div className="meth-fence-label">DISPLAY METRIC · NOT IN SOV%</div>
             <p className="meth-body">
-              Average sentiment over <strong>EXTERNAL</strong> posts / news only — earned perception, not your own megaphone.
-              Shown on the dashboard as its own column + weekly trend.
+              The dashboard also shows average sentiment over <strong>external</strong> posts and news only — earned
+              perception, not your own posts. It’s its own column and weekly trend, kept fully separate from the score.
             </p>
             <SentimentSpark />
           </Stage>
