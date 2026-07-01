@@ -45,9 +45,19 @@ function Dashboard({ onLogout, onNavigate }) {
   // SOV-internal tabs
   const [tab, setTab] = useState('overview')
 
-  // Global filters (platform + time only — sentiment is local to feed now)
-  const [platform, setPlatform] = useState('All')
+  // Global filters (platform + time only — sentiment is local to feed now).
+  // Platform is MULTI-select: an array of selected platform names. Empty = no
+  // platform filter (the "All" chip clears the selection). Time stays single-select.
+  const [selectedPlatforms, setSelectedPlatforms] = useState([])
   const [days, setDays] = useState(0)
+
+  // Toggle a platform in/out of the selection. Clicking "All" clears everything.
+  const togglePlatform = (p) => {
+    if (p === 'All') { setSelectedPlatforms([]); return }
+    setSelectedPlatforms(prev =>
+      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+    )
+  }
 
   // Overview
   const [sortKey, setSortKey] = useState('overall')
@@ -66,8 +76,8 @@ function Dashboard({ onLogout, onNavigate }) {
 
   // Filtered working set (respects global platform + time only)
   const filtered = useMemo(
-    () => applyFilters(allPosts, { platform, days }),
-    [allPosts, platform, days]
+    () => applyFilters(allPosts, { platforms: selectedPlatforms, days }),
+    [allPosts, selectedPlatforms, days]
   )
 
   // Competitive view = DIRECT competitors only. Indirect competitors are still
@@ -116,11 +126,9 @@ function Dashboard({ onLogout, onNavigate }) {
   }
 
   const isTwine = (name) => /twine/i.test(name || '')
-  const pb = platformSplit(filtered)
   const twineIdx = ranked.findIndex(r => isTwine(r.company))
   const twineRow = twineIdx >= 0 ? ranked[twineIdx] : null
   const twineRank = twineIdx >= 0 ? twineIdx + 1 : null
-  const platformCount = Object.keys(pb).length
 
   const cmp = compareA && compareB ? compare(filtered, compareA, compareB, sovConfig) : null
 
@@ -173,13 +181,18 @@ function Dashboard({ onLogout, onNavigate }) {
         <div className="filter-group">
           <span className="filter-label">Platform</span>
           <div className="chip-row">
-            {PLATFORMS.map(p => (
-              <button
-                key={p}
-                className={`chip ${platform === p ? 'active' : ''}`}
-                onClick={() => setPlatform(p)}
-              >{p}</button>
-            ))}
+            {PLATFORMS.map(p => {
+              const active = p === 'All'
+                ? selectedPlatforms.length === 0
+                : selectedPlatforms.includes(p)
+              return (
+                <button
+                  key={p}
+                  className={`chip ${active ? 'active' : ''}`}
+                  onClick={() => togglePlatform(p)}
+                >{p}</button>
+              )
+            })}
           </div>
         </div>
         <div className="filter-group">
@@ -225,10 +238,10 @@ function Dashboard({ onLogout, onNavigate }) {
                 hint: 'Average tone of external posts about Twine, on a -3 (very negative) to +3 (very positive) per-post scale.',
               },
               {
-                label: 'Total Posts',
-                value: filtered.length,
-                sub: platform === 'All' ? `Across ${platformCount} platform${platformCount === 1 ? '' : 's'}` : `On ${platform}`,
-                hint: 'Count of tracked posts (all companies) matching the current platform and time filters.',
+                label: 'Twine Posts',
+                value: twineRow ? twineRow.postCount : '—',
+                sub: twineRow ? (twineRow.postCount === 1 ? 'post in current view' : 'posts in current view') : 'not in filter',
+                hint: 'Number of posts attributed to Twine in the current view.',
               },
             ].map((stat, i) => (
               <GlassCard key={i} className="stat-card" intensity={10} title={stat.hint}>
@@ -241,48 +254,28 @@ function Dashboard({ onLogout, onNavigate }) {
             ))}
           </div>
 
-          {/* Platform breakdown — only when not filtered to a single platform */}
-          {platform === 'All' && (
-            <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4}>
+          {/* Weekly trends — SOV + Sentiment side by side on wide screens,
+              stacked on narrow/mobile via the responsive .trends-row grid. */}
+          <div className="trends-row">
+            {/* Weekly Share-of-Voice trend — competitors over time */}
+            <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
               <div className="card-header">
-                <span className="card-title">Platform Breakdown</span>
+                <span className="card-title">Share of Voice — Weekly Trend</span>
               </div>
-              <div className="platform-grid">
-                {Object.entries(PLATFORM_COLORS).map(([plat, color]) => {
-                  const data = pb[plat] || { count: 0, sov: 0 }
-                  return (
-                    <div className="platform-card" key={plat}>
-                      <div className="platform-icon" style={{ background: `${color}15` }}>
-                        <div style={{ width: 12, height: 12, borderRadius: '50%', background: color }} />
-                      </div>
-                      <div className="platform-name">{plat}</div>
-                      <div className="platform-count">{data.count}</div>
-                      <div className="platform-sov">{data.count === 1 ? 'post' : 'posts'}</div>
-                    </div>
-                  )
-                })}
-              </div>
+              <SOVTrendChart competitors={competitors} metric="overall" yLabel="SOV %" />
             </GlassCard>
-          )}
 
-          {/* Weekly Share-of-Voice trend — competitors over time */}
-          <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
-            <div className="card-header">
-              <span className="card-title">Share of Voice — Weekly Trend</span>
-            </div>
-            <SOVTrendChart competitors={competitors} metric="overall" yLabel="SOV %" />
-          </GlassCard>
-
-          {/* Sentiment — its own weekly trend (separate from SOV per D3) */}
-          <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
-            <div className="card-header">
-              <span className="card-title" title="A 0–100 index (50 = neutral) rescaled from the -3..+3 per-post sentiment scale used in the stat cards.">Sentiment — Weekly Trend</span>
-            </div>
-            <p className="cr-sub" style={{ marginTop: -8 }}>
-              0–100 index (50 = neutral) — a rescale of the -3..+3 per-post scale shown in the stat cards, so the two numbers use different ranges.
-            </p>
-            <SOVTrendChart competitors={competitors} metric="sentiment_pct" yLabel="Sentiment index (0–100)" />
-          </GlassCard>
+            {/* Sentiment — its own weekly trend (separate from SOV per D3) */}
+            <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
+              <div className="card-header">
+                <span className="card-title" title="A 0–100 index (50 = neutral) rescaled from the -3..+3 per-post sentiment scale used in the stat cards.">Sentiment — Weekly Trend</span>
+              </div>
+              <p className="cr-sub" style={{ marginTop: -8 }}>
+                0–100 index (50 = neutral) — a rescale of the -3..+3 per-post scale shown in the stat cards, so the two numbers use different ranges.
+              </p>
+              <SOVTrendChart competitors={competitors} metric="sentiment_pct" yLabel="Sentiment index (0–100)" />
+            </GlassCard>
+          </div>
 
           {/* All-companies breakdown table */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
