@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink, ChevronRight, Flame, Star } from 'lucide-react'
 import { computeWeightedSOV, postWeightOf } from '../lib/metrics'
+import { PLATFORM_COLOR_VAR } from '../lib/colors'
 import './companyDrillIn.css'
-
-const PLATFORM_COLOR = {
-  X: 'var(--x-color)',
-  Reddit: 'var(--reddit-color)',
-  'Google News': 'var(--news-color)',
-  LinkedIn: 'var(--linkedin-color)',
-}
 
 // --- Week bucketing (Monday-start ISO week), mirrors metrics.isoWeekStart ---
 function isoWeekStart(date) {
@@ -104,7 +98,7 @@ function num(v) {
 function fmtSent(s) {
   if (s == null) return null
   const n = Number(s)
-  return `${n > 0 ? '+' : ''}${n}`
+  return `${n > 0 ? '+' : ''}${n.toFixed(2)}`
 }
 function sentClass(s) {
   if (s == null) return 'neutral'
@@ -355,7 +349,7 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
 }
 
 function StandoutChip({ post }) {
-  const color = PLATFORM_COLOR[post.platform] || 'var(--text-muted)'
+  const color = PLATFORM_COLOR_VAR[post.platform] || 'var(--text-muted)'
   const preview = (post.title || post.text || '(no preview text)').trim()
   const short = preview.length > 90 ? preview.slice(0, 90) + '…' : preview
   const { phrase } = whyDidWell(post)
@@ -388,7 +382,7 @@ function StandoutChip({ post }) {
 }
 
 function PostRow({ post }) {
-  const color = PLATFORM_COLOR[post.platform] || 'var(--text-muted)'
+  const color = PLATFORM_COLOR_VAR[post.platform] || 'var(--text-muted)'
   const snippet = post.text || post.title || ''
   const headline = post.title && post.text ? post.title : ''
   return (

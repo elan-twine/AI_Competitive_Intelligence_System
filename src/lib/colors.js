@@ -49,3 +49,31 @@ export function colorForCompany(name) {
   if (isTwine(name)) return 'var(--accent)'
   return LINE_COLORS[hashName(name) % LINE_COLORS.length]
 }
+
+// ---------------------------------------------------------------------------
+// Single source of truth for per-PLATFORM colors (X / Reddit / Google News /
+// LinkedIn). Previously each dashboard component kept its own literal color
+// map, which drifted out of sync. Two shapes are exported so every call site
+// keeps its exact rendered value with no visual change:
+//   - PLATFORM_COLORS: literal hex, for inline styles / SVG fills.
+//   - PLATFORM_COLOR_VAR: theme CSS custom properties, for components that
+//     want light/dark-aware colors via var().
+// Use colorForPlatform(name) to resolve a hex color with a sensible fallback.
+// ---------------------------------------------------------------------------
+export const PLATFORM_COLORS = {
+  'X': '#1DA1F2',
+  'Reddit': '#FF4500',
+  'Google News': '#34D399',
+  'LinkedIn': '#0A66C2',
+}
+
+export const PLATFORM_COLOR_VAR = {
+  'X': 'var(--x-color)',
+  'Reddit': 'var(--reddit-color)',
+  'Google News': 'var(--news-color)',
+  'LinkedIn': 'var(--linkedin-color)',
+}
+
+export function colorForPlatform(platform, fallback = '#888') {
+  return PLATFORM_COLORS[platform] || fallback
+}
