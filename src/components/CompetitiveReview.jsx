@@ -3,8 +3,7 @@ import { ChevronLeft, ChevronRight, ThumbsUp, MessageSquare, Repeat2, FileText, 
 import { GlassCard } from './GlassCard'
 import { buildWeekly, weekRangeLabel, weekStartLabel } from '../lib/competitiveReview'
 import { usePostsOfInterest } from '../hooks/usePostsOfInterest'
-
-const PLATFORM_DOT = { X: '#1DA1F2', Reddit: '#FF4500', 'Google News': '#34D399' }
+import { colorForPlatform } from '../lib/colors'
 
 // Match a posts_of_interest.author (a company name string) to a tracked company.
 function sameCompany(author, name) {
@@ -97,19 +96,17 @@ export function CompetitiveReview({ posts, competitors }) {
         Posts published by each competitor (company pages + employees) this week, with LinkedIn engagement.
       </p>
 
-      {/* Weekly insight report — flagged posts from posts_of_interest (skeleton) */}
-      <div className="cr-report">
-        <div className="cr-report-head">
-          <Sparkles size={15} /> Weekly Insight Report
-          {flaggedThisWeek.length > 0 && <span className="cr-report-count">{flaggedThisWeek.length}</span>}
-        </div>
-        <div className="cr-report-body">
-          Flags competitor posts that signal <em>new marketing strategies, positioning shifts, campaigns, or launches</em>.
-          <span className="cr-report-pending">Auto-classification criteria to be defined.</span>
-        </div>
-        {flaggedThisWeek.length === 0 ? (
-          <div className="cr-flagged-empty">No posts flagged for this week.</div>
-        ) : (
+      {/* Weekly Insight Report — HIDDEN until the auto-classification criteria
+          are defined and posts_of_interest carries flagged data. The block was a
+          self-labeled placeholder ("criteria to be defined"), so it's gated behind
+          real flagged posts existing rather than always rendering an empty shell.
+          Re-enable by removing the `flaggedThisWeek.length > 0 &&` gate below. */}
+      {flaggedThisWeek.length > 0 && (
+        <div className="cr-report">
+          <div className="cr-report-head">
+            <Sparkles size={15} /> Weekly Insight Report
+            <span className="cr-report-count">{flaggedThisWeek.length}</span>
+          </div>
           <div className="cr-flagged">
             {Object.entries(flaggedByCompany).map(([name, items]) => (
               <div className="cr-flagged-co" key={name}>
@@ -128,8 +125,8 @@ export function CompetitiveReview({ posts, competitors }) {
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Week totals + platform toggle */}
       <div className="cr-toolbar">
@@ -173,7 +170,7 @@ export function CompetitiveReview({ posts, competitors }) {
                   <div className="cr-other">
                     {otherPlats.map(([plat, o]) => (
                       <span className="cr-other-chip" key={plat}>
-                        <i style={{ background: PLATFORM_DOT[plat] || '#888' }} />
+                        <i style={{ background: colorForPlatform(plat) }} />
                         {plat}: {o.count} post{o.count === 1 ? '' : 's'} · {o.engagement.toLocaleString()} eng
                       </span>
                     ))}
@@ -207,8 +204,7 @@ export function CompetitiveReview({ posts, competitors }) {
       )}
 
       <div className="cr-footnote">
-        Selection + AI analysis of these posts is coming. For now this lists competitor-authored LinkedIn posts
-        and their engagement, by week — navigate weeks with the arrows above.
+        Competitor-authored LinkedIn posts and their engagement, by week — navigate weeks with the arrows above.
       </div>
     </GlassCard>
   )

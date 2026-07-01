@@ -7,16 +7,11 @@ import { GlassCard } from '../components/GlassCard'
 import { SOVTrendChart } from '../components/SOVTrendChart'
 import { CompetitiveReview } from '../components/CompetitiveReview'
 import { CompanyDrillIn } from '../components/CompanyDrillIn'
-import { applyFilters, rankings, companyRow, platformSplit, compare } from '../lib/metrics'
+import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
+import { PLATFORM_COLORS } from '../lib/colors'
 import Briefings from './Briefings'
 import '../App.css'
 
-const PLATFORM_COLORS = {
-  'X': '#1DA1F2',
-  'Reddit': '#FF4500',
-  'Google News': '#34D399',
-  'LinkedIn': '#0A66C2',
-}
 const PLATFORMS = ['All', 'X', 'Reddit', 'Google News', 'LinkedIn']
 const TIME_RANGES = [
   { label: 'All time', value: 0 },
@@ -211,12 +206,14 @@ function Dashboard({ onLogout, onNavigate }) {
                 value: twineRank ? `#${twineRank}` : '—',
                 sub: ranked.length ? `overall, of ${ranked.length}` : 'no data',
                 color: twineRank === 1 ? 'var(--positive)' : undefined,
+                hint: 'Where Twine places among direct competitors, ranked by SOV % (higher = more of the conversation).',
               },
               {
-                label: 'Twine Overall',
-                value: twineRow ? twineRow.overall.toFixed(1) : '—',
-                sub: twineRow ? `${twineRow.pct.toFixed(1)}% SOV · ${twineRow.postCount} posts` : 'not in filter',
+                label: 'Twine SOV %',
+                value: twineRow ? `${twineRow.overall.toFixed(1)}%` : '—',
+                sub: twineRow ? `${twineRow.postCount} posts` : 'not in filter',
                 accent: true,
+                hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors.',
               },
               {
                 label: 'Twine Sentiment',
@@ -225,14 +222,16 @@ function Dashboard({ onLogout, onNavigate }) {
                 color: twineRow
                   ? (twineRow.avgSentiment > 0 ? 'var(--positive)' : twineRow.avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)')
                   : undefined,
+                hint: 'Average tone of external posts about Twine, on a -3 (very negative) to +3 (very positive) per-post scale.',
               },
               {
                 label: 'Total Posts',
                 value: filtered.length,
                 sub: platform === 'All' ? `Across ${platformCount} platform${platformCount === 1 ? '' : 's'}` : `On ${platform}`,
+                hint: 'Count of tracked posts (all companies) matching the current platform and time filters.',
               },
             ].map((stat, i) => (
-              <GlassCard key={i} className="stat-card" intensity={10}>
+              <GlassCard key={i} className="stat-card" intensity={10} title={stat.hint}>
                 <div className="label">{stat.label}</div>
                 <div className={`value ${stat.accent ? 'accent' : ''}`} style={stat.color ? { color: stat.color } : {}}>
                   {stat.value}
@@ -258,7 +257,7 @@ function Dashboard({ onLogout, onNavigate }) {
                       </div>
                       <div className="platform-name">{plat}</div>
                       <div className="platform-count">{data.count}</div>
-                      <div className="platform-sov">SOV {data.sov.toFixed(1)}</div>
+                      <div className="platform-sov">{data.count === 1 ? 'post' : 'posts'}</div>
                     </div>
                   )
                 })}
@@ -277,9 +276,12 @@ function Dashboard({ onLogout, onNavigate }) {
           {/* Sentiment — its own weekly trend (separate from SOV per D3) */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
-              <span className="card-title">Sentiment — Weekly Trend</span>
+              <span className="card-title" title="A 0–100 index (50 = neutral) rescaled from the -3..+3 per-post sentiment scale used in the stat cards.">Sentiment — Weekly Trend</span>
             </div>
-            <SOVTrendChart competitors={competitors} metric="sentiment_pct" yLabel="Sentiment (0–100)" />
+            <p className="cr-sub" style={{ marginTop: -8 }}>
+              0–100 index (50 = neutral) — a rescale of the -3..+3 per-post scale shown in the stat cards, so the two numbers use different ranges.
+            </p>
+            <SOVTrendChart competitors={competitors} metric="sentiment_pct" yLabel="Sentiment index (0–100)" />
           </GlassCard>
 
           {/* All-companies breakdown table */}
@@ -296,10 +298,8 @@ function Dashboard({ onLogout, onNavigate }) {
                     <tr>
                       <SortHeader label="Company" field="company" sortKey={sortKey} setSortKey={setSortKey} align="left" />
                       <SortHeader label="Posts" field="postCount" sortKey={sortKey} setSortKey={setSortKey} />
-                      <SortHeader label="Unweighted %" field="unweightedPct" sortKey={sortKey} setSortKey={setSortKey} />
-                      <SortHeader label="Weighted %" field="weightedPct" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label="SOV %" field="weightedPct" sortKey={sortKey} setSortKey={setSortKey} />
                       <SortHeader label="Avg Sentiment" field="avgSentiment" sortKey={sortKey} setSortKey={setSortKey} />
-                      <SortHeader label="Overall" field="overall" sortKey={sortKey} setSortKey={setSortKey} />
                     </tr>
                   </thead>
                   <tbody>
@@ -312,12 +312,10 @@ function Dashboard({ onLogout, onNavigate }) {
                       >
                         <td className="col-company">{r.company}</td>
                         <td>{r.postCount}</td>
-                        <td><strong>{r.unweightedPct.toFixed(1)}%</strong></td>
-                        <td><strong>{r.weightedPct.toFixed(1)}%</strong></td>
+                        <td><strong style={{ color: 'var(--accent)' }}>{r.weightedPct.toFixed(1)}%</strong></td>
                         <td className={r.avgSentiment > 0 ? 'positive' : r.avgSentiment < 0 ? 'negative' : 'neutral'}>
                           {fmtSent(r.avgSentiment)}
                         </td>
-                        <td><strong style={{ color: 'var(--accent)' }}>{r.overall.toFixed(1)}</strong></td>
                       </tr>
                     ))}
                   </tbody>
@@ -422,7 +420,7 @@ function CompareColumn({ company, row, winners, posts }) {
               </div>
               <div className="platform-name">{plat}</div>
               <div className="platform-count">{data.count}</div>
-              <div className="platform-sov">SOV {data.sov.toFixed(1)}</div>
+              <div className="platform-sov">{data.count === 1 ? 'post' : 'posts'}</div>
             </div>
           )
         })}
