@@ -12,19 +12,28 @@
 // handled at the call site.
 
 // Distinct line colors for competitors. Twine is handled separately (accent
-// token), so this palette is for everyone else. These are vivid enough to read
-// on both the light and dark themes.
+// token), so this palette is for everyone else. Tuned for MAXIMUM hue
+// separation — 16 well-spaced hues around the wheel so every tracked
+// competitor gets a clearly different color, with no near-duplicate
+// blues/greens sitting next to each other. Mid-saturation / mid-lightness so
+// each reads on BOTH the light and dark themes.
 export const LINE_COLORS = [
-  '#0A66C2', // LinkedIn blue
-  '#FF4500', // reddit orange
-  '#34D399', // green
-  '#A855F7', // purple
-  '#F59E0B', // amber
-  '#EC4899', // pink
-  '#14B8A6', // teal
-  '#6366F1', // indigo
-  '#EF4444', // red
-  '#8B5CF6', // violet
+  '#E6194B', // red
+  '#3CB44B', // green
+  '#F58231', // orange
+  '#4363D8', // blue
+  '#911EB4', // purple
+  '#F032E6', // magenta
+  '#008080', // teal
+  '#9A6324', // brown
+  '#BCB800', // olive/yellow
+  '#469990', // deep cyan-teal
+  '#E377C2', // pink
+  '#7F7F00', // dark olive
+  '#00A5CF', // sky/cyan
+  '#D45500', // burnt orange
+  '#6A00FF', // indigo/violet
+  '#A0521D', // sienna
 ]
 
 export const isTwine = (name) => /twine/i.test(name || '')

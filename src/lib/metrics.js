@@ -26,9 +26,15 @@ export function postWeightOf(p) {
   return 1
 }
 
-export function applyFilters(posts, { platform = 'All', sentiment = 'All', days = 0 } = {}) {
+export function applyFilters(posts, { platform = 'All', platforms, sentiment = 'All', days = 0 } = {}) {
   let out = posts
-  if (platform !== 'All') out = out.filter(p => p.platform === platform)
+  // Platform filter supports either a single string (legacy, 'All' = no filter)
+  // or an array/Set of selected platforms (multi-select). A non-empty set keeps
+  // posts whose platform is in the set (union); empty/absent = no filter.
+  const platformSet = platforms != null
+    ? (platforms instanceof Set ? platforms : new Set(platforms))
+    : (platform && platform !== 'All' ? new Set([platform]) : null)
+  if (platformSet && platformSet.size) out = out.filter(p => platformSet.has(p.platform))
   if (sentiment !== 'All') {
     out = out.filter(p => {
       const s = p.sentiment
