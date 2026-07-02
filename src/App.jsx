@@ -5,6 +5,7 @@ import Docs from './pages/Docs'
 import Dashboard from './pages/Dashboard'
 import Competitors from './pages/Competitors'
 import Equations from './pages/Equations'
+import About from './pages/About'
 import { getSession, onAuthChange, signOut } from './lib/auth'
 import './App.css'
 
@@ -15,6 +16,7 @@ function getHashView() {
   if (hash === 'dashboard') return 'dashboard'
   if (hash === 'competitors') return 'competitors'
   if (hash === 'methodology') return 'methodology'
+  if (hash === 'about') return 'about'
   return 'landing'
 }
 
@@ -116,6 +118,7 @@ function App() {
   if (effectiveView === 'dashboard') return <Dashboard onLogout={handleLogout} onNavigate={navigate} />
   if (effectiveView === 'competitors') return <Competitors onLogout={handleLogout} onNavigate={navigate} />
   if (effectiveView === 'methodology') return <Equations onLogout={handleLogout} onNavigate={navigate} />
+  if (effectiveView === 'about') return <About onLogout={handleLogout} onNavigate={navigate} />
 
   return <Landing onNavigate={navigate} onLoginSuccess={handleLoginSuccess} />
 }

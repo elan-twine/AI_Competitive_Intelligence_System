@@ -1,0 +1,180 @@
+/* ------------------------------------------------------------------ */
+/*  About page — summary of the tool + methodology.                   */
+/*  Reuses meth-* primitives from equations.css; adds layout here.    */
+/* ------------------------------------------------------------------ */
+.about-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 28px 20px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.about-hero {
+  scroll-margin-top: 96px;
+}
+
+/* section heading */
+.about-section-head {
+  margin: 8px 2px -4px;
+}
+.about-section-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+.about-section-sub {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 62ch;
+}
+
+/* principle grid */
+.about-principles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.about-principle {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.about-principle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  margin-bottom: 2px;
+}
+.about-principle-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+.about-principle-body {
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* author-tier strip */
+.about-tiers {
+  padding: 22px;
+}
+.about-tiers-head {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+.about-tier-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.about-tier {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--divider);
+  background: var(--inner-bg);
+}
+.about-tier-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.about-tier-note {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.about-tier-arrow {
+  align-self: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+/* escalating emphasis toward "external" */
+.about-tier-lo  { opacity: 0.72; }
+.about-tier-mid {
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.about-tier-hi {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.about-tier-hi .about-tier-label { color: var(--accent); }
+
+/* "see the brain" CTA */
+.about-brain {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  padding: 20px 22px;
+  border-radius: 16px;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card-bg, transparent));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.about-brain:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--card-bg, transparent));
+}
+.about-brain-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  flex-shrink: 0;
+}
+.about-brain-text { flex: 1; min-width: 0; }
+.about-brain-title {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.about-brain-sub {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.about-brain-arrow {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.about-footer {
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .about-principles { grid-template-columns: 1fr; }
+  .about-tier-arrow { transform: rotate(90deg); }
+}
