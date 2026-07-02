@@ -83,6 +83,7 @@ function normalizePost(p) {
     engagement,
     sentiment: p.sentiment,
     external: p.external,
+    authorType: p.authorType,
     weight: postWeightOf(p),
     ts: p.ts,
     raw: p,
@@ -348,6 +349,20 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
   )
 }
 
+// Small pill labeling who authored a LinkedIn post: the company's own page,
+// a confirmed employee, or a genuinely external voice. Not shown for other
+// platforms — the backend treats News/X/Reddit as always-external, so the
+// tag would be redundant noise there.
+const AUTHOR_TYPE_LABEL = { company: 'Company', employee: 'Employee', external: 'External' }
+function AuthorTypeBadge({ authorType, platform }) {
+  if (platform !== 'LinkedIn' || !authorType) return null
+  return (
+    <span className={`cdi-authortype cdi-authortype-${authorType}`} title="Who posted this — the company's own page, a confirmed employee, or an external voice">
+      {AUTHOR_TYPE_LABEL[authorType] || authorType}
+    </span>
+  )
+}
+
 function StandoutChip({ post }) {
   const color = PLATFORM_COLOR_VAR[post.platform] || 'var(--text-muted)'
   const preview = (post.title || post.text || '(no preview text)').trim()
@@ -363,6 +378,7 @@ function StandoutChip({ post }) {
             <Flame size={11} /> outlier
           </span>
         )}
+        <AuthorTypeBadge authorType={post.authorType} platform={post.platform} />
         <span className="cdi-chip-weight" title="This post's impact on the company's Share of Voice">
           ⚡ {Math.round(post.weight * 100) / 100}
         </span>
@@ -400,6 +416,7 @@ function PostRow({ post }) {
               {post.external === false ? 'Own page / employee' : 'External'}
             </span>
           )}
+          <AuthorTypeBadge authorType={post.authorType} platform={post.platform} />
           <span
             className="cdi-weight"
             title="This post's impact — how much it adds to the company's Share of Voice (engagement, reach, sentiment, recency, and who posted it). Not a percentage — a raw weight."

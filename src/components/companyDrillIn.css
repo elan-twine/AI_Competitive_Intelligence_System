@@ -223,6 +223,33 @@
   font-size: 0.76rem;
   color: var(--text-muted);
 }
+.cdi-authortype {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.cdi-authortype-company {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  border-color: color-mix(in srgb, var(--text-muted) 25%, transparent);
+}
+.cdi-authortype-employee {
+  color: #b8860b;
+  background: color-mix(in srgb, #b8860b 12%, transparent);
+  border-color: color-mix(in srgb, #b8860b 30%, transparent);
+}
+.cdi-authortype-external {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
 .cdi-weight {
   margin-left: auto;
   display: inline-flex;
