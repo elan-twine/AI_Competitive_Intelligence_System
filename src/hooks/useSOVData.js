@@ -142,20 +142,26 @@ export function useSOVData(competitorsArg) {
       .filter(r => r.verdict === 'employee' && r.profile_id && r.competitor)
       .map(r => `${String(r.competitor).trim().toLowerCase()}|${String(r.profile_id)}`)
   )
-  const isExternal = (p) => {
-    if (p.platform !== 'LinkedIn') return true
+  // Ternary author tier — mirrors the n8n post_weight model exactly (company
+  // page < employee < external). Only determinable on LinkedIn; every other
+  // platform is always 'external'. Company page = author.profile_id is the
+  // tracked competitor's own URN. Employee = classifier cache hit or the
+  // company name appears in the author's headline. Else external.
+  const authorTypeOf = (p) => {
+    if (p.platform !== 'LinkedIn') return 'external'
     const a = p.author && typeof p.author === 'object' ? p.author : {}
     const prof = String(a.profile_id || '')
-    if (prof && urnSet.has(prof)) return false
+    if (prof && urnSet.has(prof)) return 'company'
     const head = String(a.headline || '').toLowerCase()
     const cn = String(p.companyName || '').toLowerCase()
-    if (cn && head.includes(cn)) return false
-    if (prof && cn && empKeys.has(`${cn}|${prof}`)) return false  // classifier-confirmed employee
-    return true
+    if (prof && cn && empKeys.has(`${cn}|${prof}`)) return 'employee'  // classifier-confirmed employee
+    if (cn && head.includes(cn)) return 'employee'
+    return 'external'
   }
   const totalPosts = rawPosts.length || 1
   const allPosts = rawPosts.map(p => {
     const w = postWeight(p)
+    const authorType = authorTypeOf(p)
     return {
       ...p,
       rawWeightedSOV: p.post_weight ?? p.weightedSOV ?? 0,
@@ -163,7 +169,8 @@ export function useSOVData(competitorsArg) {
       unweightedSOV: 1 / totalPosts,
       weightedSOV: w,
       sov: 1 / totalPosts,
-      external: isExternal(p),
+      authorType,
+      external: authorType === 'external',
     }
   })
 
