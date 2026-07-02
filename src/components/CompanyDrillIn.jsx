@@ -24,7 +24,7 @@ function weekLabel(key) {
 
 // --- Cross-platform field normalization. The hook surfaces every DB column
 //     via select('*'), but the names differ per platform — unify them here. ---
-function normalizePost(p) {
+export function normalizePost(p) {
   const plat = p.platform
   let author = ''
   let text = ''
@@ -161,7 +161,7 @@ function engVal(np, key) {
   return e && e.value != null ? e.value : 0
 }
 
-function whyDidWell(np) {
+export function whyDidWell(np) {
   const reshares = engVal(np, 'reshares') // LinkedIn
   const reposts = engVal(np, 'reposts')   // X
   const quotes = engVal(np, 'quotes')     // X
