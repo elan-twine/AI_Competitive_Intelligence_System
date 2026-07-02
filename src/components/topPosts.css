@@ -1,0 +1,89 @@
+/* ------------------------------------------------------------------ */
+/*  Top posts this week — the "wild outliers" reel on the dashboard.  */
+/* ------------------------------------------------------------------ */
+.twp-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 6px;
+}
+.twp-row {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  padding: 13px 15px;
+  border-radius: 12px;
+  border: 1px solid var(--divider);
+  background: var(--inner-bg);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+a.twp-row { cursor: pointer; }
+a.twp-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  transform: translateY(-1px);
+}
+.twp-row-top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-bottom: 7px;
+}
+.twp-co {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.twp-co-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.twp-plat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.twp-plat-dot { width: 7px; height: 7px; border-radius: 50%; }
+.twp-outlier {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.twp-weight {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.twp-ext { color: var(--text-muted); flex-shrink: 0; }
+.twp-text {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.twp-why {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+@media (max-width: 720px) {
+  .twp-list { grid-template-columns: 1fr; }
+}

@@ -3,6 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer,
 } from 'recharts'
 import { useWeeklySOV } from '../hooks/useWeeklySOV'
+import { weeklySOVSeries, weeklySentimentSeries } from '../lib/metrics'
 import { colorForCompany, isTwine } from '../lib/colors'
 
 // Time-range options. weeks = how many trailing weekly snapshots to show.
@@ -40,9 +41,20 @@ function TrendTooltip({ active, payload, label }) {
 }
 
 // `competitors` — the active competitor list (drives which lines to draw).
-// Data comes from the immutable weekly snapshots (sov_weekly) via useWeeklySOV.
-export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %' }) {
-  const { series } = useWeeklySOV(metric)
+// Data normally comes from the immutable weekly snapshots (sov_weekly) via
+// useWeeklySOV (cross-platform, full history). When `live` is set — i.e. the
+// user has narrowed the platform filter — we instead compute the weekly series
+// live from the passed `posts` so the chart reflects the selected platform(s).
+// That trades full frozen history for a filter-accurate view.
+export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %', posts = null, live = false, config = undefined }) {
+  const { series: frozenSeries } = useWeeklySOV(metric)
+  const liveSeries = useMemo(() => {
+    if (!live || !posts) return null
+    return metric === 'sentiment_pct'
+      ? weeklySentimentSeries(posts, { weeks: 52 })
+      : weeklySOVSeries(posts, config, { weeks: 52 })
+  }, [live, posts, metric, config])
+  const series = liveSeries || frozenSeries
   const [rangeKey, setRangeKey] = useState('3m')
   const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
   const [active, setActive] = useState(null)              // legend-hovered company (spotlight)
@@ -93,7 +105,9 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   if (!data.length || !lines.length) {
     return (
       <div className="empty-state">
-        <p>Not enough history yet — weekly trends appear once a few weeks of mentions accumulate.</p>
+        <p>{live
+          ? 'No posts on the selected platform(s) in this window — clear or widen the platform filter.'
+          : 'Not enough history yet — weekly trends appear once a few weeks of mentions accumulate.'}</p>
       </div>
     )
   }
@@ -114,7 +128,15 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   return (
     <div className="trend-chart-wrap">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {live && (
+            <span
+              title="Computed live from the current platform filter (not the frozen weekly board). History is limited to weeks with posts."
+              style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)', borderRadius: 999, padding: '2px 8px' }}
+            >
+              ● Filtered
+            </span>
+          )}
           {[['direct', 'Direct'], ['all', 'All']].map(([key, label]) => (
             <button
               key={key}

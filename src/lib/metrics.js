@@ -181,6 +181,42 @@ export function weeklySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
   })
 }
 
+// Live weekly sentiment series (0–100 index, 50 = neutral), computed from the
+// given posts so it can respect the platform/time filters. Mirrors the frozen
+// sov_weekly.sentiment_pct semantics: EXTERNAL posts only (earned perception,
+// not the company's own posts), averaged per company per ISO week and rescaled
+// from the -3..+3 per-post scale. Shape matches weeklySOVSeries: { week, [company]: value }.
+export function weeklySentimentSeries(posts, opts = {}) {
+  const { weeks = 26 } = opts
+  const buckets = new Map() // weekLabel -> posts[]
+  for (const p of posts) {
+    if (p.sentiment == null) continue
+    if (p.external === false) continue // external-only, matches the board's sentiment metric
+    const t = p.ts ? new Date(p.ts) : null
+    if (!t || isNaN(t.getTime())) continue
+    const label = ymd(isoWeekStart(t))
+    if (!buckets.has(label)) buckets.set(label, [])
+    buckets.get(label).push(p)
+  }
+  let labels = [...buckets.keys()].sort()
+  if (weeks > 0 && labels.length > weeks) labels = labels.slice(labels.length - weeks)
+  return labels.map(week => {
+    const row = { week }
+    const byCo = new Map()
+    for (const p of buckets.get(week)) {
+      const c = p.companyName
+      if (!c) continue
+      if (!byCo.has(c)) byCo.set(c, [])
+      byCo.get(c).push(Number(p.sentiment))
+    }
+    for (const [c, arr] of byCo) {
+      const avg = arr.reduce((s, v) => s + v, 0) / arr.length
+      row[c] = Math.round(((avg + 3) / 6) * 1000) / 10 // 0..100, one decimal
+    }
+    return row
+  })
+}
+
 // Sentiment as its own dimension: net sentiment % and positive-vs-negative
 // SOV split. Net = (pos - neg) / total mentions, expressed as %.
 export function sentimentDimension(posts, company) {

@@ -7,6 +7,7 @@ import { GlassCard } from '../components/GlassCard'
 import { SOVTrendChart } from '../components/SOVTrendChart'
 import { CompetitiveReview } from '../components/CompetitiveReview'
 import { CompanyDrillIn } from '../components/CompanyDrillIn'
+import { TopPostsWeek } from '../components/TopPostsWeek'
 import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
 import { PLATFORM_COLORS } from '../lib/colors'
 import Briefings from './Briefings'
@@ -92,6 +93,11 @@ function Dashboard({ onLogout, onNavigate }) {
     [filtered, directNames]
   )
   const ranked = useMemo(() => rankings(directPosts, sovConfig), [directPosts, sovConfig])
+  // When the platform filter is narrowed, the weekly trend charts switch from the
+  // frozen (cross-platform) board to a live series computed off the filtered posts,
+  // so they reflect the selected platform(s). "All" = frozen board, full history.
+  const platformFiltered = selectedPlatforms.length > 0
+  const platformScopeLabel = platformFiltered ? selectedPlatforms.join(' + ') : null
   const sortedRanked = useMemo(() => {
     const arr = [...ranked]
     arr.sort((a, b) => {
@@ -254,30 +260,25 @@ function Dashboard({ onLogout, onNavigate }) {
             ))}
           </div>
 
-          {/* Weekly trends — SOV + Sentiment side by side on wide screens,
-              stacked on narrow/mobile via the responsive .trends-row grid. */}
-          <div className="trends-row">
-            {/* Weekly Share-of-Voice trend — competitors over time */}
-            <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
-              <div className="card-header">
-                <span className="card-title">Share of Voice — Weekly Trend</span>
-              </div>
-              <SOVTrendChart competitors={competitors} metric="overall" yLabel="SOV %" />
-            </GlassCard>
+          {/* Weekly Share-of-Voice trend — competitors over time. When a platform
+              is selected, this reflects it (live series); otherwise the frozen board. */}
+          <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
+            <div className="card-header">
+              <span className="card-title">
+                Share of Voice — Weekly Trend{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
+              </span>
+            </div>
+            <SOVTrendChart
+              competitors={competitors}
+              metric="overall"
+              yLabel="SOV %"
+              posts={directPosts}
+              live={platformFiltered}
+              config={sovConfig}
+            />
+          </GlassCard>
 
-            {/* Sentiment — its own weekly trend (separate from SOV per D3) */}
-            <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
-              <div className="card-header">
-                <span className="card-title" title="A 0–100 index (50 = neutral) rescaled from the -3..+3 per-post sentiment scale used in the stat cards.">Sentiment — Weekly Trend</span>
-              </div>
-              <p className="cr-sub" style={{ marginTop: -8 }}>
-                0–100 index (50 = neutral) — a rescale of the -3..+3 per-post scale shown in the stat cards, so the two numbers use different ranges.
-              </p>
-              <SOVTrendChart competitors={competitors} metric="sentiment_pct" yLabel="Sentiment index (0–100)" />
-            </GlassCard>
-          </div>
-
-          {/* All-companies breakdown table */}
+          {/* All-companies breakdown table (moved above Sentiment) */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
               <span className="card-title">Direct competitors · SOV ranking</span>
@@ -316,6 +317,30 @@ function Dashboard({ onLogout, onNavigate }) {
               </div>
             )}
           </GlassCard>
+
+          {/* Sentiment — its own weekly trend (moved below the ranking). Reflects
+              the platform filter (live) when one is selected. */}
+          <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
+            <div className="card-header">
+              <span className="card-title" title="A 0–100 index (50 = neutral) rescaled from the -3..+3 per-post sentiment scale used in the stat cards.">
+                Positive or Negative Sentiment{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
+              </span>
+            </div>
+            <p className="cr-sub" style={{ marginTop: -8 }}>
+              How people are talking about us — a 0–100 index (50 = neutral) over external mentions, rescaled from the -3..+3 per-post scale in the stat cards.
+            </p>
+            <SOVTrendChart
+              competitors={competitors}
+              metric="sentiment_pct"
+              yLabel="Sentiment index (0–100)"
+              posts={directPosts}
+              live={platformFiltered}
+              config={sovConfig}
+            />
+          </GlassCard>
+
+          {/* Top posts this week — the wild outliers driving the board, with why */}
+          <TopPostsWeek posts={directPosts} />
 
           {/* Competitive Review — weekly view of competitor-authored posts +
               engagement (replaces the old Recent Mentions feed) */}
