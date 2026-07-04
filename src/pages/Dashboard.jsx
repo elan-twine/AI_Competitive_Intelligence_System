@@ -14,8 +14,10 @@ import Briefings from './Briefings'
 import '../App.css'
 
 const PLATFORMS = ['All', 'X', 'Reddit', 'Google News', 'LinkedIn']
+// YTD = days elapsed since Jan 1 of the current year (computed once at load).
+const YTD_DAYS = Math.max(1, Math.ceil((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / 86400000))
 const TIME_RANGES = [
-  { label: 'All time', value: 0 },
+  { label: 'YTD', value: YTD_DAYS },
   { label: '30d', value: 30 },
   { label: '7d', value: 7 },
 ]
@@ -50,7 +52,7 @@ function Dashboard({ onLogout, onNavigate }) {
   // Platform is MULTI-select: an array of selected platform names. Empty = no
   // platform filter (the "All" chip clears the selection). Time stays single-select.
   const [selectedPlatforms, setSelectedPlatforms] = useState([])
-  const [days, setDays] = useState(0)
+  const [days, setDays] = useState(YTD_DAYS)
 
   // Toggle a platform in/out of the selection. Clicking "All" clears everything.
   const togglePlatform = (p) => {
@@ -230,7 +232,7 @@ function Dashboard({ onLogout, onNavigate }) {
               {
                 label: 'Twine SOV %',
                 value: twineRow ? `${twineRow.overall.toFixed(1)}%` : '—',
-                sub: twineRow ? `${twineRow.postCount} posts` : 'not in filter',
+                sub: twineRow ? `${twineRow.postCount} items` : 'not in filter',
                 accent: true,
                 hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors.',
               },
@@ -241,13 +243,13 @@ function Dashboard({ onLogout, onNavigate }) {
                 color: twineRow
                   ? (twineRow.avgSentiment > 0 ? 'var(--positive)' : twineRow.avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)')
                   : undefined,
-                hint: 'Average tone of external posts about Twine, on a -3 (very negative) to +3 (very positive) per-post scale.',
+                hint: 'Average tone of external items about Twine, on a -3 (very negative) to +3 (very positive) per-item scale.',
               },
               {
-                label: 'Twine Posts',
+                label: 'Twine Items',
                 value: twineRow ? twineRow.postCount : '—',
-                sub: twineRow ? (twineRow.postCount === 1 ? 'post in current view' : 'posts in current view') : 'not in filter',
-                hint: 'Number of posts attributed to Twine in the current view.',
+                sub: twineRow ? (twineRow.postCount === 1 ? 'item in current view' : 'items in current view') : 'not in filter',
+                hint: 'Number of items attributed to Twine in the current view.',
               },
             ].map((stat, i) => (
               <GlassCard key={i} className="stat-card" intensity={10} title={stat.hint}>
@@ -291,7 +293,7 @@ function Dashboard({ onLogout, onNavigate }) {
                   <thead>
                     <tr>
                       <SortHeader label="Company" field="company" sortKey={sortKey} setSortKey={setSortKey} align="left" />
-                      <SortHeader label="Posts" field="postCount" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label="Items" field="postCount" sortKey={sortKey} setSortKey={setSortKey} />
                       <SortHeader label="SOV %" field="weightedPct" sortKey={sortKey} setSortKey={setSortKey} />
                       <SortHeader label="Avg Sentiment" field="avgSentiment" sortKey={sortKey} setSortKey={setSortKey} />
                     </tr>
@@ -413,7 +415,7 @@ function CompareColumn({ company, row, winners, posts }) {
     <div className="compare-column">
       <div className="compare-company">{company}</div>
       <div className={`compare-metric ${win('volume') ? 'winner' : ''}`}>
-        <span className="metric-label">Posts</span>
+        <span className="metric-label">Items</span>
         <span className="metric-value">{row.postCount}</span>
       </div>
       <div className={`compare-metric ${win('sov') ? 'winner' : ''}`}>
@@ -438,7 +440,7 @@ function CompareColumn({ company, row, winners, posts }) {
               </div>
               <div className="platform-name">{plat}</div>
               <div className="platform-count">{data.count}</div>
-              <div className="platform-sov">{data.count === 1 ? 'post' : 'posts'}</div>
+              <div className="platform-sov">{data.count === 1 ? 'item' : 'items'}</div>
             </div>
           )
         })}

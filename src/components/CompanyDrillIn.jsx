@@ -1,22 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink, ChevronRight, Flame, Star } from 'lucide-react'
-import { computeWeightedSOV, postWeightOf } from '../lib/metrics'
+import { computeWeightedSOV, postWeightOf, isoWeekStart } from '../lib/metrics'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
 import './companyDrillIn.css'
 
-// --- Week bucketing (Monday-start ISO week), mirrors metrics.isoWeekStart ---
-function isoWeekStart(date) {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const day = (d.getDay() + 6) % 7
-  d.setDate(d.getDate() - day)
-  return d
-}
+// --- Week bucketing: shared scrape-anchored weeks (metrics.isoWeekStart) ---
 function weekKey(date) {
   const w = isoWeekStart(date)
   return `${w.getFullYear()}-${String(w.getMonth() + 1).padStart(2, '0')}-${String(w.getDate()).padStart(2, '0')}`
 }
 function weekLabel(key) {
-  // key = 'YYYY-MM-DD' (the Monday). Render "Week of Jun 23".
+  // key = 'YYYY-MM-DD' (the week-anchor day). Render "Week of Jun 23".
   const [y, m, d] = key.split('-').map(Number)
   const dt = new Date(y, m - 1, d)
   return `Week of ${dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
@@ -139,17 +133,17 @@ function deriveWhy(allDirectPosts, company, config) {
 }
 
 function whyString(f) {
-  if (f.total === 0) return 'No posts captured for this company in the current filter.'
+  if (f.total === 0) return 'No items captured for this company in the current filter.'
   if (f.sov < 2) {
     return f.own > f.ext
-      ? `Low SOV: little earned external chatter — most of its weight comes from its own ${f.own} post${f.own === 1 ? '' : 's'}.`
+      ? `Low SOV: little earned external chatter — most of its weight comes from its own ${f.own} item${f.own === 1 ? '' : 's'}.`
       : `Low SOV: very little engagement-weighted conversation in this period.`
   }
   const driver = f.topPlatform
     ? `Driven mostly by ${f.topPlatform} (${f.topPlatformPctOfScore}% of its weighted score)`
     : `Spread across platforms`
-  const fuel = f.ext >= f.own ? 'earned third-party posts' : 'its own posts'
-  const topW = f.topPost ? `; top post carries ~${Math.round(postWeightOf(f.topPost))} weight` : ''
+  const fuel = f.ext >= f.own ? 'earned third-party items' : 'its own items'
+  const topW = f.topPost ? `; top item carries ~${Math.round(postWeightOf(f.topPost))} weight` : ''
   return `${driver}, fueled mainly by ${fuel}${topW}.`
 }
 
@@ -288,7 +282,7 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
           </div>
           <p className="cdi-why">{whyString(why)}</p>
           <div className="cdi-why-stats">
-            <span><strong>{totalPosts}</strong> post{totalPosts === 1 ? '' : 's'} in view</span>
+            <span><strong>{totalPosts}</strong> item{totalPosts === 1 ? '' : 's'} in view</span>
             <span className="cdi-dot">·</span>
             <span><strong>{why.ext}</strong> earned</span>
             <span className="cdi-dot">·</span>
@@ -298,14 +292,14 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
 
         <div className="cdi-body">
           {totalPosts === 0 ? (
-            <div className="empty-state"><p>No posts for this company in the current filter.</p></div>
+            <div className="empty-state"><p>No items for this company in the current filter.</p></div>
           ) : (
             <>
               {standouts.items.length > 0 && (
                 <div className="cdi-standouts">
                   <div className="cdi-standouts-head">
                     <span className="cdi-standouts-title">
-                      {standouts.hasOutliers ? 'Top posts & outliers' : 'Top posts'}
+                      {standouts.hasOutliers ? 'Top items & outliers' : 'Top items'}
                     </span>
                     <span className="cdi-standouts-sub">the standouts driving its score</span>
                   </div>
@@ -329,7 +323,7 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
                     >
                       <ChevronRight size={14} className="cdi-week-caret" />
                       <span className="cdi-week-label">{w.label}</span>
-                      <span className="cdi-week-count">{w.posts.length} post{w.posts.length === 1 ? '' : 's'}</span>
+                      <span className="cdi-week-count">{w.posts.length} item{w.posts.length === 1 ? '' : 's'}</span>
                     </button>
                     {open && (
                       <div className="cdi-posts">
@@ -374,12 +368,12 @@ function StandoutChip({ post }) {
         <span className="cdi-plat-dot" style={{ background: color }} />
         <span className="cdi-chip-plat">{post.platform}</span>
         {post.isOutlier && (
-          <span className="cdi-chip-outlier" title="Statistical outlier — well above this company's typical post">
+          <span className="cdi-chip-outlier" title="Statistical outlier — well above this company's typical item">
             <Flame size={11} /> outlier
           </span>
         )}
         <AuthorTypeBadge authorType={post.authorType} platform={post.platform} />
-        <span className="cdi-chip-weight" title="This post's impact on the company's Share of Voice">
+        <span className="cdi-chip-weight" title="This item's impact on the company's Share of Voice">
           ⚡ {Math.round(post.weight * 100) / 100}
         </span>
       </div>
@@ -419,7 +413,7 @@ function PostRow({ post }) {
           <AuthorTypeBadge authorType={post.authorType} platform={post.platform} />
           <span
             className="cdi-weight"
-            title="This post's impact — how much it adds to the company's Share of Voice (engagement, reach, sentiment, recency, and who posted it). Not a percentage — a raw weight."
+            title="This item's impact — how much it adds to the company's Share of Voice (engagement, reach, sentiment, recency, and who posted it). Not a percentage — a raw weight."
           >
             <span className="cdi-weight-val">⚡ {Math.round(post.weight * 100) / 100}</span>
             <span className="cdi-weight-label">impact</span>

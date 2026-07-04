@@ -130,7 +130,7 @@ const HERO_NODES = [
   { id: 'reach',      label: 'Reach',      x: 138, y: 88 },
   { id: 'sentiment',  label: '× Sentiment', x: 258, y: 88 },
   { id: 'decay',      label: '× Decay', x: 388, y: 88 },
-  { id: 'weight',     label: 'Per-post Weight', x: 510, y: 88 },
+  { id: 'weight',     label: 'Per-item Weight', x: 510, y: 88 },
   { id: 'share',      label: 'Platform Share', x: 648, y: 88 },
 ]
 
@@ -177,11 +177,11 @@ function Hero({ active, onJump }) {
         {/* entering post chip */}
         <g>
           <rect x="6" y="40" width="62" height="22" rx="11" fill="var(--inner-bg)" stroke="var(--divider)" strokeWidth="1" />
-          <text x="37" y="55" textAnchor="middle" className="hero-mini" fill="var(--text-secondary)">1 post</text>
+          <text x="37" y="55" textAnchor="middle" className="hero-mini" fill="var(--text-secondary)">1 item</text>
           <path d="M37 62 V80" stroke="var(--accent)" strokeWidth="1.4" opacity="0.5" />
         </g>
       </svg>
-      <div className="hero-caption">One post, left to right. The lime rail is the score; the fork up top is who posted it; sentiment peels off as a display-only readout. Click any step to jump to it.</div>
+      <div className="hero-caption">One item, left to right. The lime rail is the score; the fork up top is who posted it; sentiment peels off as a display-only readout. Click any step to jump to it.</div>
     </div>
   )
 }
@@ -370,7 +370,7 @@ function WeightBus() {
           <tr><th>LinkedIn author</th><th>B (baseline)</th><th>M (reach mult)</th><th>why</th></tr>
         </thead>
         <tbody>
-          <tr><td>own post</td><td>1</td><td>1.0</td><td>impressions floor</td></tr>
+          <tr><td>own item</td><td>1</td><td>1.0</td><td>impressions floor</td></tr>
           <tr className="meth-table-hl"><td>external / earned</td><td>5</td><td>1.5</td><td>new eyes worth more</td></tr>
         </tbody>
       </table>
@@ -441,7 +441,7 @@ function SharePoolBar() {
       <div className="pool-note">
         LinkedIn share = <Fraction num="131.5 (this company)" den="540 (all direct competitors on LinkedIn)" /> = <strong>24.4%</strong>
       </div>
-      <div className="chip pool-guard">quiet-platform guard: a platform with almost no posts is dropped, so one stray post can’t swing the board</div>
+      <div className="chip pool-guard">quiet-platform guard: a platform with almost no items is dropped, so one stray item can’t swing the board</div>
     </div>
   )
 }
@@ -536,7 +536,7 @@ function SentimentSpark() {
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <div className="chart-note">Illustrative weekly trend over EXTERNAL posts/news only.</div>
+      <div className="chart-note">Illustrative weekly trend over EXTERNAL items only.</div>
     </div>
   )
 }
@@ -548,7 +548,7 @@ const GLOSSARY = [
   ['Share of Voice', 'your slice of the competitor conversation, 0–100%'],
   ['direct competitor', 'counted in SOV%; the set sums to 100%'],
   ['indirect competitor', 'tracked and graphed, but left out of SOV%'],
-  ['eng', 'a post’s interactions, weighted by type'],
+  ['eng', 'an item’s interactions, weighted by type'],
   ['reach', 'eng^(49/50) — eyeballs, gently flattened'],
   ['sentMult', 'tone multiplier, 0.5–1.3'],
   ['decay', 'age weighting; 7-day grace then halving'],
@@ -640,25 +640,25 @@ export default function Equations({ onLogout, onNavigate }) {
           {/* 0 — INTRO */}
           <GlassCard className="card meth-card" style={{ scrollMarginTop: '96px' }} id="intro">
             <div className="meth-eyebrow">THE MATH</div>
-            <h2 className="meth-title">How a post becomes Share of Voice</h2>
+            <h2 className="meth-title">How an item becomes Share of Voice</h2>
             <p className="meth-thesis">
               <strong className="meth-lede">Share of Voice is how much of the conversation you own versus your direct competitors.</strong>
               {' '}Think of one big room where everyone’s talking about the market: SOV% is the share of that noise that’s about you.
             </p>
             <p className="meth-thesis">
               Each week we read every public mention across LinkedIn, Google News, Reddit, and X, score it by how much
-              attention it actually earned, and add up each company’s share. Below: follow one post from raw likes to a
+              attention it actually earned, and add up each company’s share. Below: follow one item from raw likes to a
               single percentage.
             </p>
             <Hero active={heroActive} onJump={jump} />
             <Callout>
-              <strong>The post we’ll follow:</strong> {EXAMPLE.blurb}
+              <strong>The item we’ll follow:</strong> {EXAMPLE.blurb}
             </Callout>
           </GlassCard>
 
           {/* 1 — ENGAGEMENT */}
           <Stage number="1" id="engagement" title="Engagement"
-            intuition="Add up the interactions — but the ones that spread a post count for more."
+            intuition="Add up the interactions — but the ones that spread an item count for more."
             pill={trace('engagement')}>
             <EquationRow label="LinkedIn" color="var(--linkedin-color)">
               eng = 1·reactions + 3·comments + 10·reshares (+1.5 if image)
@@ -669,14 +669,14 @@ export default function Equations({ onLogout, onNavigate }) {
             <EquationRow label="Reddit" color="var(--reddit-color)">
               eng = 1·upvotes + 3·comments
             </EquationRow>
-            <Callout>A reshare counts ×10 — it puts the post in front of a whole new audience, not just a thumbs-up.</Callout>
+            <Callout>A reshare counts ×10 — it puts the item in front of a whole new audience, not just a thumbs-up.</Callout>
             <EngWeightBars />
             <div className="meth-example-line">example: 40 + 3·6 + 10·3 + 1.5 = <strong>89.5</strong></div>
           </Stage>
 
           {/* 2 — REACH */}
           <Stage number="2" id="reach" title="Reach"
-            intuition="Turn engagement into a rough audience size, so one viral post can’t dominate."
+            intuition="Turn engagement into a rough audience size, so one viral item can’t dominate."
             pill={trace('reach')}>
             <EquationRow label="default" color="var(--text-muted)">reach = eng^(49/50)</EquationRow>
             <EquationRow label="X" color="var(--x-color)" note="X gives real impressions">reach = (viewCount + eng)^(49/50)</EquationRow>
@@ -690,7 +690,7 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="Positive buzz is worth more than a pile-on — tone nudges the score, never zeroes it."
             pill={trace('sentiment')}>
             <EquationRow>sentMult = 0.5 + ((clamp(sentiment, −3, 3) + 3) / 6) · 0.8</EquationRow>
-            <Callout>Runs 0.5 (very negative) → 0.9 (neutral) → 1.3 (very positive). A glowing post is worth ≈2.6× a trashed one of the same size.</Callout>
+            <Callout>Runs 0.5 (very negative) → 0.9 (neutral) → 1.3 (very positive). A glowing item is worth ≈2.6× a trashed one of the same size.</Callout>
             <SentMultRamp />
             <div className="meth-example-line">example: sentiment +1 → 0.5 + (4/6)·0.8 = <strong>1.03</strong></div>
           </Stage>
@@ -708,8 +708,8 @@ export default function Equations({ onLogout, onNavigate }) {
           </Stage>
 
           {/* 5 — PER-POST WEIGHT */}
-          <Stage number="5" id="weight" title="Per-post weight"
-            intuition="One post’s final score: reach × tone × freshness, scaled by who posted it."
+          <Stage number="5" id="weight" title="Per-item weight"
+            intuition="One item’s final score: reach × tone × freshness, scaled by who posted it."
             pill={trace('weight')}>
             <EquationRow label="LinkedIn" color="var(--linkedin-color)">
               post_weight = (B<sub>author</sub> + reach·M<sub>author</sub>) · sentMult · decay
@@ -726,7 +726,7 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="Your own page bragging counts for less than someone else choosing to talk about you."
             pill={trace('author')}>
             <p className="meth-body">
-              A post is <code className="eq-inline">company</code> if it comes from the company’s own page or an
+              An item is <code className="eq-inline">company</code> if it comes from the company’s own page or an
               employee (matched by profile, headline, or an employee classifier); otherwise it’s
               {' '}<code className="eq-inline">external</code> — earned attention, worth more. This switch sets the
               B and M factors in step 5.
@@ -761,7 +761,7 @@ export default function Equations({ onLogout, onNavigate }) {
             pill={trace('sov')}>
             <EquationRow>SOV% = weighted-share</EquationRow>
             <Callout>
-              <strong>Why nothing else?</strong> Posting more already lifts your score — more posts means more total
+              <strong>Why nothing else?</strong> Posting more already lifts your score — more items means more total
               weight in step 7. Adding a separate “how often” term would count volume twice, so we don’t.
             </Callout>
             <SovKeystone />
@@ -772,8 +772,8 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="How the market feels about you — tracked next to SOV%, never folded into it.">
             <div className="meth-fence-label">DISPLAY METRIC · NOT IN SOV%</div>
             <p className="meth-body">
-              The dashboard also shows average sentiment over <strong>external</strong> posts and news only — earned
-              perception, not your own posts. It’s its own column and weekly trend, kept fully separate from the score.
+              The dashboard also shows average sentiment over <strong>external</strong> items only — earned
+              perception, not your own items. It’s its own column and weekly trend, kept fully separate from the score.
             </p>
             <SentimentSpark />
           </Stage>

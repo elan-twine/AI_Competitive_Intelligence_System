@@ -4,15 +4,10 @@ import { GlassCard } from './GlassCard'
 import { normalizePost, whyDidWell } from './CompanyDrillIn'
 import { colorForCompany } from '../lib/colors'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
+import { isoWeekStart } from '../lib/metrics'
 import './topPosts.css'
 
-/* ISO-week bucketing (Monday-start), mirrors metrics.isoWeekStart. */
-function isoWeekStart(date) {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const day = (d.getDay() + 6) % 7
-  d.setDate(d.getDate() - day)
-  return d
-}
+/* Week bucketing: shared scrape-anchored weeks (metrics.isoWeekStart). */
 function weekKey(date) {
   const w = isoWeekStart(date)
   return `${w.getFullYear()}-${String(w.getMonth() + 1).padStart(2, '0')}-${String(w.getDate()).padStart(2, '0')}`
@@ -61,9 +56,9 @@ function TopPostRow({ post }) {
         <span className="twp-co"><span className="twp-co-dot" style={{ background: coColor }} />{post.company}</span>
         <span className="twp-plat"><span className="twp-plat-dot" style={{ background: platColor }} />{post.platform}</span>
         {post.isOutlier && (
-          <span className="twp-outlier" title="Well above this week's typical post"><Flame size={11} /> outlier</span>
+          <span className="twp-outlier" title="Well above this week's typical item"><Flame size={11} /> outlier</span>
         )}
-        <span className="twp-weight" title="This post's weighted impact on Share of Voice">⚡ {Math.round(post.weight * 100) / 100}</span>
+        <span className="twp-weight" title="This item's weighted impact on Share of Voice">⚡ {Math.round(post.weight * 100) / 100}</span>
         {post.url && <ExternalLink size={13} className="twp-ext" />}
       </div>
       <div className="twp-text">{short || <em>(no preview text)</em>}</div>
@@ -71,7 +66,7 @@ function TopPostRow({ post }) {
     </>
   )
   if (post.url) {
-    return <a className="twp-row" href={post.url} target="_blank" rel="noopener noreferrer" title="Open original post">{Body}</a>
+    return <a className="twp-row" href={post.url} target="_blank" rel="noopener noreferrer" title="Open original">{Body}</a>
   }
   return <div className="twp-row">{Body}</div>
 }
@@ -84,10 +79,10 @@ export function TopPostsWeek({ posts = [] }) {
   return (
     <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
       <div className="card-header">
-        <span className="card-title">Top posts this week{label ? ` · week of ${label}` : ''}</span>
+        <span className="card-title">Top items this week{label ? ` · week of ${label}` : ''}</span>
       </div>
       <p className="cr-sub" style={{ marginTop: -8 }}>
-        The highest-impact posts driving the board right now{hasOutliers ? ' — flagged “outliers” are well above the week’s typical post.' : ', ranked by weighted contribution.'}
+        The highest-impact items driving the board right now{hasOutliers ? ' — flagged “outliers” are well above the week’s typical item.' : ', ranked by weighted contribution.'}
       </p>
       <div className="twp-list">
         {items.map((p, i) => <TopPostRow post={p} key={i} />)}

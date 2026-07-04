@@ -93,7 +93,7 @@ export function CompetitiveReview({ posts, competitors }) {
       </div>
 
       <p className="cr-sub">
-        Posts published by each competitor (company pages + employees) this week, with LinkedIn engagement.
+        Items published by each competitor (company pages + employees) this week, with LinkedIn engagement.
       </p>
 
       {/* Weekly Insight Report — HIDDEN until the auto-classification criteria
@@ -131,7 +131,7 @@ export function CompetitiveReview({ posts, competitors }) {
       {/* Week totals + platform toggle */}
       <div className="cr-toolbar">
         <div className="cr-totals">
-          <span><strong>{totals.posts}</strong> posts</span>
+          <span><strong>{totals.posts}</strong> items</span>
           <span><ThumbsUp size={12} /> {totals.reactions.toLocaleString()}</span>
           <span><MessageSquare size={12} /> {totals.comments.toLocaleString()}</span>
           <span><Repeat2 size={12} /> {totals.reshares.toLocaleString()}</span>
@@ -144,7 +144,7 @@ export function CompetitiveReview({ posts, competitors }) {
 
       {/* Per-company table */}
       {companyRows.length === 0 ? (
-        <div className="empty-state"><p>No competitor-authored posts captured for this week yet.</p></div>
+        <div className="empty-state"><p>No competitor-authored items captured for this week yet.</p></div>
       ) : (
         <div className="cr-list">
           {companyRows.map(c => {
@@ -180,7 +180,7 @@ export function CompetitiveReview({ posts, competitors }) {
                 {open && (
                   <div className="cr-posts">
                     {c.linkedin.posts.length === 0 ? (
-                      <div className="cr-post-empty">No LinkedIn posts this week.</div>
+                      <div className="cr-post-empty">No LinkedIn items this week.</div>
                     ) : c.linkedin.posts.map((p, i) => (
                       <div className="cr-post" key={p.id ?? i}>
                         <div className="cr-post-main">
@@ -204,7 +204,7 @@ export function CompetitiveReview({ posts, competitors }) {
       )}
 
       <div className="cr-footnote">
-        Competitor-authored LinkedIn posts and their engagement, by week — navigate weeks with the arrows above.
+        Competitor-authored LinkedIn items and their engagement, by week — navigate weeks with the arrows above.
       </div>
     </GlassCard>
   )

@@ -128,19 +128,26 @@ export function computeWeightedSOV(posts, config = DEFAULT_SOV_CONFIG) {
 }
 
 // ---------------------------------------------------------------------------
-// Weekly SOV trend. Buckets posts into ISO weeks (Mon–Sun) by `post.ts`, then
+// Weekly SOV trend. Buckets posts into anchor-aligned weeks by `post.ts`, then
 // computes per-competitor cross-platform weighted SOV for EACH week using the
 // SAME methodology as computeWeightedSOV (within-platform share → weighted
 // average across platforms, with the min-volume guard). Output is shaped for
 // recharts: one row per week, one numeric key per company (SOV 0..100).
 // ---------------------------------------------------------------------------
 
-// Monday of the ISO week containing `date`, normalized to local midnight.
-// We label each bucket by this Monday as 'YYYY-MM-DD' (the week-start date).
-function isoWeekStart(date) {
+// Week anchor day for ALL client-side weekly bucketing (0=Sun..6=Sat).
+// Scrapes run Thursday mornings and the n8n snapshot stamps sov_weekly's
+// week_start as the most-recent Thursday, so weeks are Thursday-anchored (4)
+// to match. If the scrape day ever moves, change this ONE constant (and the
+// snapshot's isoThursday in n8n) — every weekly grouping in the app follows.
+export const WEEK_ANCHOR_DAY = 4
+
+// Anchor day of the week containing `date`, normalized to local midnight.
+// We label each bucket by this anchor date as 'YYYY-MM-DD' (the week-start date).
+export function isoWeekStart(date) {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  // getDay(): 0=Sun..6=Sat. Shift so Monday is the first day of the week.
-  const day = (d.getDay() + 6) % 7
+  // getDay(): 0=Sun..6=Sat. Shift back to the most recent anchor day.
+  const day = (d.getDay() - WEEK_ANCHOR_DAY + 7) % 7
   d.setDate(d.getDate() - day)
   return d
 }
