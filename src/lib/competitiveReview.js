@@ -1,3 +1,5 @@
+import { WEEK_ANCHOR_DAY } from './metrics'
+
 // Competitive Review data model: weekly, per-competitor view of posts the
 // competitors themselves published (their company page + employees), with
 // LinkedIn engagement aggregates. Skeleton for the future weekly insight report
@@ -8,12 +10,13 @@
 // LinkedIn for now, so "competitor-authored" filtering applies to LinkedIn; other
 // platforms are shown as attributed activity behind a toggle.
 
-// Monday (ISO week start) label 'YYYY-MM-DD' for a date/timestamp.
+// Week-start label 'YYYY-MM-DD' for a date/timestamp, anchored to the shared
+// scrape-aligned anchor day (metrics.WEEK_ANCHOR_DAY — currently Thursday).
 export function weekStartLabel(d) {
   const dt = new Date(d)
   if (isNaN(dt.getTime())) return null
   const x = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
-  const day = (x.getDay() + 6) % 7 // 0=Mon..6=Sun
+  const day = (x.getDay() - WEEK_ANCHOR_DAY + 7) % 7
   x.setDate(x.getDate() - day)
   const y = x.getFullYear()
   const m = String(x.getMonth() + 1).padStart(2, '0')

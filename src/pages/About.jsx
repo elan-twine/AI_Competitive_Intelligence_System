@@ -17,12 +17,12 @@ const PRINCIPLES = [
   {
     icon: Repeat2,
     title: 'Spread beats applause',
-    body: 'A repost or share puts a post in front of a whole new audience, so it’s worth an order of magnitude more than a like. We reward the interactions that actually widen reach, not the vanity taps that don’t leave the original feed.',
+    body: 'A repost or share puts an item in front of a whole new audience, so it’s worth an order of magnitude more than a like. We reward the interactions that actually widen reach, not the vanity taps that don’t leave the original feed.',
   },
   {
     icon: Clock,
     title: 'Fresh beats old',
-    body: 'This week’s conversation matters most. A post earns full credit for its first week, then its weight fades — quickly for X, slowly for news — so the board reflects momentum right now, not a stale all-time ledger.',
+    body: 'This week’s conversation matters most. An item earns full credit for its first week, then its weight fades — quickly for X, slowly for news — so the board reflects momentum right now, not a stale all-time ledger.',
   },
   {
     icon: Users,
@@ -70,7 +70,7 @@ export default function About({ onLogout, onNavigate }) {
           <p className="meth-thesis">
             Every week the tool reads public mentions across <strong>LinkedIn, Google News, Reddit, and X</strong>, scores each one by
             how much attention it genuinely earned, and adds up each company’s share. The result is a single percentage per
-            competitor, refreshed weekly, plus the trends and post-level detail behind it.
+            competitor, refreshed weekly, plus the trends and item-level detail behind it.
           </p>
         </GlassCard>
 
@@ -117,7 +117,7 @@ export default function About({ onLogout, onNavigate }) {
           <div className="about-brain-text">
             <div className="about-brain-title">See the brain</div>
             <div className="about-brain-sub">
-              Want the exact math? Follow one post from raw likes to a final percentage — every equation, curve, and weight.
+              Want the exact math? Follow one item from raw likes to a final percentage — every equation, curve, and weight.
             </div>
           </div>
           <ArrowRight size={20} className="about-brain-arrow" />
