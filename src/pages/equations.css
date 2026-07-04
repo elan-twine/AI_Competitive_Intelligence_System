@@ -378,11 +378,15 @@
 .fork-wrap { margin: 12px 0 4px; }
 .fork-q { font-size: 13px; font-weight: 600; color: var(--text-primary); text-align: center; margin-bottom: 16px; }
 .fork-q-sub { font-size: 11px; font-weight: 400; color: var(--text-muted); }
-.fork-branches { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.fork-branches { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
 .fork-branch { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .fork-yn { font-size: 10px; font-weight: 700; letter-spacing: 0.8px; padding: 3px 10px; border-radius: 999px; }
 .fork-yes { background: var(--inner-bg); color: var(--text-muted); border: 1px solid var(--divider); }
+.fork-emp { background: color-mix(in srgb, var(--meth-purple) 12%, transparent); color: var(--meth-purple); border: 1px solid var(--meth-purple); }
 .fork-no { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); }
+.fork-pill-employee { border-color: var(--meth-purple); background: color-mix(in srgb, var(--meth-purple) 8%, transparent); }
+.fork-pill-employee .fork-pill-title { color: var(--meth-purple); }
+.meth-table-emp td { color: var(--meth-purple); }
 .fork-pill {
   width: 100%;
   text-align: center;
@@ -489,3 +493,91 @@
   .meth-rail { display: none; }
   .fork-branches { grid-template-columns: 1fr; }
 }
+
+/* ================================================================== */
+/*  Twine-site brand treatment (About + Methodology pages ONLY).      */
+/*  Palette/typography lifted from twinesecurity.com: paper #fcfcf9 / */
+/*  ink #0d0f0d neutrals, acid yellow #dbfe02 fills with black text,  */
+/*  purple #7a4ef5 secondary accent, large LIGHT (300) grotesk        */
+/*  headings with tight letter-spacing, pill (9999px) CTAs.           */
+/* ================================================================== */
+.meth-layout, .about-page {
+  --meth-purple: #7a4ef5;
+  --meth-ink: #0d0f0d;
+  --meth-paper: #fcfcf9;
+}
+
+/* paper/ink page background (replaces the dashboard's green-tinted bg) */
+body:has(.about-page), body:has(.meth-layout) { background: var(--bg-primary); }
+[data-theme='light'] body:has(.about-page),
+[data-theme='light'] body:has(.meth-layout),
+:root body:has(.about-page),
+:root body:has(.meth-layout) { background: #fcfcf9; }
+[data-theme='dark'] body:has(.about-page),
+[data-theme='dark'] body:has(.meth-layout) { background: #0d0f0d; }
+
+/* site-style headings: big, LIGHT weight, tight tracking */
+.meth-title {
+  font-weight: 300;
+  font-size: clamp(28px, 4.5vw, 40px);
+  letter-spacing: -1.5px;
+  line-height: 1.15;
+}
+.meth-title strong, .meth-lede { font-weight: 600; }
+
+/* eyebrows go brand-purple, wider tracking (site section labels) */
+.meth-eyebrow {
+  color: var(--meth-purple);
+  letter-spacing: 2.4px;
+  font-weight: 600;
+}
+
+/* flatter, paper-like cards on these pages (light mode) */
+[data-theme='light'] .meth-page .card,
+[data-theme='light'] .about-page .card {
+  background: #ffffff;
+  border: 1px solid rgba(13, 15, 13, 0.10);
+  box-shadow: 0 1px 2px rgba(13, 15, 13, 0.04);
+}
+
+/* stage number badge → yellow pill, black text (site button language) */
+.meth-card .card-badge {
+  background: var(--accent);
+  color: var(--meth-ink);
+  border-radius: 9999px;
+  border: 1px solid rgba(13, 15, 13, 0.18);
+}
+
+/* running-example pill → same yellow-on-ink treatment */
+.trace-pill {
+  background: var(--accent);
+  color: var(--meth-ink);
+  border: 1px solid rgba(13, 15, 13, 0.18);
+  border-radius: 9999px;
+}
+.trace-pill-tag { color: rgba(13, 15, 13, 0.6); }
+
+/* glossary terms pick up the purple accent */
+.meth-gloss-term { color: var(--meth-purple); border-color: color-mix(in srgb, var(--meth-purple) 35%, transparent); }
+
+/* back-to-dashboard link → pill */
+.meth-back-link { border-radius: 9999px; }
+
+/* ---- light mode: yellow is a FILL, never text (site rule) ---- */
+/* code chips: ink text on soft yellow */
+[data-theme='light'] .meth-page .eq-inline,
+[data-theme='light'] .about-page .eq-inline {
+  color: var(--meth-ink);
+  background: var(--accent-dim);
+  border-color: rgba(13, 15, 13, 0.15);
+}
+/* worked-example values: ink, still bold */
+[data-theme='light'] .meth-page .meth-example-line strong { color: var(--meth-ink); }
+/* the EXTERNAL branch: solid yellow fill + ink text */
+[data-theme='light'] .fork-pill-accent { background: var(--accent); border-color: rgba(13, 15, 13, 0.2); }
+[data-theme='light'] .fork-pill-accent .fork-pill-title { color: var(--meth-ink); }
+[data-theme='light'] .fork-pill-accent .fork-pill-sub { color: rgba(13, 15, 13, 0.8); }
+[data-theme='light'] .fork-pill-accent .fork-pill-note { color: rgba(13, 15, 13, 0.65); }
+[data-theme='light'] .fork-no { background: var(--accent); color: var(--meth-ink); border-color: rgba(13, 15, 13, 0.25); }
+/* hero SVG labels that use accent as text fill */
+[data-theme='light'] .hero-svg text[fill="var(--accent)"] { fill: #74850a; }
