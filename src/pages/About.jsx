@@ -95,16 +95,19 @@ export default function About({ onLogout, onNavigate }) {
           <div className="about-tiers-head">Who’s talking is weighted like this</div>
           <div className="about-tier-row">
             <span className="about-tier about-tier-lo">
+              <span className="about-tier-weight">×1</span>
               <span className="about-tier-label">Company’s own page</span>
               <span className="about-tier-note">a baseline floor — impressions</span>
             </span>
             <ArrowRight size={16} className="about-tier-arrow" />
             <span className="about-tier about-tier-mid">
+              <span className="about-tier-weight">×2</span>
               <span className="about-tier-label">Employees</span>
               <span className="about-tier-note">closer to earned, but still insiders</span>
             </span>
             <ArrowRight size={16} className="about-tier-arrow" />
             <span className="about-tier about-tier-hi">
+              <span className="about-tier-weight">×5</span>
               <span className="about-tier-label">External voices</span>
               <span className="about-tier-note">the real signal — new, independent eyes</span>
             </span>
