@@ -19,9 +19,9 @@ const EXAMPLE = {
     { id: 'reach',      value: '81.8',  unit: 'reach' },
     { id: 'sentiment',  value: '1.03',  unit: '× sentMult' },
     { id: 'decay',      value: '1.0',   unit: '× decay' },
-    { id: 'weight',     value: '131.5', unit: 'post_weight' },
-    { id: 'author',     value: 'external', unit: 'B=5 · M=1.5' },
-    { id: 'share',      value: '24.4%', unit: 'LinkedIn share' },
+    { id: 'weight',     value: '174.2', unit: 'post_weight' },
+    { id: 'author',     value: 'external', unit: 'B=5 · M=2' },
+    { id: 'share',      value: '29.9%', unit: 'LinkedIn share' },
     { id: 'sov',        value: '→ SOV%', unit: 'this share, combined across platforms' },
   ],
 }
@@ -146,10 +146,12 @@ function Hero({ active, onJump }) {
         {/* main flow rail: post → … → share → SOV */}
         <path d="M114 105 H138 M234 105 H258 M354 105 H388 M484 105 H510 M606 105 H648 M744 105 H772" stroke="var(--accent)" strokeWidth="2" fill="none" opacity="0.55" />
 
-        {/* author fork: splits before weight, rejoins at weight */}
+        {/* author fork: three tiers split before weight, rejoin at weight */}
         <path d="M450 105 C470 58, 488 58, 500 74" stroke="var(--text-muted)" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <path d="M450 105 C468 40, 494 40, 505 60" stroke="var(--meth-purple, #7a4ef5)" strokeWidth="1.4" fill="none" opacity="0.7" />
         <path d="M450 105 C470 152, 488 152, 500 136" stroke="var(--accent)" strokeWidth="1.4" fill="none" opacity="0.7" />
-        <text x="468" y="52" className="hero-mini" fill="var(--text-muted)">company</text>
+        <text x="468" y="70" className="hero-mini" fill="var(--text-muted)">company</text>
+        <text x="470" y="36" className="hero-mini" fill="var(--meth-purple, #7a4ef5)">employee</text>
         <text x="466" y="168" className="hero-mini" fill="var(--accent)">external</text>
 
         {/* sentiment side-channel peels off and dead-ends */}
@@ -363,15 +365,16 @@ function WeightBus() {
       </div>
       <div className="bus-core-label">shared core (reach · sentMult · decay) is identical on every platform; only the front factor changes</div>
       <div className="bus-example">
-        example (external author): (5 + 81.8·1.5) · 1.03 · 1.0 ≈ <strong>131.5</strong>
+        example (external author): (5 + 81.8·2) · 1.03 · 1.0 ≈ <strong>174.2</strong>
       </div>
       <table className="meth-table">
         <thead>
           <tr><th>LinkedIn author</th><th>B (baseline)</th><th>M (reach mult)</th><th>why</th></tr>
         </thead>
         <tbody>
-          <tr><td>own item</td><td>1</td><td>1.0</td><td>impressions floor</td></tr>
-          <tr className="meth-table-hl"><td>external / earned</td><td>5</td><td>1.5</td><td>new eyes worth more</td></tr>
+          <tr><td>own item (company page)</td><td>1</td><td>1.0</td><td>impressions floor</td></tr>
+          <tr className="meth-table-emp"><td>employee</td><td>2</td><td>1.2</td><td>closer to earned, still an insider</td></tr>
+          <tr className="meth-table-hl"><td>external / earned</td><td>5</td><td>2.0</td><td>new eyes worth most</td></tr>
         </tbody>
       </table>
     </div>
@@ -384,10 +387,10 @@ function WeightBus() {
 function AuthorFork() {
   return (
     <div className="fork-wrap">
-      <div className="fork-q">Own page or employee?<br /><span className="fork-q-sub">matched by LinkedIn URN · company name in headline · employee classifier</span></div>
+      <div className="fork-q">Who posted it?<br /><span className="fork-q-sub">own page matched by LinkedIn URN · employees by classifier or company-in-headline · everyone else is external</span></div>
       <div className="fork-branches">
         <div className="fork-branch">
-          <span className="fork-yn fork-yes">YES</span>
+          <span className="fork-yn fork-yes">OWN PAGE</span>
           <div className="fork-pill">
             <div className="fork-pill-title">COMPANY</div>
             <div className="fork-pill-sub">B = 1 · M = 1.0</div>
@@ -395,10 +398,18 @@ function AuthorFork() {
           </div>
         </div>
         <div className="fork-branch">
-          <span className="fork-yn fork-no">NO</span>
+          <span className="fork-yn fork-emp">STAFF</span>
+          <div className="fork-pill fork-pill-employee">
+            <div className="fork-pill-title">EMPLOYEE</div>
+            <div className="fork-pill-sub">B = 2 · M = 1.2</div>
+            <div className="fork-pill-note">human voice, still inside</div>
+          </div>
+        </div>
+        <div className="fork-branch">
+          <span className="fork-yn fork-no">ANYONE ELSE</span>
           <div className="fork-pill fork-pill-accent">
             <div className="fork-pill-title">EXTERNAL</div>
-            <div className="fork-pill-sub">B = 5 · M = 1.5</div>
+            <div className="fork-pill-sub">B = 5 · M = 2.0</div>
             <div className="fork-pill-note">earned = new eyes</div>
           </div>
         </div>
@@ -411,9 +422,9 @@ function AuthorFork() {
 /*  Visual 8 — Within-platform share pool                             */
 /* ------------------------------------------------------------------ */
 function SharePoolBar() {
-  // one LinkedIn pool of 540 weight; Twine/example = 131.5 → 24.4%
+  // one LinkedIn pool of ~583 weight; this company/example = 174.2 → 29.9%
   const segments = [
-    { name: 'this company', val: 131.5, accent: true },
+    { name: 'this company', val: 174.2, accent: true },
     { name: 'competitor B', val: 150 },
     { name: 'competitor C', val: 128 },
     { name: 'others', val: 130.5 },
@@ -432,14 +443,14 @@ function SharePoolBar() {
             <g key={seg.name}>
               <rect x={x} y="0" width={w - 1.5} height={H} rx="5" fill={seg.accent ? 'var(--accent)' : 'var(--inner-bg)'} stroke={seg.accent ? 'var(--accent)' : 'var(--divider)'} strokeWidth="1" />
               <text x={x + (w / 2)} y={H / 2 + 4} textAnchor="middle" className="pool-seg-text" fill={seg.accent ? '#0B0D00' : 'var(--text-secondary)'}>
-                {seg.accent ? '24.4%' : ''}
+                {seg.accent ? '29.9%' : ''}
               </text>
             </g>
           )
         })}
       </svg>
       <div className="pool-note">
-        LinkedIn share = <Fraction num="131.5 (this company)" den="540 (all direct competitors on LinkedIn)" /> = <strong>24.4%</strong>
+        LinkedIn share = <Fraction num="174.2 (this company)" den="582.7 (all direct competitors on LinkedIn)" /> = <strong>29.9%</strong>
       </div>
       <div className="chip pool-guard">quiet-platform guard: a platform with almost no items is dropped, so one stray item can’t swing the board</div>
     </div>
@@ -505,7 +516,7 @@ function SovKeystone() {
     <div className="sov-key-wrap">
       <GlassCard className="stat-card sov-stat" intensity={8}>
         <div className="label">HEADLINE SOV%</div>
-        <div className="value accent">24.4</div>
+        <div className="value accent">29.9</div>
         <div className="sub">your weighted share of the conversation</div>
       </GlassCard>
       <div className="sov-micro">
@@ -552,7 +563,8 @@ const GLOSSARY = [
   ['reach', 'eng^(49/50) — eyeballs, gently flattened'],
   ['sentMult', 'tone multiplier, 0.5–1.3'],
   ['decay', 'age weighting; 7-day grace then halving'],
-  ['post_weight', 'one post’s final score (reach × tone × freshness, scaled by author)'],
+  ['post_weight', 'one item’s final score (reach × tone × freshness, scaled by author)'],
+  ['author tier', 'company ×1 · employee ×2 · external ×5 (baseline B; reach mult M = 1 / 1.2 / 2)'],
   ['platform share', 'a company’s post_weight ÷ the platform pool'],
 ]
 
@@ -690,7 +702,7 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="Positive buzz is worth more than a pile-on — tone nudges the score, never zeroes it."
             pill={trace('sentiment')}>
             <EquationRow>sentMult = 0.5 + ((clamp(sentiment, −3, 3) + 3) / 6) · 0.8</EquationRow>
-            <Callout>Runs 0.5 (very negative) → 0.9 (neutral) → 1.3 (very positive). A glowing item is worth ≈2.6× a trashed one of the same size.</Callout>
+            <Callout>Runs 0.5 (very negative) → 0.9 (neutral) → 1.3 (very positive). A glowing item is worth ≈2.6× a trashed one of the same size. An item with no stored sentiment (a company’s own posts keep none by design) counts as neutral — multiplier 1.0.</Callout>
             <SentMultRamp />
             <div className="meth-example-line">example: sentiment +1 → 0.5 + (4/6)·0.8 = <strong>1.03</strong></div>
           </Stage>
@@ -718,7 +730,7 @@ export default function Equations({ onLogout, onNavigate }) {
             <EquationRow label="Reddit" color="var(--reddit-color)">post_weight = reach · sentMult · decay</EquationRow>
             <EquationRow label="News" color="var(--news-color)">post_weight = 1 · authorityMult · sentMult · decay</EquationRow>
             <WeightBus />
-            <div className="meth-example-line">example (external author): (5 + 81.8·1.5) · 1.03 · 1.0 ≈ <strong>131.5</strong></div>
+            <div className="meth-example-line">example (external author): (5 + 81.8·2) · 1.03 · 1.0 ≈ <strong>174.2</strong></div>
           </Stage>
 
           {/* 6 — AUTHOR TYPE */}
@@ -726,13 +738,14 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="Your own page bragging counts for less than someone else choosing to talk about you."
             pill={trace('author')}>
             <p className="meth-body">
-              An item is <code className="eq-inline">company</code> if it comes from the company’s own page or an
-              employee (matched by profile, headline, or an employee classifier); otherwise it’s
-              {' '}<code className="eq-inline">external</code> — earned attention, worth more. This switch sets the
-              B and M factors in step 5.
+              Three tiers. An item is <code className="eq-inline">company</code> if it comes from the company’s own
+              page (LinkedIn URN match); <code className="eq-inline">employee</code> if a verified staff member posted
+              it (employee classifier, or the company named in their headline) — a human voice, worth a bit more than
+              the brand account but still inside; otherwise it’s <code className="eq-inline">external</code> — earned
+              attention, worth the most. This switch sets the B and M factors in step 5.
             </p>
             <AuthorFork />
-            <div className="meth-example-line">example: posted by an outsider → <strong>external (B=5, M=1.5)</strong></div>
+            <div className="meth-example-line">example: posted by an outsider → <strong>external (B=5, M=2)</strong></div>
           </Stage>
 
           {/* 7 — WITHIN-PLATFORM SHARE */}
@@ -743,7 +756,7 @@ export default function Equations({ onLogout, onNavigate }) {
               platform share = <Fraction num="this company’s total post_weight on the platform" den="total post_weight of all DIRECT competitors there" />
             </div>
             <SharePoolBar />
-            <div className="meth-example-line">example: 131.5 out of a ~540 LinkedIn pool → <strong>24.4%</strong> of the LinkedIn conversation</div>
+            <div className="meth-example-line">example: 174.2 out of a ~583 LinkedIn pool → <strong>29.9%</strong> of the LinkedIn conversation</div>
           </Stage>
 
           {/* 8 — CROSS-PLATFORM BLEND */}
