@@ -169,7 +169,7 @@ function ymd(date) {
 }
 
 export function weeklySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
-  const { weeks = 12, since = SOV_HISTORY_START } = opts
+  const { weeks = 12, since = SOV_HISTORY_START, fillZeroFor = [] } = opts
 
   // Bucket posts by ISO-week-start label. Posts without a valid ts are skipped
   // (they can't be placed on the timeline).
@@ -193,6 +193,11 @@ export function weeklySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
     for (const [company, pct] of weightedPct) {
       row[company] = Math.round(pct * 10) / 10 // 0..100, one decimal
     }
+    // In an ISOLATED week, a tracked company with no items legitimately has 0%
+    // share of voice — plot it at 0 rather than leaving a hole in its line
+    // (a hole reads as missing data, and connectNulls would bridge it at a
+    // misleading interpolated height). Callers pass the tracked-roster names.
+    for (const name of fillZeroFor) if (!(name in row)) row[name] = 0
     return row
   })
 }
@@ -242,7 +247,7 @@ export function weeklySentimentSeries(posts, opts = {}) {
 // matches weeklySOVSeries: { week: 'YYYY-MM-DD', [company]: value } — the x key
 // stays 'week' because SOVTrendChart + useDailySOV both key the x-axis on it.
 export function rollingDailySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
-  const { windowDays = 7, points = 45, since = SOV_HISTORY_START } = opts
+  const { windowDays = 7, points = 45, since = SOV_HISTORY_START, fillZeroFor = [] } = opts
   const valid = posts.filter(p => p.ts && !isNaN(new Date(p.ts).getTime()))
   if (!valid.length) return []
   const DAY = 86400000
@@ -259,6 +264,9 @@ export function rollingDailySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts =
     const { weightedPct } = computeWeightedSOV(win, config)
     const row = { week: ymd(day) }
     for (const [company, pct] of weightedPct) row[company] = Math.round(pct * 10) / 10
+    // No items in the trailing window = genuinely 0% SOV that day (see
+    // weeklySOVSeries) — keep quiet companies' lines at 0 instead of gapping.
+    for (const name of fillZeroFor) if (!(name in row)) row[name] = 0
     rows.push(row)
   }
   return rows

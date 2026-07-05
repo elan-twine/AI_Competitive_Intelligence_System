@@ -79,22 +79,37 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const [mode, setMode] = useState('total')
   const modeApplies = !isDaily && metric === 'overall' && !!posts
   const effMode = !modeApplies ? null : (live ? 'weekly' : mode)
+  // Tracked roster for zero-filling client-computed SOV series: in an isolated
+  // week/window, a tracked company with no items is legitimately at 0% — its
+  // line should touch 0, not gap out (or worse, get bridged by connectNulls at
+  // an interpolated height). DIRECT actives only (the `posts` prop is the
+  // direct-only working set, so 0-filling indirect names would fabricate flat-0
+  // lines for companies whose data simply isn't in the input). SOV only —
+  // sentiment has no honest zero-fill ("no rated items" is not a score of 0).
+  const fillNames = useMemo(
+    () => metric === 'overall'
+      ? (competitors || [])
+          .filter(c => c && c.active !== false && (c.type || 'direct') !== 'indirect')
+          .map(c => c.name)
+      : [],
+    [competitors, metric]
+  )
   const liveSeries = useMemo(() => {
     if (!live || !posts) return null
     if (isDaily) {
       return metric === 'sentiment_pct'
         ? rollingDailySentimentSeries(posts, { windowDays })
-        : rollingDailySOVSeries(posts, config, { windowDays })
+        : rollingDailySOVSeries(posts, config, { windowDays, fillZeroFor: fillNames })
     }
     return metric === 'sentiment_pct'
       ? weeklySentimentSeries(posts, { weeks: 52 })
-      : weeklySOVSeries(posts, config, { weeks: 52 })
-  }, [live, posts, metric, config, isDaily, windowDays])
+      : weeklySOVSeries(posts, config, { weeks: 52, fillZeroFor: fillNames })
+  }, [live, posts, metric, config, isDaily, windowDays, fillNames])
   // Isolated week-by-week series for the un-filtered weekly view ('weekly' mode).
   const isolatedSeries = useMemo(() => {
     if (live || effMode !== 'weekly' || !posts) return null
-    return weeklySOVSeries(posts, config, { weeks: 52 })
-  }, [live, effMode, posts, config])
+    return weeklySOVSeries(posts, config, { weeks: 52, fillZeroFor: fillNames })
+  }, [live, effMode, posts, config, fillNames])
   // sov_daily only started accumulating on 2026-07-05 (one point per day). A
   // one-or-two-dot "line" chart reads as broken, so until the table has enough
   // history to draw a real line, compute the same trailing-window series
@@ -104,8 +119,8 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
     if (!isDaily || live || !posts || dailySeries.length >= 5) return null
     return metric === 'sentiment_pct'
       ? rollingDailySentimentSeries(posts, { windowDays })
-      : rollingDailySOVSeries(posts, config, { windowDays })
-  }, [isDaily, live, posts, dailySeries.length, metric, config, windowDays])
+      : rollingDailySOVSeries(posts, config, { windowDays, fillZeroFor: fillNames })
+  }, [isDaily, live, posts, dailySeries.length, metric, config, windowDays, fillNames])
   const series = liveSeries || isolatedSeries || dailyFallback || (isDaily ? dailySeries : frozenSeries)
 
   const data = useMemo(() => {
