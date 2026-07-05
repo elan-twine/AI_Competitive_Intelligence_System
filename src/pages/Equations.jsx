@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, LogOut } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
+import { AppHeader } from '../components/AppHeader'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, ReferenceArea, ReferenceDot,
 } from 'recharts'
@@ -613,24 +614,7 @@ export default function Equations({ onLogout, onNavigate }) {
 
   return (
     <div className="app">
-      <header className="header">
-        <div className="header-left">
-          <img src="/twine-logo.svg" alt="Twine" className="header-logo" />
-          <h1>Twine <span>Methodology</span></h1>
-        </div>
-        <div className="header-right">
-          {onNavigate && (
-            <button className="theme-btn" onClick={() => onNavigate('dashboard')} aria-label="Back to dashboard" title="Back to dashboard">
-              <ArrowLeft size={16} />
-            </button>
-          )}
-          {onLogout && (
-            <button className="theme-btn" onClick={onLogout} aria-label="Log out" title="Log out">
-              <LogOut size={16} />
-            </button>
-          )}
-        </div>
-      </header>
+      <AppHeader page="Methodology" onNavigate={onNavigate} onLogout={onLogout} />
 
       <div className="meth-layout">
         {/* sticky flow rail */}

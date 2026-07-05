@@ -217,6 +217,15 @@
   color: #0B0D00;
 }
 
+/* Narrow screens: the absolutely-centered view-switch overlaps the logo/actions,
+   so drop it onto its own full-width row and let the header wrap cleanly. */
+@media (max-width: 920px) {
+  .header { flex-wrap: wrap; gap: 12px 16px; }
+  .view-switch { position: static; transform: none; order: 3; width: 100%; }
+  .view-seg { min-width: 0; flex: 1; }
+  .header-left { flex: 1; }
+}
+
 .refresh-btn {
   display: flex;
   align-items: center;

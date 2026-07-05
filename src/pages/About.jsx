@@ -1,5 +1,6 @@
-import { ArrowLeft, LogOut, ArrowRight, Globe, Repeat2, Clock, Users, MessageCircle, Brain } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Globe, Repeat2, Clock, Users, MessageCircle, Brain } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
+import { AppHeader } from '../components/AppHeader'
 import '../App.css'
 import './equations.css'
 import './about.css'
@@ -39,24 +40,7 @@ const PRINCIPLES = [
 export default function About({ onLogout, onNavigate }) {
   return (
     <div className="app">
-      <header className="header">
-        <div className="header-left">
-          <img src="/twine-logo.svg" alt="Twine" className="header-logo" />
-          <h1>Twine <span>About</span></h1>
-        </div>
-        <div className="header-right">
-          {onNavigate && (
-            <button className="theme-btn" onClick={() => onNavigate('dashboard')} aria-label="Back to dashboard" title="Back to dashboard">
-              <ArrowLeft size={16} />
-            </button>
-          )}
-          {onLogout && (
-            <button className="theme-btn" onClick={onLogout} aria-label="Log out" title="Log out">
-              <LogOut size={16} />
-            </button>
-          )}
-        </div>
-      </header>
+      <AppHeader page="About" onNavigate={onNavigate} onLogout={onLogout} />
 
       <main className="about-page">
         {/* Intro */}
