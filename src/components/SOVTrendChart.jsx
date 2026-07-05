@@ -3,19 +3,18 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer,
 } from 'recharts'
 import { useWeeklySOV } from '../hooks/useWeeklySOV'
+import { useDailySOV } from '../hooks/useDailySOV'
 import { weeklySOVSeries, weeklySentimentSeries } from '../lib/metrics'
 import { colorForCompany, isTwine } from '../lib/colors'
 
-// Time-range options. weeks = how many trailing weekly snapshots to show.
-const RANGES = [
-  { key: '1m', label: '1M', weeks: 4 },
-  { key: '3m', label: '3M', weeks: 13 },
-  { key: '6m', label: '6M', weeks: 26 },
-  { key: '1y', label: '1Y', weeks: 52 },
-  { key: 'all', label: 'All', weeks: Infinity },
-]
+// How many trailing points to draw so the chart stays readable. The time SPAN
+// is governed by the GLOBAL window (7d / 30d / YTD) — there is no separate
+// per-chart range selector anymore; the chart always reflects the dashboard's
+// one time control.
+const MAX_DAILY_POINTS = 90    // ~3 months of daily rolling points
+const MAX_WEEKLY_POINTS = 52   // ~1 year of weekly snapshots
 
-function TrendTooltip({ active, payload, label }) {
+function TrendTooltip({ active, payload, label, isDaily }) {
   if (!active || !payload?.length) return null
   const rows = [...payload]
     .filter(p => p.value != null && p.strokeOpacity !== 0)
@@ -24,7 +23,7 @@ function TrendTooltip({ active, payload, label }) {
   return (
     <div className="chart-tooltip">
       <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>
-        Week of {label}
+        {isDaily ? label : `Week of ${label}`}
       </div>
       {rows.map(p => (
         <div
@@ -46,25 +45,29 @@ function TrendTooltip({ active, payload, label }) {
 // user has narrowed the platform filter — we instead compute the weekly series
 // live from the passed `posts` so the chart reflects the selected platform(s).
 // That trades full frozen history for a filter-accurate view.
-export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %', posts = null, live = false, config = undefined }) {
+// `windowDays` — the GLOBAL time window (7 or 30 => daily rolling series from
+// sov_daily; null/other => YTD weekly board from sov_weekly). When `live` is set
+// (a platform filter is active) sov_daily can't be sliced by platform, so we
+// fall back to a weekly series computed live from the passed posts.
+export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %', posts = null, live = false, config = undefined, windowDays = null }) {
+  const isDaily = !live && (windowDays === 7 || windowDays === 30)
   const { series: frozenSeries } = useWeeklySOV(metric)
+  const { series: dailySeries } = useDailySOV(windowDays === 30 ? 30 : 7, metric)
   const liveSeries = useMemo(() => {
     if (!live || !posts) return null
     return metric === 'sentiment_pct'
       ? weeklySentimentSeries(posts, { weeks: 52 })
       : weeklySOVSeries(posts, config, { weeks: 52 })
   }, [live, posts, metric, config])
-  const series = liveSeries || frozenSeries
-  const [rangeKey, setRangeKey] = useState('3m')
+  const series = liveSeries || (isDaily ? dailySeries : frozenSeries)
   const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
   const [active, setActive] = useState(null)              // legend-hovered company (spotlight)
   const [scope, setScope] = useState('direct')             // 'all' | 'direct' — which competitor lines to draw (default: direct)
 
-  const range = RANGES.find(r => r.key === rangeKey) || RANGES[1]
   const data = useMemo(() => {
-    const n = range.weeks
-    return (n !== Infinity && series.length > n) ? series.slice(series.length - n) : series
-  }, [series, range.weeks])
+    const n = isDaily ? MAX_DAILY_POINTS : MAX_WEEKLY_POINTS
+    return series.length > n ? series.slice(series.length - n) : series
+  }, [series, isDaily])
 
   // Lines to draw: active competitors present in the windowed data (Twine first).
   const lines = useMemo(() => {
@@ -107,7 +110,9 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       <div className="empty-state">
         <p>{live
           ? 'No posts on the selected platform(s) in this window — clear or widen the platform filter.'
-          : 'Not enough history yet — weekly trends appear once a few weeks of mentions accumulate.'}</p>
+          : isDaily
+            ? 'Daily rolling history is still building — it adds one point per day. Switch to YTD for the full weekly trend.'
+            : 'Not enough history yet — weekly trends appear once a few weeks of mentions accumulate.'}</p>
       </div>
     )
   }
@@ -148,17 +153,14 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
             </button>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {RANGES.map(r => (
-            <button
-              key={r.key}
-              onClick={() => setRangeKey(r.key)}
-              style={{ ...pill, ...(r.key === rangeKey ? activePill : null) }}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+        <span
+          title={isDaily
+            ? `Each point = that day's share of voice over the trailing ${windowDays} days. Set by the dashboard's Time window.`
+            : 'Each point = that week’s frozen board score. Set the Time window to 7d/30d for the daily rolling trend.'}
+          style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 999, padding: '2px 8px' }}
+        >
+          {isDaily ? `${windowDays}-day rolling · daily` : 'Weekly board'}
+        </span>
       </div>
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: -8 }}>
@@ -183,7 +185,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
               style: { fill: 'var(--text-secondary)', fontSize: 12 },
             }}
           />
-          <Tooltip content={<TrendTooltip />} />
+          <Tooltip content={<TrendTooltip isDaily={isDaily} />} />
           <Legend
             wrapperStyle={{ fontSize: 12, paddingTop: 6 }}
             onClick={(o) => toggle(o.dataKey || o.value)}

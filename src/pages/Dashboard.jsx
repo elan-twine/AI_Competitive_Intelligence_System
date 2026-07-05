@@ -3,6 +3,7 @@ import { BarChart3, Globe, Moon, Sun, LogOut, Filter, ArrowUpDown, SlidersHorizo
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
+import { useLastUpdated } from '../hooks/useLastUpdated'
 import { GlassCard } from '../components/GlassCard'
 import { SOVTrendChart } from '../components/SOVTrendChart'
 import { CompetitiveReview } from '../components/CompetitiveReview'
@@ -16,11 +17,21 @@ import '../App.css'
 const PLATFORMS = ['All', 'X', 'Reddit', 'Google News', 'LinkedIn']
 // YTD = days elapsed since Jan 1 of the current year (computed once at load).
 const YTD_DAYS = Math.max(1, Math.ceil((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / 86400000))
+// The ONE global time window. Its meaning is universal across the whole
+// dashboard: every ranking, stat, and trend is "share of voice over this
+// window". The hint text is surfaced on hover so it's always clear what the
+// selected timescale means.
 const TIME_RANGES = [
-  { label: 'YTD', value: YTD_DAYS },
-  { label: '30d', value: 30 },
-  { label: '7d', value: 7 },
+  { label: 'YTD', value: YTD_DAYS, hint: 'Share of voice over all posts year-to-date (Jan 1 → today). The trend chart shows the weekly board across the year.' },
+  { label: '30d', value: 30, hint: 'Share of voice over posts from the last 30 days. The trend chart shows the 30-day rolling value, one point per day.' },
+  { label: '7d', value: 7, hint: 'Share of voice over posts from the last 7 days. The trend chart shows the 7-day rolling value, one point per day.' },
 ]
+// Map the selected window to the trend-chart resolution + a human label.
+function windowMeta(days) {
+  if (days === 7) return { windowDays: 7, label: '7-day rolling' }
+  if (days === 30) return { windowDays: 30, label: '30-day rolling' }
+  return { windowDays: null, label: 'Weekly · year-to-date' }
+}
 
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
@@ -41,6 +52,7 @@ function fmtSent(s) {
 function Dashboard({ onLogout, onNavigate }) {
   const { allPosts, companies, competitors, loading, error, refetch } = useSOVData()
   const { config: sovConfig } = useSOVConfig()
+  const lastUpdated = useLastUpdated()
 
   // Top-level view: SOV dashboard vs Briefings (siblings, not nested)
   const [view, setView] = useState('sov')
@@ -100,6 +112,8 @@ function Dashboard({ onLogout, onNavigate }) {
   // so they reflect the selected platform(s). "All" = frozen board, full history.
   const platformFiltered = selectedPlatforms.length > 0
   const platformScopeLabel = platformFiltered ? selectedPlatforms.join(' + ') : null
+  // The single global window drives the trend charts' resolution + labels too.
+  const { windowDays, label: windowLabel } = windowMeta(days)
   const sortedRanked = useMemo(() => {
     const arr = [...ranked]
     arr.sort((a, b) => {
@@ -204,17 +218,39 @@ function Dashboard({ onLogout, onNavigate }) {
           </div>
         </div>
         <div className="filter-group">
-          <span className="filter-label">Time</span>
+          <span
+            className="filter-label"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'help' }}
+            title="One time window for the whole dashboard — it sets the timescale of every ranking, stat, and trend below. Hover a window to see exactly what it means."
+          >
+            Time window <Info size={12} style={{ opacity: 0.6 }} />
+          </span>
           <div className="chip-row">
             {TIME_RANGES.map(t => (
               <button
                 key={t.value}
                 className={`chip ${days === t.value ? 'active' : ''}`}
                 onClick={() => setDays(t.value)}
+                title={t.hint}
               >{t.label}</button>
             ))}
           </div>
         </div>
+        {lastUpdated.ready && lastUpdated.latest && (
+          <div className="filter-group" style={{ marginLeft: 'auto' }}>
+            <span className="filter-label">Updated</span>
+            <span
+              style={{ fontSize: 12, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}
+              title={lastUpdated.source === 'scrape_runs'
+                ? lastUpdated.platforms.map(p => `${p.platform}: ${p.ago}`).join('  ·  ')
+                : `Board last computed ${lastUpdated.latest.toISOString().slice(0, 10)}`}
+            >
+              {lastUpdated.source === 'scrape_runs' && lastUpdated.platforms[0]
+                ? `${lastUpdated.platforms[0].platform} · ${lastUpdated.platforms[0].ago}`
+                : `board · ${lastUpdated.latest.toISOString().slice(0, 10)}`}
+            </span>
+          </div>
+        )}
       </GlassCard>
 
       {tab === 'overview' && (
@@ -266,8 +302,8 @@ function Dashboard({ onLogout, onNavigate }) {
               is selected, this reflects it (live series); otherwise the frozen board. */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
-              <span className="card-title">
-                Share of Voice — Weekly Trend{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
+              <span className="card-title" title={`Timescale follows the global Time window (${windowLabel}).`}>
+                Share of Voice — {windowLabel}{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
               </span>
             </div>
             <SOVTrendChart
@@ -277,6 +313,7 @@ function Dashboard({ onLogout, onNavigate }) {
               posts={directPosts}
               live={platformFiltered}
               config={sovConfig}
+              windowDays={windowDays}
             />
           </GlassCard>
 
@@ -325,7 +362,7 @@ function Dashboard({ onLogout, onNavigate }) {
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
               <span className="card-title" title="A 0–100 index (50 = neutral) rescaled from the -3..+3 per-post sentiment scale used in the stat cards.">
-                Positive or Negative Sentiment{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
+                Positive or Negative Sentiment — {windowLabel}{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
               </span>
             </div>
             <p className="cr-sub" style={{ marginTop: -8 }}>
@@ -338,6 +375,7 @@ function Dashboard({ onLogout, onNavigate }) {
               posts={directPosts}
               live={platformFiltered}
               config={sovConfig}
+              windowDays={windowDays}
             />
           </GlassCard>
 
