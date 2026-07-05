@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { useWeeklySOV } from '../hooks/useWeeklySOV'
 import { useDailySOV } from '../hooks/useDailySOV'
@@ -14,12 +14,15 @@ import { colorForCompany, isTwine } from '../lib/colors'
 const MAX_DAILY_POINTS = 90    // ~3 months of daily rolling points
 const MAX_WEEKLY_POINTS = 52   // ~1 year of weekly snapshots
 
-function TrendTooltip({ active, payload, label, isDaily }) {
+function TrendTooltip({ active, payload, label, isDaily, isSentiment }) {
   if (!active || !payload?.length) return null
   const rows = [...payload]
     .filter(p => p.value != null && p.strokeOpacity !== 0)
     .sort((a, b) => (b.value || 0) - (a.value || 0))
   if (!rows.length) return null
+  const fmt = (v) => isSentiment
+    ? `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}`   // −3..+3 sentiment scale
+    : Number(v).toFixed(1)                            // 0..100 SOV %
   return (
     <div className="chart-tooltip">
       <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>
@@ -32,7 +35,7 @@ function TrendTooltip({ active, payload, label, isDaily }) {
           style={{ color: 'var(--text-secondary)', display: 'flex', gap: 8, justifyContent: 'space-between' }}
         >
           <span style={{ color: p.color }}>{p.dataKey}</span>
-          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(p.value).toFixed(1)}</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(p.value)}</span>
         </div>
       ))}
     </div>
@@ -53,6 +56,11 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   // Daily whenever the window is 7d/30d — whether from the precomputed sov_daily
   // board (all-platform) or, under a platform filter, a live rolling series.
   const isDaily = (windowDays === 7 || windowDays === 30)
+  // Sentiment is stored/computed as a 0..100 index but the whole app speaks the
+  // −3..+3 per-post scale (stat cards, methodology). Convert on display so the
+  // chart matches: raw = (idx/100)*6 − 3. Fixed −3..+3 axis with a 0 neutral line.
+  const isSentiment = metric === 'sentiment_pct'
+  const toDisplay = (v) => (v == null || isNaN(v)) ? v : (isSentiment ? Math.round(((v / 100) * 6 - 3) * 100) / 100 : v)
   const { series: frozenSeries } = useWeeklySOV(metric)
   const { series: dailySeries } = useDailySOV(windowDays === 30 ? 30 : 7, metric)
   const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
@@ -91,8 +99,15 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
 
   const data = useMemo(() => {
     const n = isDaily ? MAX_DAILY_POINTS : MAX_WEEKLY_POINTS
-    return series.length > n ? series.slice(series.length - n) : series
-  }, [series, isDaily])
+    const sliced = series.length > n ? series.slice(series.length - n) : series
+    if (!isSentiment) return sliced
+    // Convert the 0..100 sentiment index to the −3..+3 scale for display.
+    return sliced.map(row => {
+      const out = { week: row.week }
+      for (const k of Object.keys(row)) if (k !== 'week') out[k] = toDisplay(row[k])
+      return out
+    })
+  }, [series, isDaily, isSentiment])
 
   // Lines to draw: active competitors present in the windowed data (Twine first).
   const lines = useMemo(() => {
@@ -114,8 +129,10 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   }, [data, competitors, scope])
 
   // Zoom the Y-axis to the visible band so tightly-packed lines spread out
-  // (only across lines that are currently shown).
+  // (only across lines that are currently shown). Sentiment uses a FIXED −3..+3
+  // axis (with a 0 neutral line) so tone reads on its true, absolute scale.
   const yDomain = useMemo(() => {
+    if (isSentiment) return [-3, 3]
     let lo = Infinity, hi = -Infinity
     for (const row of data) for (const n of lines) {
       if (hidden.has(n)) continue
@@ -125,11 +142,11 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       if (v > hi) hi = v
     }
     if (!isFinite(lo) || !isFinite(hi)) return [0, 'auto']
-    // Both metrics are percentages/indexes bounded to 0..100 — never pad past it.
+    // SOV % is bounded to 0..100 — never pad past it.
     if (lo === hi) return [Math.max(0, lo - 5), Math.min(100, hi + 5)]
     const pad = Math.max(2, (hi - lo) * 0.12)
     return [Math.max(0, Math.floor(lo - pad)), Math.min(100, Math.ceil(hi + pad))]
-  }, [data, lines, hidden])
+  }, [data, lines, hidden, isSentiment])
 
   if (!data.length || !lines.length) {
     return (
@@ -229,7 +246,8 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
           />
           <YAxis
             domain={yDomain}
-            allowDecimals={false}
+            allowDecimals={isSentiment}
+            ticks={isSentiment ? [-3, -2, -1, 0, 1, 2, 3] : undefined}
             tick={{ fill: 'var(--text-secondary)', fontSize: 12 }}
             tickLine={false}
             axisLine={false}
@@ -241,7 +259,11 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
               style: { fill: 'var(--text-secondary)', fontSize: 12 },
             }}
           />
-          <Tooltip content={<TrendTooltip isDaily={isDaily} />} />
+          {isSentiment && (
+            <ReferenceLine y={0} stroke="var(--text-secondary)" strokeOpacity={0.5} strokeDasharray="4 4"
+              label={{ value: 'neutral', position: 'insideBottomRight', fill: 'var(--text-secondary)', fontSize: 10 }} />
+          )}
+          <Tooltip content={<TrendTooltip isDaily={isDaily} isSentiment={isSentiment} />} />
           <Legend
             wrapperStyle={{ fontSize: 12, paddingTop: 6 }}
             onClick={(o) => toggle(o.dataKey || o.value)}

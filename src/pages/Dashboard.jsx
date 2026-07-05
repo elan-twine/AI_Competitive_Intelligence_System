@@ -10,6 +10,7 @@ import { SOVTrendChart } from '../components/SOVTrendChart'
 import { CompetitiveReview } from '../components/CompetitiveReview'
 import { CompanyDrillIn } from '../components/CompanyDrillIn'
 import { TopPostsWeek } from '../components/TopPostsWeek'
+import { PostsOfInterest } from '../components/PostsOfInterest'
 import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
 import { PLATFORM_COLORS, registerCompanyColors } from '../lib/colors'
 import Briefings from './Briefings'
@@ -179,10 +180,18 @@ function Dashboard({ onLogout, onNavigate }) {
       {/* SOV-internal tabs */}
       <div className="tab-nav">
         <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
+        <button className={`tab ${tab === 'posts' ? 'active' : ''}`} onClick={() => setTab('posts')}>Posts of Interest</button>
         <button className={`tab ${tab === 'compare' ? 'active' : ''}`} onClick={() => setTab('compare')}>Compare</button>
       </div>
 
+      {/* Posts of Interest has its own period control, so the global platform/time
+          filter bar is hidden there (it doesn't apply to the curated digest). */}
+      {tab === 'posts' && (
+        <PostsOfInterest competitors={competitors} allPosts={allPosts} />
+      )}
+
       {/* Global filter bar (platform + time only) */}
+      {tab !== 'posts' && (
       <GlassCard className="card filter-bar" intensity={3} interactive>
         <div className="filter-icon"><Filter size={14} /></div>
         <div className="filter-group">
@@ -237,6 +246,7 @@ function Dashboard({ onLogout, onNavigate }) {
           </div>
         )}
       </GlassCard>
+      )}
 
       {tab === 'overview' && (
         <>
@@ -349,17 +359,17 @@ function Dashboard({ onLogout, onNavigate }) {
               when one is selected. */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
-              <span className="card-title" title="A 0–100 index (50 = neutral) rescaled from the -3..+3 per-post sentiment scale used in the stat cards.">
+              <span className="card-title" title="Average tone of external mentions on the −3 (very negative) to +3 (very positive) per-post scale — the same scale as the Twine Sentiment stat card. 0 = neutral.">
                 Sentiment — {windowLabel}{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
               </span>
             </div>
             <p className="cr-sub" style={{ marginTop: -8 }}>
-              How people are talking about us — a 0–100 index (50 = neutral) over external mentions, rescaled from the -3..+3 per-post scale in the stat cards.
+              How people are talking about each company — average tone of external mentions on the −3 to +3 scale (0 = neutral), the same scale as the stat card above.
             </p>
             <SOVTrendChart
               competitors={competitors}
               metric="sentiment_pct"
-              yLabel="Sentiment index (0–100)"
+              yLabel="Sentiment (−3 to +3)"
               posts={chartPosts}
               live={platformFiltered}
               config={sovConfig}
