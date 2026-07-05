@@ -135,6 +135,13 @@ export function computeWeightedSOV(posts, config = DEFAULT_SOV_CONFIG) {
 // recharts: one row per week, one numeric key per company (SOV 0..100).
 // ---------------------------------------------------------------------------
 
+// "Start fresh" epoch: the SOV model changed on 2026-06-22. Weeks before that
+// were computed under a superseded formula AND on thin scrape coverage, so NO
+// weekly view (frozen board, live platform-filtered, or isolated week-by-week)
+// displays them. Single source of truth — useWeeklySOV/useDailySOV and the
+// client-side weekly series all honor this same date.
+export const SOV_HISTORY_START = '2026-06-22'
+
 // Week anchor day for ALL client-side weekly bucketing (0=Sun..6=Sat).
 // Scrapes run Thursday mornings and the n8n snapshot stamps sov_weekly's
 // week_start as the most-recent Thursday, so weeks are Thursday-anchored (4)
@@ -160,7 +167,7 @@ function ymd(date) {
 }
 
 export function weeklySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
-  const { weeks = 12 } = opts
+  const { weeks = 12, since = SOV_HISTORY_START } = opts
 
   // Bucket posts by ISO-week-start label. Posts without a valid ts are skipped
   // (they can't be placed on the timeline).
@@ -173,8 +180,8 @@ export function weeklySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
     buckets.get(label).push(p)
   }
 
-  // Ascending by week, then keep only the most recent N.
-  let labels = [...buckets.keys()].sort() // 'YYYY-MM-DD' sorts lexicographically
+  // Ascending by week, clean-history only, then keep only the most recent N.
+  let labels = [...buckets.keys()].filter(l => !since || l >= since).sort() // 'YYYY-MM-DD' sorts lexicographically
   if (weeks > 0 && labels.length > weeks) labels = labels.slice(labels.length - weeks)
 
   // Per-week, run the shared methodology and flatten into recharts rows.
@@ -194,7 +201,7 @@ export function weeklySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
 // not the company's own posts), averaged per company per ISO week and rescaled
 // from the -3..+3 per-post scale. Shape matches weeklySOVSeries: { week, [company]: value }.
 export function weeklySentimentSeries(posts, opts = {}) {
-  const { weeks = 26 } = opts
+  const { weeks = 26, since = SOV_HISTORY_START } = opts
   const buckets = new Map() // weekLabel -> posts[]
   for (const p of posts) {
     if (p.sentiment == null) continue
@@ -205,7 +212,7 @@ export function weeklySentimentSeries(posts, opts = {}) {
     if (!buckets.has(label)) buckets.set(label, [])
     buckets.get(label).push(p)
   }
-  let labels = [...buckets.keys()].sort()
+  let labels = [...buckets.keys()].filter(l => !since || l >= since).sort()
   if (weeks > 0 && labels.length > weeks) labels = labels.slice(labels.length - weeks)
   return labels.map(week => {
     const row = { week }

@@ -11,7 +11,7 @@ import { supabase } from '../lib/supabase'
 //
 // metric: 'overall' (default) | 'weighted_pct' | 'sentiment_pct'
 //   (sov_daily has no unweighted_pct column — those three only.)
-const SOV_HISTORY_START = '2026-06-22'
+import { SOV_HISTORY_START } from '../lib/metrics'
 
 export function useDailySOV(windowDays = 7, metric = 'overall') {
   const [rows, setRows] = useState([])

@@ -11,7 +11,7 @@ import { CompetitiveReview } from '../components/CompetitiveReview'
 import { CompanyDrillIn } from '../components/CompanyDrillIn'
 import { TopPostsWeek } from '../components/TopPostsWeek'
 import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
-import { PLATFORM_COLORS } from '../lib/colors'
+import { PLATFORM_COLORS, registerCompanyColors } from '../lib/colors'
 import Briefings from './Briefings'
 import '../App.css'
 
@@ -23,9 +23,9 @@ const YTD_DAYS = Math.max(1, Math.ceil((Date.now() - new Date(new Date().getFull
 // window". The hint text is surfaced on hover so it's always clear what the
 // selected timescale means.
 const TIME_RANGES = [
-  { label: 'YTD', value: YTD_DAYS, hint: 'Share of voice over all posts year-to-date (Jan 1 → today). The trend chart shows the weekly board across the year.' },
-  { label: '30d', value: 30, hint: 'Share of voice over posts from the last 30 days. The trend chart shows the 30-day rolling value, one point per day.' },
   { label: '7d', value: 7, hint: 'Share of voice over posts from the last 7 days. The trend chart shows the 7-day rolling value, one point per day.' },
+  { label: '30d', value: 30, hint: 'Share of voice over posts from the last 30 days. The trend chart shows the 30-day rolling value, one point per day.' },
+  { label: 'YTD', value: YTD_DAYS, hint: 'Share of voice over all posts year-to-date (Jan 1 → today). The trend chart shows the weekly board across the year.' },
 ]
 // Map the selected window to the trend-chart resolution + a human label.
 function windowMeta(days) {
@@ -55,6 +55,10 @@ function Dashboard({ onLogout, onNavigate }) {
   const { config: sovConfig } = useSOVConfig()
   const lastUpdated = useLastUpdated()
 
+  // Give every tracked company its own unique chart color (sorted-roster slot
+  // assignment — see colors.js). Must run before children render their lines.
+  useMemo(() => registerCompanyColors((competitors || []).map(c => c.name)), [competitors])
+
   // Top-level view: SOV dashboard vs Briefings (siblings, not nested)
   const [view, setView] = useState('sov')
 
@@ -75,8 +79,9 @@ function Dashboard({ onLogout, onNavigate }) {
     )
   }
 
-  // Overview
-  const [sortKey, setSortKey] = useState('overall')
+  // Overview — default sort matches the ranking's own order (SOV %), so the
+  // active-sort arrow is visible on the corresponding column from first load.
+  const [sortKey, setSortKey] = useState('weightedPct')
   // Per-company drill-in (window into WHY a company's SOV is what it is)
   const [drilledCompany, setDrilledCompany] = useState(null)
 
@@ -345,7 +350,7 @@ function Dashboard({ onLogout, onNavigate }) {
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
               <span className="card-title" title="A 0–100 index (50 = neutral) rescaled from the -3..+3 per-post sentiment scale used in the stat cards.">
-                Positive or Negative Sentiment — {windowLabel}{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
+                Sentiment — {windowLabel}{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
               </span>
             </div>
             <p className="cr-sub" style={{ marginTop: -8 }}>
