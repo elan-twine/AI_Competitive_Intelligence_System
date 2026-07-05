@@ -140,10 +140,11 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   }, [data, competitors, scope])
 
   // Zoom the Y-axis to the visible band so tightly-packed lines spread out
-  // (only across lines that are currently shown). Sentiment uses a FIXED −3..+3
-  // axis (with a 0 neutral line) so tone reads on its true, absolute scale.
+  // (only across lines that are currently shown). Sentiment zooms too — no
+  // point rendering −3..0 when everyone is positive — just clamped to the
+  // scale's true bounds (−3..+3) instead of SOV's 0..100.
   const yDomain = useMemo(() => {
-    if (isSentiment) return [-3, 3]
+    const [MIN, MAX] = isSentiment ? [-3, 3] : [0, 100]
     let lo = Infinity, hi = -Infinity
     for (const row of data) for (const n of lines) {
       if (hidden.has(n)) continue
@@ -152,12 +153,33 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       if (v < lo) lo = v
       if (v > hi) hi = v
     }
-    if (!isFinite(lo) || !isFinite(hi)) return [0, 'auto']
+    if (!isFinite(lo) || !isFinite(hi)) return isSentiment ? [MIN, MAX] : [0, 'auto']
+    if (isSentiment) {
+      // finer-grained scale: pad in tenths, round to 0.5 steps for clean ticks
+      if (lo === hi) return [Math.max(MIN, lo - 0.5), Math.min(MAX, hi + 0.5)]
+      const pad = Math.max(0.2, (hi - lo) * 0.15)
+      const floorHalf = (v) => Math.floor(v * 2) / 2
+      const ceilHalf = (v) => Math.ceil(v * 2) / 2
+      return [Math.max(MIN, floorHalf(lo - pad)), Math.min(MAX, ceilHalf(hi + pad))]
+    }
     // SOV % is bounded to 0..100 — never pad past it.
-    if (lo === hi) return [Math.max(0, lo - 5), Math.min(100, hi + 5)]
+    if (lo === hi) return [Math.max(MIN, lo - 5), Math.min(MAX, hi + 5)]
     const pad = Math.max(2, (hi - lo) * 0.12)
-    return [Math.max(0, Math.floor(lo - pad)), Math.min(100, Math.ceil(hi + pad))]
+    return [Math.max(MIN, Math.floor(lo - pad)), Math.min(MAX, Math.ceil(hi + pad))]
   }, [data, lines, hidden, isSentiment])
+  // The dashed neutral (0) guide only makes sense while 0 is inside the zoomed band.
+  const neutralVisible = isSentiment && yDomain[0] <= 0 && yDomain[1] >= 0
+  // Clean half-step ticks across the zoomed sentiment band (domain endpoints are
+  // already snapped to 0.5). undefined for SOV → recharts picks its own.
+  const sentimentTicks = useMemo(() => {
+    if (!isSentiment) return undefined
+    const [lo, hi] = yDomain
+    if (!isFinite(lo) || !isFinite(hi)) return undefined
+    const step = (hi - lo) <= 3 ? 0.5 : 1
+    const out = []
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.round(v * 10) / 10)
+    return out
+  }, [isSentiment, yDomain])
 
   if (!data.length || !lines.length) {
     return (
@@ -265,7 +287,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
           <YAxis
             domain={yDomain}
             allowDecimals={isSentiment}
-            ticks={isSentiment ? [-3, -2, -1, 0, 1, 2, 3] : undefined}
+            ticks={sentimentTicks}
             tick={{ fill: 'var(--text-secondary)', fontSize: 12 }}
             tickLine={false}
             axisLine={false}
@@ -277,7 +299,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
               style: { fill: 'var(--text-secondary)', fontSize: 12 },
             }}
           />
-          {isSentiment && (
+          {neutralVisible && (
             <ReferenceLine y={0} stroke="var(--text-secondary)" strokeOpacity={0.5} strokeDasharray="4 4"
               label={{ value: 'neutral', position: 'insideBottomRight', fill: 'var(--text-secondary)', fontSize: 10 }} />
           )}
