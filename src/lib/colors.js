@@ -70,7 +70,7 @@ export function colorForCompany(name) {
 // Use colorForPlatform(name) to resolve a hex color with a sensible fallback.
 // ---------------------------------------------------------------------------
 export const PLATFORM_COLORS = {
-  'X': '#1DA1F2',
+  'X': '#8B5CF6',        // violet — distinct from LinkedIn blue on both themes (X's own black/white would vanish in one theme)
   'Reddit': '#FF4500',
   'Google News': '#34D399',
   'LinkedIn': '#0A66C2',
