@@ -101,6 +101,14 @@ function Dashboard({ onLogout, onNavigate }) {
     () => filtered.filter(p => directNames.has(p.companyName)),
     [filtered, directNames]
   )
+  // Trend charts need the FULL post history (a time series), filtered by PLATFORM
+  // but NOT by the time window — the window sets what each point *means* (7-/30-day
+  // rolling), not the chart's span. Passing the window-limited directPosts made a
+  // platform-filtered "7d" chart collapse to ~one week of data.
+  const chartPosts = useMemo(
+    () => applyFilters(allPosts, { platforms: selectedPlatforms }).filter(p => directNames.has(p.companyName)),
+    [allPosts, selectedPlatforms, directNames]
+  )
   const ranked = useMemo(() => rankings(directPosts, sovConfig), [directPosts, sovConfig])
   // When the platform filter is narrowed, the weekly trend charts switch from the
   // frozen (cross-platform) board to a live series computed off the filtered posts,
@@ -282,7 +290,7 @@ function Dashboard({ onLogout, onNavigate }) {
               competitors={competitors}
               metric="overall"
               yLabel="SOV %"
-              posts={directPosts}
+              posts={chartPosts}
               live={platformFiltered}
               config={sovConfig}
               windowDays={windowDays}
@@ -329,8 +337,11 @@ function Dashboard({ onLogout, onNavigate }) {
             )}
           </GlassCard>
 
-          {/* Sentiment — its own weekly trend (moved below the ranking). Reflects
-              the platform filter (live) when one is selected. */}
+          {/* Top items — the wild outliers driving the board (above the sentiment graph). */}
+          <TopPostsWeek posts={directPosts} />
+
+          {/* Sentiment — its own weekly trend. Reflects the platform filter (live)
+              when one is selected. */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header">
               <span className="card-title" title="A 0–100 index (50 = neutral) rescaled from the -3..+3 per-post sentiment scale used in the stat cards.">
@@ -344,15 +355,12 @@ function Dashboard({ onLogout, onNavigate }) {
               competitors={competitors}
               metric="sentiment_pct"
               yLabel="Sentiment index (0–100)"
-              posts={directPosts}
+              posts={chartPosts}
               live={platformFiltered}
               config={sovConfig}
               windowDays={windowDays}
             />
           </GlassCard>
-
-          {/* Top posts this week — the wild outliers driving the board, with why */}
-          <TopPostsWeek posts={directPosts} />
 
           {/* Competitive Review — weekly view of competitor-authored posts +
               engagement (replaces the old Recent Mentions feed) */}

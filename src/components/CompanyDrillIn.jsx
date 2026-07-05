@@ -39,11 +39,13 @@ export function normalizePost(p) {
     engagement = [
       { key: 'reactions', icon: ThumbsUp, label: 'reactions', value: num(p.totalReactions) },
       { key: 'comments', icon: MessageSquare, label: 'comments', value: num(p.comments) },
-      { key: 'reshares', icon: Repeat2, label: 'reshares', value: num(p.reshares) },
+      { key: 'reshares', icon: Repeat2, label: 'reposts', value: num(p.reshares) },
     ]
   } else if (plat === 'X') {
     text = p.text || ''
-    url = p.url || p.twitterUrl || ''
+    // Fall back to a reconstructed status URL when the scrape didn't return one
+    // (we always have the tweet id) so no X post is left without a link.
+    url = p.url || p.twitterUrl || (p.id ? `https://x.com/i/status/${p.id}` : '')
     engagement = [
       { key: 'likes', icon: ThumbsUp, label: 'likes', value: num(p.likeCount) },
       { key: 'replies', icon: MessageSquare, label: 'replies', value: num(p.replyCount) },
@@ -405,7 +407,7 @@ function PostRow({ post }) {
         <div className="cdi-post-metaline">
           {post.author && <span className="cdi-author">{post.author}</span>}
           {post.source && <span className="cdi-source">{post.source}</span>}
-          {!post.author && !post.source && (
+          {!post.author && !post.source && post.platform === 'LinkedIn' && (
             <span className="cdi-author cdi-author-muted">
               {post.external === false ? 'Own page / employee' : 'External'}
             </span>

@@ -14,7 +14,7 @@ import './equations.css'
 /*  never recomputed live, so display math can never drift.           */
 /* ------------------------------------------------------------------ */
 const EXAMPLE = {
-  blurb: 'one competitor’s LinkedIn reshare — 40 reactions, 6 comments, 3 reshares, has an image, sentiment +1, 6 days old, posted by someone outside the company.',
+  blurb: 'one competitor’s LinkedIn repost — 40 reactions, 6 comments, 3 reposts, has an image, sentiment +1, 6 days old, posted by someone outside the company.',
   stages: [
     { id: 'engagement', value: '89.5',  unit: 'eng' },
     { id: 'reach',      value: '81.8',  unit: 'reach' },
@@ -194,7 +194,7 @@ function Hero({ active, onJump }) {
 /* ------------------------------------------------------------------ */
 function EngWeightBars() {
   const sets = [
-    { name: 'LinkedIn', color: 'var(--linkedin-color)', terms: [['reactions', 1], ['comments', 3], ['reshares', 10], ['image', 1.5]] },
+    { name: 'LinkedIn', color: 'var(--linkedin-color)', terms: [['reactions', 1], ['comments', 3], ['reposts', 10], ['image', 1.5]] },
     { name: 'X', color: 'var(--x-color)', terms: [['likes', 1], ['replies', 2], ['quotes', 4], ['reposts', 10]] },
     { name: 'Reddit', color: 'var(--reddit-color)', terms: [['upvotes', 1], ['comments', 3]] },
   ]
@@ -657,7 +657,7 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="Add up the interactions — but the ones that spread an item count for more."
             pill={trace('engagement')}>
             <EquationRow label="LinkedIn" color="var(--linkedin-color)">
-              eng = 1·reactions + 3·comments + 10·reshares (+1.5 if image)
+              eng = 1·reactions + 3·comments + 10·reposts (+1.5 if image)
             </EquationRow>
             <EquationRow label="X" color="var(--x-color)">
               eng = 1·likes + 2·replies + 10·reposts + 4·quotes
@@ -665,7 +665,7 @@ export default function Equations({ onLogout, onNavigate }) {
             <EquationRow label="Reddit" color="var(--reddit-color)">
               eng = 1·upvotes + 3·comments
             </EquationRow>
-            <Callout>A reshare counts ×10 — it puts the item in front of a whole new audience, not just a thumbs-up.</Callout>
+            <Callout>A repost counts ×10 — it puts the item in front of a whole new audience, not just a thumbs-up.</Callout>
             <EngWeightBars />
             <div className="meth-example-line">example: 40 + 3·6 + 10·3 + 1.5 = <strong>89.5</strong></div>
           </Stage>
