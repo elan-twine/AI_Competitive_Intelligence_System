@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
-import { BarChart3, Globe, Moon, Sun, LogOut, Filter, ArrowUpDown, SlidersHorizontal, Users, Info } from 'lucide-react'
+import { Filter, Info } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
 import { useLastUpdated } from '../hooks/useLastUpdated'
+import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
 import { SOVTrendChart } from '../components/SOVTrendChart'
 import { CompetitiveReview } from '../components/CompetitiveReview'
@@ -83,12 +84,6 @@ function Dashboard({ onLogout, onNavigate }) {
   const [compareA, setCompareA] = useState('')
   const [compareB, setCompareB] = useState('')
 
-  const [dark, setDark] = useState(() => localStorage.getItem('twine-sov-theme') === 'dark')
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
-    localStorage.setItem('twine-sov-theme', dark ? 'dark' : 'light')
-  }, [dark])
-
   // Filtered working set (respects global platform + time only)
   const filtered = useMemo(
     () => applyFilters(allPosts, { platforms: selectedPlatforms, days }),
@@ -156,36 +151,13 @@ function Dashboard({ onLogout, onNavigate }) {
 
   return (
     <div className="app">
-      <header className="header">
-        <div className="header-left">
-          <img src="/twine-logo.svg" alt="Twine" className="header-logo" />
-          <h1>Twine <span>{view === 'sov' ? 'SOV' : 'Briefings'}</span></h1>
-        </div>
-        <div className="view-switch">
-          <button className={`view-seg ${view === 'sov' ? 'active' : ''}`} onClick={() => setView('sov')}>SOV Dashboard</button>
-          <button className={`view-seg ${view === 'briefings' ? 'active' : ''}`} onClick={() => setView('briefings')}>Briefings</button>
-        </div>
-        <div className="header-right">
-          {onNavigate && (
-            <button className="theme-btn" onClick={() => onNavigate('about')} aria-label="About — what this tool measures" title="About">
-              <Info size={16} />
-            </button>
-          )}
-          {onNavigate && (
-            <button className="theme-btn" onClick={() => onNavigate('competitors')} aria-label="Manage competitors" title="Manage competitors">
-              <Users size={16} />
-            </button>
-          )}
-          <button className="theme-btn" onClick={() => setDark(d => !d)} aria-label="Toggle theme">
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          {onLogout && (
-            <button className="theme-btn" onClick={onLogout} aria-label="Log out" title="Log out">
-              <LogOut size={16} />
-            </button>
-          )}
-        </div>
-      </header>
+      <AppHeader
+        page={view === 'sov' ? 'SOV' : 'Briefings'}
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        view={view}
+        onViewChange={setView}
+      />
 
       {view === 'briefings' && <Briefings />}
 

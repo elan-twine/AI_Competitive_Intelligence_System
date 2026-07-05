@@ -4,7 +4,7 @@ import {
 } from 'recharts'
 import { useWeeklySOV } from '../hooks/useWeeklySOV'
 import { useDailySOV } from '../hooks/useDailySOV'
-import { weeklySOVSeries, weeklySentimentSeries } from '../lib/metrics'
+import { weeklySOVSeries, weeklySentimentSeries, rollingDailySOVSeries, rollingDailySentimentSeries } from '../lib/metrics'
 import { colorForCompany, isTwine } from '../lib/colors'
 
 // How many trailing points to draw so the chart stays readable. The time SPAN
@@ -50,15 +50,22 @@ function TrendTooltip({ active, payload, label, isDaily }) {
 // (a platform filter is active) sov_daily can't be sliced by platform, so we
 // fall back to a weekly series computed live from the passed posts.
 export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %', posts = null, live = false, config = undefined, windowDays = null }) {
-  const isDaily = !live && (windowDays === 7 || windowDays === 30)
+  // Daily whenever the window is 7d/30d — whether from the precomputed sov_daily
+  // board (all-platform) or, under a platform filter, a live rolling series.
+  const isDaily = (windowDays === 7 || windowDays === 30)
   const { series: frozenSeries } = useWeeklySOV(metric)
   const { series: dailySeries } = useDailySOV(windowDays === 30 ? 30 : 7, metric)
   const liveSeries = useMemo(() => {
     if (!live || !posts) return null
+    if (isDaily) {
+      return metric === 'sentiment_pct'
+        ? rollingDailySentimentSeries(posts, { windowDays })
+        : rollingDailySOVSeries(posts, config, { windowDays })
+    }
     return metric === 'sentiment_pct'
       ? weeklySentimentSeries(posts, { weeks: 52 })
       : weeklySOVSeries(posts, config, { weeks: 52 })
-  }, [live, posts, metric, config])
+  }, [live, posts, metric, config, isDaily, windowDays])
   const series = liveSeries || (isDaily ? dailySeries : frozenSeries)
   const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
   const [active, setActive] = useState(null)              // legend-hovered company (spotlight)

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ArrowLeft, LogOut, Plus, Pencil, Check, X, Trash2, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Pencil, Check, X, Trash2, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
+import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
 import { useCompetitors } from '../hooks/useCompetitors'
 import '../App.css'
@@ -133,24 +134,7 @@ export default function Competitors({ onLogout, onNavigate }) {
 
   return (
     <div className="app">
-      <header className="header">
-        <div className="header-left">
-          <img src="/twine-logo.svg" alt="Twine" className="header-logo" />
-          <h1>Twine <span>Competitors</span></h1>
-        </div>
-        <div className="header-right">
-          {onNavigate && (
-            <button className="theme-btn" onClick={() => onNavigate('dashboard')} aria-label="Back to dashboard" title="Back to dashboard">
-              <ArrowLeft size={16} />
-            </button>
-          )}
-          {onLogout && (
-            <button className="theme-btn" onClick={onLogout} aria-label="Log out" title="Log out">
-              <LogOut size={16} />
-            </button>
-          )}
-        </div>
-      </header>
+      <AppHeader page="Competitors" onNavigate={onNavigate} onLogout={onLogout} />
 
       {/* ZONE 1 — stat strip (read-only summary) */}
       <div className="comp-stats">

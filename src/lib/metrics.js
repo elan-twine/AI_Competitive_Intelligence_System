@@ -224,6 +224,70 @@ export function weeklySentimentSeries(posts, opts = {}) {
   })
 }
 
+// Rolling DAILY SOV series (live, filter-aware): one point per day, each = the
+// SOV computed over the trailing `windowDays` (7 or 30) ending that day. This is
+// the filter-aware counterpart to the precomputed sov_daily table — used when a
+// platform filter is active (sov_daily can't be sliced by platform) so the 7d/30d
+// charts stay DAILY instead of falling back to weekly. Windows OVERLAP by design.
+// Anchored to the freshest post so it still renders on stale/dev data. Shape
+// matches weeklySOVSeries: { week: 'YYYY-MM-DD', [company]: value } — the x key
+// stays 'week' because SOVTrendChart + useDailySOV both key the x-axis on it.
+export function rollingDailySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
+  const { windowDays = 7, points = 45 } = opts
+  const valid = posts.filter(p => p.ts && !isNaN(new Date(p.ts).getTime()))
+  if (!valid.length) return []
+  const DAY = 86400000
+  let maxT = -Infinity
+  for (const p of valid) { const t = new Date(p.ts).getTime(); if (t > maxT) maxT = t }
+  const end = new Date(maxT); end.setHours(0, 0, 0, 0) // local midnight of the freshest day
+  const rows = []
+  for (let i = points - 1; i >= 0; i--) {
+    const day = new Date(end.getTime() - i * DAY)
+    const upper = day.getTime() + DAY
+    const lower = upper - windowDays * DAY
+    const win = valid.filter(p => { const t = new Date(p.ts).getTime(); return t > lower && t <= upper })
+    const { weightedPct } = computeWeightedSOV(win, config)
+    const row = { week: ymd(day) }
+    for (const [company, pct] of weightedPct) row[company] = Math.round(pct * 10) / 10
+    rows.push(row)
+  }
+  return rows
+}
+
+// Rolling DAILY sentiment (0–100 index, 50 = neutral), external-only, trailing
+// windowDays. Mirrors weeklySentimentSeries semantics per rolling day.
+export function rollingDailySentimentSeries(posts, opts = {}) {
+  const { windowDays = 7, points = 45 } = opts
+  const valid = posts.filter(p => p.sentiment != null && p.external !== false && p.ts && !isNaN(new Date(p.ts).getTime()))
+  if (!valid.length) return []
+  const DAY = 86400000
+  let maxT = -Infinity
+  for (const p of valid) { const t = new Date(p.ts).getTime(); if (t > maxT) maxT = t }
+  const end = new Date(maxT); end.setHours(0, 0, 0, 0)
+  const rows = []
+  for (let i = points - 1; i >= 0; i--) {
+    const day = new Date(end.getTime() - i * DAY)
+    const upper = day.getTime() + DAY
+    const lower = upper - windowDays * DAY
+    const row = { week: ymd(day) }
+    const byCo = new Map()
+    for (const p of valid) {
+      const t = new Date(p.ts).getTime()
+      if (t <= lower || t > upper) continue
+      const c = p.companyName
+      if (!c) continue
+      if (!byCo.has(c)) byCo.set(c, [])
+      byCo.get(c).push(Number(p.sentiment))
+    }
+    for (const [c, arr] of byCo) {
+      const avg = arr.reduce((s, v) => s + v, 0) / arr.length
+      row[c] = Math.round(((avg + 3) / 6) * 1000) / 10
+    }
+    rows.push(row)
+  }
+  return rows
+}
+
 // Sentiment as its own dimension: net sentiment % and positive-vs-negative
 // SOV split. Net = (pos - neg) / total mentions, expressed as %.
 export function sentimentDimension(posts, company) {
