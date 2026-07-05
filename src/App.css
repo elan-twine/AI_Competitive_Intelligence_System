@@ -1207,3 +1207,61 @@
 .cr-flagged-reason { color: var(--text-secondary); font-size: 0.8rem; font-style: italic; margin-top: 2px; }
 .cr-flagged-empty { margin-top: 10px; font-size: 0.84rem; color: var(--text-secondary); font-style: italic; }
 .cr-metric-flag { color: var(--accent); font-weight: 600; }
+
+/* ============================================================= */
+/* Posts of Interest — curated competitor-post digest            */
+/* ============================================================= */
+.poi-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.poi-periodnav { display: flex; align-items: center; gap: 8px; }
+.poi-navbtn {
+  display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); cursor: pointer;
+}
+.poi-navbtn:hover:not(:disabled) { border-color: var(--border-hover); background: var(--bg-card-hover); }
+.poi-navbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.poi-periodlabel { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); min-width: 160px; text-align: center; }
+.poi-latest { margin-left: 8px; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); padding: 1px 5px; border-radius: 4px; vertical-align: middle; }
+.poi-alltoggle {
+  font-size: 0.76rem; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-weight: 600;
+}
+.poi-alltoggle.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.poi-metrics { display: flex; flex-wrap: wrap; gap: 18px; font-size: 0.84rem; color: var(--text-secondary); margin: 4px 0 18px; }
+.poi-metrics strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+.poi-list { display: flex; flex-direction: column; gap: 20px; }
+.poi-co { display: flex; flex-direction: column; gap: 10px; }
+.poi-co-head { display: flex; align-items: center; gap: 8px; }
+.poi-co-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+.poi-co-name { font-weight: 700; color: var(--text-primary); font-size: 0.98rem; }
+.poi-co-count {
+  font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums;
+}
+.poi-co-items { display: flex; flex-direction: column; gap: 8px; padding-left: 18px; border-left: 2px solid var(--border); }
+
+.poi-row {
+  display: flex; flex-direction: column; gap: 5px; text-decoration: none;
+  padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-card);
+  transition: border-color 0.15s, background 0.15s;
+}
+a.poi-row:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+.poi-row-head { display: flex; align-items: baseline; gap: 9px; }
+.poi-type {
+  flex: 0 0 auto; font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 2px 7px; border-radius: 5px; border: 1px solid transparent; white-space: nowrap; line-height: 1.5;
+}
+.poi-summary { color: var(--text-primary); font-size: 0.9rem; line-height: 1.45; }
+.poi-reason { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45; padding-left: 2px; }
+.poi-row-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 1px; }
+.poi-date { font-size: 0.74rem; color: var(--text-muted, var(--text-secondary)); font-variant-numeric: tabular-nums; }
+.poi-eng { display: inline-flex; gap: 12px; }
+.poi-eng span { display: inline-flex; align-items: center; gap: 4px; font-size: 0.74rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.poi-eng svg { color: var(--text-muted, var(--text-secondary)); }
+.poi-open { display: inline-flex; align-items: center; gap: 4px; font-size: 0.74rem; color: var(--accent); font-weight: 600; margin-left: auto; }
+
+@media (max-width: 720px) {
+  .poi-co-items { padding-left: 10px; }
+  .poi-row-head { flex-wrap: wrap; }
+}
