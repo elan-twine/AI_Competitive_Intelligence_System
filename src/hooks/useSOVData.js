@@ -41,21 +41,38 @@ export function useSOVData(competitorsArg) {
     setLoading(true)
     setError(null)
 
+    // Supabase caps every response at 1000 rows. linkedin_posts crossed that
+    // (2.8k+ and growing daily), so a single query silently returned only the
+    // newest ~6 days of LinkedIn history — starving rankings, sentiment, and
+    // charts of everything older. Paginate with .range() until a short page.
     const safeQuery = async (table, orderCol) => {
+      const PAGE = 1000
+      const MAX_PAGES = 20 // 20k rows/table — far above current sizes, bounds memory
+      const all = []
       try {
-        const res = await supabase.from(table).select('*').order(orderCol, { ascending: false })
-        if (res.error) {
-          console.warn(`[SOV] ${table} query error:`, res.error.message)
-          return []
+        for (let i = 0; i < MAX_PAGES; i++) {
+          const res = await supabase
+            .from(table)
+            .select('*')
+            .order(orderCol, { ascending: false })
+            .range(i * PAGE, (i + 1) * PAGE - 1)
+          if (res.error) {
+            console.warn(`[SOV] ${table} query error:`, res.error.message)
+            break
+          }
+          const rows = res.data || []
+          all.push(...rows)
+          if (rows.length < PAGE) break
         }
-        return res.data || []
+        return all
       } catch (err) {
         console.warn(`[SOV] ${table} threw:`, err)
-        return []
+        return all
       }
     }
 
-    const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 8000))
+    // Generous: pagination means up to a few sequential round-trips per table.
+    const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 15000))
 
     try {
       const result = await Promise.race([
@@ -72,7 +89,7 @@ export function useSOVData(competitorsArg) {
       ])
 
       if (result === 'timeout') {
-        console.warn('[SOV] fetch timed out after 8s — rendering empty state')
+        console.warn('[SOV] fetch timed out after 15s — rendering empty state')
         setTweets([]); setRedditPosts([]); setGoogleNews([]); setLinkedinPosts([]); setAuthorAff([])
       } else {
         const [tw, rd, gn, li, aff] = result

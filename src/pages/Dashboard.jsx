@@ -23,15 +23,15 @@ const YTD_DAYS = Math.max(1, Math.ceil((Date.now() - new Date(new Date().getFull
 // window". The hint text is surfaced on hover so it's always clear what the
 // selected timescale means.
 const TIME_RANGES = [
-  { label: '7d', value: 7, hint: 'Share of voice over posts from the last 7 days. The trend chart shows the 7-day rolling value, one point per day.' },
-  { label: '30d', value: 30, hint: 'Share of voice over posts from the last 30 days. The trend chart shows the 30-day rolling value, one point per day.' },
-  { label: 'YTD', value: YTD_DAYS, hint: 'Share of voice over all posts year-to-date (Jan 1 → today). The trend chart shows the weekly board across the year.' },
+  { label: '7d', value: 7, hint: 'Everything below — rankings, stats, charts — covers the last 7 days. Trend charts show one point per day.' },
+  { label: '30d', value: 30, hint: 'Everything below — rankings, stats, charts — covers the last 30 days. Trend charts show one point per day.' },
+  { label: 'YTD', value: YTD_DAYS, hint: 'Everything below covers Jan 1 → today. Trend charts show one point per week.' },
 ]
 // Map the selected window to the trend-chart resolution + a human label.
 function windowMeta(days) {
-  if (days === 7) return { windowDays: 7, label: '7-day rolling' }
-  if (days === 30) return { windowDays: 30, label: '30-day rolling' }
-  return { windowDays: null, label: 'Weekly · year-to-date' }
+  if (days === 7) return { windowDays: 7, label: 'last 7 days' }
+  if (days === 30) return { windowDays: 30, label: 'last 30 days' }
+  return { windowDays: null, label: 'year-to-date' }
 }
 
 function CustomTooltip({ active, payload }) {
@@ -259,12 +259,16 @@ function Dashboard({ onLogout, onNavigate }) {
               },
               {
                 label: 'Twine Sentiment',
-                value: twineRow ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(2)}` : '—',
-                sub: 'Scale: -3 to +3',
-                color: twineRow
+                value: twineRow && twineRow.sentimentCount
+                  ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(2)}`
+                  : '—',
+                sub: twineRow && twineRow.sentimentCount
+                  ? `Scale: -3 to +3 · ${twineRow.sentimentCount} rated item${twineRow.sentimentCount === 1 ? '' : 's'}`
+                  : 'no rated external items in this window',
+                color: twineRow && twineRow.sentimentCount
                   ? (twineRow.avgSentiment > 0 ? 'var(--positive)' : twineRow.avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)')
                   : undefined,
-                hint: 'Average tone of external items about Twine, on a -3 (very negative) to +3 (very positive) per-item scale.',
+                hint: 'Average tone of external items about Twine, on a -3 (very negative) to +3 (very positive) per-item scale. Twine\'s own posts don\'t count — only what others say.',
               },
               {
                 label: 'Twine Items',
@@ -331,8 +335,11 @@ function Dashboard({ onLogout, onNavigate }) {
                         <td className="col-company">{r.company}</td>
                         <td>{r.postCount}</td>
                         <td><strong style={{ color: 'var(--accent)' }}>{r.weightedPct.toFixed(1)}%</strong></td>
-                        <td className={r.avgSentiment > 0 ? 'positive' : r.avgSentiment < 0 ? 'negative' : 'neutral'}>
-                          {fmtSent(r.avgSentiment)}
+                        <td
+                          className={r.sentimentCount ? (r.avgSentiment > 0 ? 'positive' : r.avgSentiment < 0 ? 'negative' : 'neutral') : 'neutral'}
+                          title={r.sentimentCount ? `${r.sentimentCount} rated external item${r.sentimentCount === 1 ? '' : 's'}` : 'No rated external items in this window'}
+                        >
+                          {r.sentimentCount ? fmtSent(r.avgSentiment) : '—'}
                         </td>
                       </tr>
                     ))}
@@ -447,8 +454,11 @@ function CompareColumn({ company, row, winners, posts }) {
       </div>
       <div className={`compare-metric ${win('sentiment') ? 'winner' : ''}`}>
         <span className="metric-label">Avg Sentiment</span>
-        <span className={`metric-value ${row.avgSentiment > 0 ? 'positive' : row.avgSentiment < 0 ? 'negative' : 'neutral'}`}>
-          {fmtSent(row.avgSentiment)}
+        <span
+          className={`metric-value ${row.sentimentCount ? (row.avgSentiment > 0 ? 'positive' : row.avgSentiment < 0 ? 'negative' : 'neutral') : 'neutral'}`}
+          title={row.sentimentCount ? undefined : 'No rated external items in this window'}
+        >
+          {row.sentimentCount ? fmtSent(row.avgSentiment) : '—'}
         </span>
       </div>
 

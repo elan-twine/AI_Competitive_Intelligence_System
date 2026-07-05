@@ -67,7 +67,9 @@ export function companyRow(posts, company) {
   const avgSentiment = sentimentRows.length
     ? sentimentRows.reduce((s, p) => s + p.sentiment, 0) / sentimentRows.length
     : 0
-  return { company, postCount, unweightedSOV, weightedSOV, avgSentiment, posts: rows }
+  // sentimentCount lets the UI distinguish "genuinely neutral (avg 0)" from
+  // "no rated external items in this window" (shown as — instead of 0.00).
+  return { company, postCount, unweightedSOV, weightedSOV, avgSentiment, sentimentCount: sentimentRows.length, posts: rows }
 }
 
 export function totalWeightedSOV(posts) {
@@ -240,7 +242,7 @@ export function weeklySentimentSeries(posts, opts = {}) {
 // matches weeklySOVSeries: { week: 'YYYY-MM-DD', [company]: value } — the x key
 // stays 'week' because SOVTrendChart + useDailySOV both key the x-axis on it.
 export function rollingDailySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
-  const { windowDays = 7, points = 45 } = opts
+  const { windowDays = 7, points = 45, since = SOV_HISTORY_START } = opts
   const valid = posts.filter(p => p.ts && !isNaN(new Date(p.ts).getTime()))
   if (!valid.length) return []
   const DAY = 86400000
@@ -250,6 +252,7 @@ export function rollingDailySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts =
   const rows = []
   for (let i = points - 1; i >= 0; i--) {
     const day = new Date(end.getTime() - i * DAY)
+    if (since && ymd(day) < since) continue // clean-history epoch — no pre-model junk days
     const upper = day.getTime() + DAY
     const lower = upper - windowDays * DAY
     const win = valid.filter(p => { const t = new Date(p.ts).getTime(); return t > lower && t <= upper })
@@ -264,7 +267,7 @@ export function rollingDailySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts =
 // Rolling DAILY sentiment (0–100 index, 50 = neutral), external-only, trailing
 // windowDays. Mirrors weeklySentimentSeries semantics per rolling day.
 export function rollingDailySentimentSeries(posts, opts = {}) {
-  const { windowDays = 7, points = 45 } = opts
+  const { windowDays = 7, points = 45, since = SOV_HISTORY_START } = opts
   const valid = posts.filter(p => p.sentiment != null && p.external !== false && p.ts && !isNaN(new Date(p.ts).getTime()))
   if (!valid.length) return []
   const DAY = 86400000
@@ -274,6 +277,7 @@ export function rollingDailySentimentSeries(posts, opts = {}) {
   const rows = []
   for (let i = points - 1; i >= 0; i--) {
     const day = new Date(end.getTime() - i * DAY)
+    if (since && ymd(day) < since) continue // clean-history epoch — no pre-model junk days
     const upper = day.getTime() + DAY
     const lower = upper - windowDays * DAY
     const row = { week: ymd(day) }

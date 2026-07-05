@@ -87,7 +87,18 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
     if (live || effMode !== 'weekly' || !posts) return null
     return weeklySOVSeries(posts, config, { weeks: 52 })
   }, [live, effMode, posts, config])
-  const series = liveSeries || isolatedSeries || (isDaily ? dailySeries : frozenSeries)
+  // sov_daily only started accumulating on 2026-07-05 (one point per day). A
+  // one-or-two-dot "line" chart reads as broken, so until the table has enough
+  // history to draw a real line, compute the same trailing-window series
+  // client-side from the full post history (identical to the platform-filtered
+  // path). Once sov_daily has ≥5 points the precomputed board takes over.
+  const dailyFallback = useMemo(() => {
+    if (!isDaily || live || !posts || dailySeries.length >= 5) return null
+    return metric === 'sentiment_pct'
+      ? rollingDailySentimentSeries(posts, { windowDays })
+      : rollingDailySOVSeries(posts, config, { windowDays })
+  }, [isDaily, live, posts, dailySeries.length, metric, config, windowDays])
+  const series = liveSeries || isolatedSeries || dailyFallback || (isDaily ? dailySeries : frozenSeries)
 
   const data = useMemo(() => {
     const n = isDaily ? MAX_DAILY_POINTS : MAX_WEEKLY_POINTS
@@ -137,7 +148,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
         <p>{live
           ? 'No posts on the selected platform(s) in this window — clear or widen the platform filter.'
           : isDaily
-            ? 'Daily rolling history is still building — it adds one point per day. Switch to YTD for the full weekly trend.'
+            ? 'Daily history is still building — one point is added per day. Switch to YTD for the full weekly trend.'
             : 'Not enough history yet — weekly trends appear once a few weeks of mentions accumulate.'}</p>
       </div>
     )
@@ -189,34 +200,41 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
                 disabled={live}
                 style={{ ...pill, ...(effMode === 'total' ? activePill : null), ...(live ? { opacity: 0.4, cursor: 'not-allowed' } : null) }}
                 title={live
-                  ? 'Total standing is cross-platform only — clear the platform filter to see it.'
-                  : "Cumulative standing: each point is that week's frozen board — everyone's overall SOV as of that week, including decayed carryover from earlier weeks."}
+                  ? 'Standings are cross-platform only — clear the platform filter to see them.'
+                  : 'The running scoreboard: where everyone stands as of each week, counting every mention so far.'}
               >
-                Total
+                Standings
               </button>
               <button
                 onClick={() => setMode('weekly')}
                 style={{ ...pill, ...(effMode === 'weekly' ? activePill : null) }}
-                title="Isolated weeks: each point is SOV computed over ONLY that week's items — who won that specific week, no carryover from earlier weeks."
+                title="Each week scored on its own: only that week's mentions count, nothing carries over."
               >
-                Per week
+                Week by week
               </button>
             </>
           )}
         </div>
-        <span
-          title={isDaily
-            ? `Each point = that day's share of voice over the trailing ${windowDays} days. Set by the dashboard's Time window.`
-            : effMode === 'weekly'
-              ? 'Each point = SOV over only that week’s items (no carryover). Switch to Total for the cumulative standing.'
-              : 'Each point = that week’s frozen board score (cumulative standing, carryover included). Switch to Per week to isolate single weeks.'}
-          style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 999, padding: '2px 8px' }}
-        >
-          {isDaily
-            ? `${windowDays}-day rolling · daily`
-            : effMode === 'weekly' ? 'Week-by-week · isolated' : 'Weekly board · cumulative'}
-        </span>
+        {(isDaily || metric !== 'overall') && (
+          <span
+            title={isDaily
+              ? `One point per day; each point covers the ${windowDays} days before it. Set by the dashboard's Time window.`
+              : 'One point per week.'}
+            style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 999, padding: '2px 8px' }}
+          >
+            {isDaily ? `each point = previous ${windowDays} days` : 'weekly'}
+          </span>
+        )}
       </div>
+      {metric === 'overall' && (
+        <p className="cr-sub" style={{ margin: '-2px 0 10px' }}>
+          {isDaily
+            ? `One point per day — each point is share of voice over the ${windowDays} days before it, so the newest point answers “who owned the conversation over the last ${windowDays === 7 ? 'week' : 'month'}?”`
+            : effMode === 'weekly'
+              ? 'One week at a time — each point only counts that week’s mentions. A clean “who won this week?”, with nothing carried over.'
+              : 'The running scoreboard — each point is a company’s overall share of voice as of that week. Every mention so far counts, with older mentions slowly fading out.'}
+        </p>
+      )}
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} vertical={false} />
