@@ -55,6 +55,22 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const isDaily = (windowDays === 7 || windowDays === 30)
   const { series: frozenSeries } = useWeeklySOV(metric)
   const { series: dailySeries } = useDailySOV(windowDays === 30 ? 30 : 7, metric)
+  const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
+  const [active, setActive] = useState(null)              // legend-hovered company (spotlight)
+  const [scope, setScope] = useState('direct')             // 'all' | 'direct' — which competitor lines to draw (default: direct)
+  // Weekly (YTD) SOV has TWO valid readings and the chart offers both:
+  //   'total'  — cumulative standing: the frozen weekly board (sov_weekly),
+  //              i.e. everyone's overall SOV as of that week, decayed carryover
+  //              from earlier weeks included. "Where does everyone stand?"
+  //   'weekly' — isolated weeks: SOV recomputed over ONLY that week's items.
+  //              "Who won that specific week?"
+  // Only meaningful on the weekly overall-SOV chart: the 7d/30d daily views are
+  // already trailing-window isolated, and sentiment is a per-period average
+  // either way. Under a platform filter the frozen board can't be sliced, so
+  // the chart is pinned to 'weekly' (which the live series already computes).
+  const [mode, setMode] = useState('total')
+  const modeApplies = !isDaily && metric === 'overall' && !!posts
+  const effMode = !modeApplies ? null : (live ? 'weekly' : mode)
   const liveSeries = useMemo(() => {
     if (!live || !posts) return null
     if (isDaily) {
@@ -66,10 +82,12 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       ? weeklySentimentSeries(posts, { weeks: 52 })
       : weeklySOVSeries(posts, config, { weeks: 52 })
   }, [live, posts, metric, config, isDaily, windowDays])
-  const series = liveSeries || (isDaily ? dailySeries : frozenSeries)
-  const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
-  const [active, setActive] = useState(null)              // legend-hovered company (spotlight)
-  const [scope, setScope] = useState('direct')             // 'all' | 'direct' — which competitor lines to draw (default: direct)
+  // Isolated week-by-week series for the un-filtered weekly view ('weekly' mode).
+  const isolatedSeries = useMemo(() => {
+    if (live || effMode !== 'weekly' || !posts) return null
+    return weeklySOVSeries(posts, config, { weeks: 52 })
+  }, [live, effMode, posts, config])
+  const series = liveSeries || isolatedSeries || (isDaily ? dailySeries : frozenSeries)
 
   const data = useMemo(() => {
     const n = isDaily ? MAX_DAILY_POINTS : MAX_WEEKLY_POINTS
@@ -107,9 +125,10 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       if (v > hi) hi = v
     }
     if (!isFinite(lo) || !isFinite(hi)) return [0, 'auto']
-    if (lo === hi) return [Math.max(0, lo - 5), hi + 5]
+    // Both metrics are percentages/indexes bounded to 0..100 — never pad past it.
+    if (lo === hi) return [Math.max(0, lo - 5), Math.min(100, hi + 5)]
     const pad = Math.max(2, (hi - lo) * 0.12)
-    return [Math.max(0, Math.floor(lo - pad)), Math.ceil(hi + pad)]
+    return [Math.max(0, Math.floor(lo - pad)), Math.min(100, Math.ceil(hi + pad))]
   }, [data, lines, hidden])
 
   if (!data.length || !lines.length) {
@@ -133,7 +152,10 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const pill = {
     fontSize: 11, padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
     background: 'transparent', fontWeight: 600, lineHeight: 1.4,
-    border: '1px solid var(--border)', color: 'var(--text-secondary)',
+    // longhand (not the `border` shorthand) so activePill's borderColor never
+    // conflicts — React logs a styling error when the two mix on rerender.
+    borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
+    color: 'var(--text-secondary)',
   }
   const activePill = { borderColor: 'var(--accent)', color: 'var(--accent)' }
 
@@ -159,18 +181,44 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
               {label}
             </button>
           ))}
+          {modeApplies && (
+            <>
+              <span aria-hidden style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
+              <button
+                onClick={() => !live && setMode('total')}
+                disabled={live}
+                style={{ ...pill, ...(effMode === 'total' ? activePill : null), ...(live ? { opacity: 0.4, cursor: 'not-allowed' } : null) }}
+                title={live
+                  ? 'Total standing is cross-platform only — clear the platform filter to see it.'
+                  : "Cumulative standing: each point is that week's frozen board — everyone's overall SOV as of that week, including decayed carryover from earlier weeks."}
+              >
+                Total
+              </button>
+              <button
+                onClick={() => setMode('weekly')}
+                style={{ ...pill, ...(effMode === 'weekly' ? activePill : null) }}
+                title="Isolated weeks: each point is SOV computed over ONLY that week's items — who won that specific week, no carryover from earlier weeks."
+              >
+                Per week
+              </button>
+            </>
+          )}
         </div>
         <span
           title={isDaily
             ? `Each point = that day's share of voice over the trailing ${windowDays} days. Set by the dashboard's Time window.`
-            : 'Each point = that week’s frozen board score. Set the Time window to 7d/30d for the daily rolling trend.'}
+            : effMode === 'weekly'
+              ? 'Each point = SOV over only that week’s items (no carryover). Switch to Total for the cumulative standing.'
+              : 'Each point = that week’s frozen board score (cumulative standing, carryover included). Switch to Per week to isolate single weeks.'}
           style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 999, padding: '2px 8px' }}
         >
-          {isDaily ? `${windowDays}-day rolling · daily` : 'Weekly board'}
+          {isDaily
+            ? `${windowDays}-day rolling · daily`
+            : effMode === 'weekly' ? 'Week-by-week · isolated' : 'Weekly board · cumulative'}
         </span>
       </div>
       <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: -8 }}>
+        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} vertical={false} />
           <XAxis
             dataKey="week"
@@ -189,6 +237,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
               value: yLabel,
               angle: -90,
               position: 'insideLeft',
+              offset: 22,   // pull the rotated label inward so it isn't clipped off the SVG's left edge
               style: { fill: 'var(--text-secondary)', fontSize: 12 },
             }}
           />

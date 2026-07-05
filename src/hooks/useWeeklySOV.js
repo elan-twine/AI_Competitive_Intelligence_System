@@ -9,12 +9,13 @@ import { supabase } from '../lib/supabase'
 // metric: which stored column to plot — 'overall' (default, the composite board
 // score) | 'weighted_pct' | 'unweighted_pct' | 'sentiment_pct'.
 //
-// "Start fresh": the SOV model changed on 2026-06-22. Weeks before that were
-// computed under a superseded formula AND on thin scrape coverage, so they are
-// neither displayed nor used in any computation (forward-fill, etc.). The old
-// rows stay in the table (not deleted) — they're just filtered out here. After
-// the 30-day backfill seeds clean weeks, lower this to the backfill window start.
-const SOV_HISTORY_START = '2026-06-22'
+// "Start fresh": the SOV model changed on 2026-06-22 (SOV_HISTORY_START in
+// metrics.js — single source shared with the live/isolated weekly series).
+// Weeks before that were computed under a superseded formula AND on thin
+// scrape coverage, so they are neither displayed nor used in any computation
+// (forward-fill, etc.). The old rows stay in the table (not deleted) — they're
+// just filtered out here.
+import { SOV_HISTORY_START } from '../lib/metrics'
 
 export function useWeeklySOV(metric = 'overall') {
   const [rows, setRows] = useState([])
