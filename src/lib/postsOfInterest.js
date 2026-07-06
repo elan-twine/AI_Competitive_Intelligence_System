@@ -72,8 +72,22 @@ function ymd(t) {
   return `${y}-${m}-${dd}`
 }
 
+// Parse a DB timestamp to epoch ms as UTC. posts_of_interest.date is stored
+// zoneless ("2026-03-18 14:32:53"), which `new Date()` would read in the
+// browser's LOCAL zone — while all the bucket math here is UTC (PERIOD_ANCHOR,
+// ymd). That mismatch can shift a post across a 14-day boundary for non-UTC
+// users. Force zoneless strings to UTC; leave already-zoned ISO strings alone.
+function toUtcMs(date) {
+  if (date == null) return NaN
+  let s = String(date).trim()
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(s) && !/[Zz]|[+-]\d{2}:?\d{2}$/.test(s)) {
+    s = s.replace(' ', 'T') + 'Z'
+  }
+  return new Date(s).getTime()
+}
+
 export function periodStartFor(date, windowDays = 14) {
-  const t = new Date(date).getTime()
+  const t = toUtcMs(date)
   if (isNaN(t)) return null
   const span = windowDays * DAY
   const idx = Math.floor((t - PERIOD_ANCHOR) / span)

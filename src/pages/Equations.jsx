@@ -453,7 +453,7 @@ function SharePoolBar() {
       <div className="pool-note">
         LinkedIn share = <Fraction num="174.2 (this company)" den="582.7 (all direct competitors on LinkedIn)" /> = <strong>29.9%</strong>
       </div>
-      <div className="chip pool-guard">quiet-platform guard: a platform with almost no items is dropped, so one stray item can’t swing the board</div>
+      <div className="chip pool-guard">quiet-platform guard: if a platform’s total post-weight for the period is below 3, it’s dropped from that period’s SOV and the remaining platform weights renormalize to sum to 1 — so one stray item can’t swing the board</div>
     </div>
   )
 }
@@ -646,6 +646,15 @@ export default function Equations({ onLogout, onNavigate }) {
               attention it actually earned, and add up each company’s share. Below: follow one item from raw likes to a
               single percentage.
             </p>
+            <p className="meth-thesis">
+              A SOV “week” runs <strong>Thursday → Wednesday</strong> and is labelled by its Thursday date — scrapes
+              run Thursday mornings, so every mention lands in the week that opens with the run that caught it.
+            </p>
+            <Callout>
+              The dashboard’s SOV trend has two toggle views. <strong>Standings</strong> is the cumulative frozen weekly
+              board — every mention so far, with older ones decaying. <strong>Week by week</strong> recomputes SOV over
+              only that ISO week’s items, so each point is that week in isolation.
+            </Callout>
             <Hero active={heroActive} onJump={jump} />
             <Callout>
               <strong>The item we’ll follow:</strong> {EXAMPLE.blurb}
@@ -729,6 +738,7 @@ export default function Equations({ onLogout, onNavigate }) {
               attention, worth the most. This switch sets the B and M factors in step 5.
             </p>
             <AuthorFork />
+            <Callout><strong>X self-post discount:</strong> on X specifically, a company’s own tweets (author handle == its tracked x_handle) have their authorWeight forced to <strong>1</strong> — the earned-attention principle taken to its logical end, so a brand’s own tweets count least on X.</Callout>
             <div className="meth-example-line">example: posted by an outsider → <strong>external (B=5, M=2)</strong></div>
           </Stage>
 
@@ -748,7 +758,7 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="Combine the four platform shares, weighting each by how much it matters."
             pill={trace('blend')}>
             <EquationRow>weighted-share = Σ (weight<sub>p</sub> · share<sub>p</sub>) · 100</EquationRow>
-            <Callout>Weights: LinkedIn 0.35 · Google News 0.30 · Reddit 0.20 · X 0.15. If a platform is too quiet to be reliable, it’s dropped and the rest re-balance to sum to 1.</Callout>
+            <Callout>Weights: LinkedIn 0.35 · Google News 0.30 · Reddit 0.20 · X 0.15. If a platform’s total post-weight for the period falls below 3, it’s dropped and the surviving platforms’ weights re-balance to sum to 1.</Callout>
             <BlendWeights />
           </Stage>
 
@@ -769,8 +779,9 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="How the market feels about you — tracked next to SOV%, never folded into it.">
             <div className="meth-fence-label">DISPLAY METRIC · NOT IN SOV%</div>
             <p className="meth-body">
-              The dashboard also shows average sentiment over <strong>external</strong> items only — earned
-              perception, not your own items. It’s its own column and weekly trend, kept fully separate from the score.
+              The dashboard also shows average sentiment over <strong>external items only</strong> — a company’s own
+              posts never count toward its sentiment, so this is earned perception rather than self-promo. It’s its own
+              column and weekly trend, kept fully separate from the score.
             </p>
             <SentimentSpark />
           </Stage>
@@ -787,7 +798,7 @@ export default function Equations({ onLogout, onNavigate }) {
               ))}
             </div>
             <div className="growth-footnote meth-footer">
-              <span>Static reference — no live data. Numbers labelled “example” are illustrative.</span>
+              <span>Static reference — no live data. Numbers labelled “example” are illustrative. The board only shows data from 2026-06-22 onward, when the current model was deployed; earlier data is excluded.</span>
               {onNavigate && (
                 <button className="meth-back-link" onClick={() => onNavigate('dashboard')}>
                   <ArrowLeft size={14} /> Back to dashboard
