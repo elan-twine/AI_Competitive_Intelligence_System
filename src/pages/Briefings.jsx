@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { RotateCw, Plus } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
 import {
@@ -55,6 +55,43 @@ export default function Briefings() {
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
 
+  // Briefs generate asynchronously in n8n (scrape + LLM, ~1-2 min) — the webhook
+  // is fire-and-forget. Track "in-flight" briefs so we can show an animated
+  // Generating… card until the finished row lands in competitor_briefings.
+  //   pending: { [keyFor(name)]: { name, since, baseCreatedAt } }
+  const [pending, setPending] = useState({})
+
+  const startBrief = useCallback((name) => {
+    const key = keyFor(name)
+    setPending(p => ({ ...p, [key]: { name, since: Date.now(), baseCreatedAt: briefings[key]?._createdAt || null } }))
+  }, [briefings])
+
+  // While anything is in flight, poll for the finished brief to land.
+  useEffect(() => {
+    if (!Object.keys(pending).length) return
+    const iv = setInterval(() => refetch(), 8000)
+    return () => clearInterval(iv)
+  }, [pending, refetch])
+
+  // Resolve an in-flight brief when its (new) row arrives, or give up after 6 min.
+  // useBriefingsData returns a fresh `briefings` object each fetch, so this re-runs
+  // every poll — which also lets the timeout fire even if nothing changed.
+  useEffect(() => {
+    setPending(prev => {
+      const keys = Object.keys(prev)
+      if (!keys.length) return prev
+      let changed = false
+      const next = { ...prev }
+      for (const key of keys) {
+        const b = briefings[key]
+        const done = b && b._createdAt && b._createdAt !== prev[key].baseCreatedAt
+        const timedOut = Date.now() - prev[key].since > 6 * 60 * 1000
+        if (done || timedOut) { delete next[key]; changed = true }
+      }
+      return changed ? next : prev
+    })
+  }, [briefings])
+
   function showToast(msg, kind = 'ok') {
     setToast({ msg, kind })
     clearTimeout(toastTimer.current)
@@ -94,6 +131,8 @@ export default function Briefings() {
             data={briefings}
             urns={urns}
             competitors={unbriefedCompetitors}
+            pending={pending}
+            onBriefStarted={startBrief}
             loading={loading}
             openBrief={openBrief}
             showToast={showToast}
@@ -113,7 +152,7 @@ export default function Briefings() {
   )
 }
 
-function WebhookBar({ urns, competitors, showToast, refetch }) {
+function WebhookBar({ urns, competitors, onBriefStarted, showToast, refetch }) {
   const [busy, setBusy] = useState(null) // 'new' | 'loop' | null
   const [showModal, setShowModal] = useState(false)
 
@@ -121,9 +160,9 @@ function WebhookBar({ urns, competitors, showToast, refetch }) {
     setBusy('new')
     try {
       await callBriefingProxy(BRIEFING_NEW_PATH, { 'Competitor Name': company, 'Competitor URL': url })
-      showToast(`${company} queued — refetching…`, 'ok')
+      showToast(`Generating brief for ${company}…`, 'ok')
       setShowModal(false)
-      setTimeout(refetch, 2500)
+      onBriefStarted?.(company)  // shows an animated Generating… card + starts polling
     } catch (e) {
       showToast('Error: ' + e.message, 'err')
     } finally {
@@ -238,16 +277,18 @@ function NewCompetitorModal({ competitors = [], onClose, onSubmit, busy }) {
   )
 }
 
-function Overview({ data, urns, competitors, loading, openBrief, showToast, refetch }) {
+function Overview({ data, urns, competitors, pending = {}, onBriefStarted, loading, openBrief, showToast, refetch }) {
   const all = Object.values(data)
   const uniqProducts = new Set(all.flatMap(c => c.products || []))
   const highCount = all.filter(c => c.threat === 'high' || c.threat === 'critical').length
   const overlapTotal = all.reduce((s, c) => s + (c.overlap?.length || 0), 0)
   const maxProducts = Math.max(1, ...all.map(c => (c.products || []).length))
+  // In-flight briefs whose finished row hasn't landed yet → animated cards.
+  const pendingList = Object.entries(pending).filter(([key]) => !data[key]).map(([, p]) => p)
 
   return (
     <>
-      <WebhookBar urns={urns} competitors={competitors} showToast={showToast} refetch={refetch} />
+      <WebhookBar urns={urns} competitors={competitors} onBriefStarted={onBriefStarted} showToast={showToast} refetch={refetch} />
 
       <div className="bf-stats">
         <StatCard label="Competitors" value={all.length} />
@@ -256,7 +297,7 @@ function Overview({ data, urns, competitors, loading, openBrief, showToast, refe
         <StatCard label="Products Tracked" value={uniqProducts.size} accent />
       </div>
 
-      {all.length === 0 && !loading && (
+      {all.length === 0 && !loading && pendingList.length === 0 && (
         <GlassCard className="bf-card" intensity={3} interactive>
           <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
             No briefings yet. Generate one via n8n to populate the <code>competitor_briefings</code> table.
@@ -264,8 +305,9 @@ function Overview({ data, urns, competitors, loading, openBrief, showToast, refe
         </GlassCard>
       )}
 
-      {all.length > 0 && (
+      {(all.length > 0 || pendingList.length > 0) && (
         <div className="bf-g3">
+          {pendingList.map(p => <PendingBriefCard key={'pending-' + p.name} name={p.name} />)}
           {Object.keys(data).map(k => {
             const c = data[k]
             return (
@@ -347,6 +389,22 @@ function StatCard({ label, value, valueColor, accent }) {
       >
         {value}
       </div>
+    </GlassCard>
+  )
+}
+
+// Animated placeholder shown while a brief is generating in n8n (scrape + LLM),
+// before the finished row lands. Replaced by the real card once it arrives.
+function PendingBriefCard({ name }) {
+  return (
+    <GlassCard className="bf-card bf-generating" intensity={4}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.3px', color: 'var(--text-primary)' }}>{name}</div>
+        <span className="bf-spin" />
+      </div>
+      <div className="bf-gen-label">Generating competitive brief…</div>
+      <div className="bf-gen-sub">Scraping the web + analyzing — this can take a minute or two.</div>
+      <div className="bf-gen-bars"><span /><span /><span /></div>
     </GlassCard>
   )
 }
