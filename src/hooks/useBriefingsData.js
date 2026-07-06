@@ -67,6 +67,7 @@ function normalizeBriefing(row) {
     overlap: parseList(row.overlap_risk_areas || row.overlap),
     battle: parseList(row.battle_card_notes || row.battle),
     gaps: parseList(row.positioning_gaps_for_twine || row.positioning_gaps || row.gaps),
+    marketingStrategy: parseList(row.marketing_strategy),
     news: parseList(row.recent_news || row.news),
     fullReport: row.full_report || '',
     urn: row.URN || row.urn || null,

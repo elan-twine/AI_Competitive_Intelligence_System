@@ -493,6 +493,14 @@ function BriefDetail({ c, onBack }) {
         </div>
       </Section>
 
+      {(c.marketingStrategy || []).length > 0 && (
+        <Section title="Marketing Strategy — from Share-of-Voice signals">
+          {c.marketingStrategy.map((m, i) => (
+            <div className="bf-sw" key={i}><span className="m" style={{ color: 'var(--accent)' }}>◆</span>{m}</div>
+          ))}
+        </Section>
+      )}
+
       {(c.battle || []).length > 0 && (
         <Section title="Battle Card">
           <div className="bf-battle">
