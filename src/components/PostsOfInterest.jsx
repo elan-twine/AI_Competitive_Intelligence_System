@@ -35,8 +35,17 @@ function PostRow({ item }) {
       <div className="poi-row-head">
         <TypeBadge type={item.type} />
         <span className="poi-summary">{item.summary}</span>
+        {item.collapsedCount > 1 && (
+          <span className="poi-collapsed" title={`Collapses ${item.collapsedCount} similar posts into one line`}>×{item.collapsedCount}</span>
+        )}
       </div>
       {item.reason && <div className="poi-reason">{item.reason}</div>}
+      {item.strategicAngle && (
+        <div className="poi-angle" title="AI-suggested — what this means for Twine and how we might respond">
+          <Sparkles size={12} className="poi-angle-icon" />
+          <span><span className="poi-angle-label">For Twine:</span> {item.strategicAngle}</span>
+        </div>
+      )}
       <div className="poi-row-foot">
         <span className="poi-date">{fmtDate(item.date)}</span>
         {e && (e.reactions + e.comments + e.reshares > 0) && (
@@ -113,7 +122,7 @@ export function PostsOfInterest({ competitors = [], allPosts = [] }) {
       </div>
 
       <p className="cr-sub">
-        The notable competitor posts worth discussing this period — what each one is, why it matters, and a link to open it. Grouped by competitor, newest first. Modeled on the bi-weekly competitor social review.
+        The notable competitor posts worth discussing this week — what each one is, why it matters, an AI-suggested angle for Twine, and a link to open it. Grouped by competitor, newest first. Modeled on the manual competitor social review. Covers the tracked roster's LinkedIn activity we scrape — not yet earned media or untracked companies.
       </p>
 
       <div className="poi-metrics">
