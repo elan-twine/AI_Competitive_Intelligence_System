@@ -492,3 +492,36 @@
   .briefings-root .bf-sw-2 { grid-template-columns: 1fr; }
   .briefings-root .bf-vs-hero { flex-direction: column; align-items: flex-start; gap: 14px; }
 }
+
+/* ---- Generating… (in-flight brief) card animation ---------------------- */
+.briefings-root .bf-generating {
+  position: relative;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.briefings-root .bf-generating::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  animation: bf-glow 1.5s ease-in-out infinite;
+}
+@keyframes bf-glow { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+/* accent-colored spinner (the default bf-spin is dark, for light buttons) */
+.briefings-root .bf-generating .bf-spin {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+}
+.briefings-root .bf-gen-label { margin-top: 14px; font-size: 13px; font-weight: 600; color: var(--accent); }
+.briefings-root .bf-gen-sub { margin-top: 4px; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+.briefings-root .bf-gen-bars { margin-top: 16px; display: flex; flex-direction: column; gap: 9px; }
+.briefings-root .bf-gen-bars span {
+  height: 9px; border-radius: 5px;
+  background: linear-gradient(90deg,
+    var(--bg-card-hover, rgba(255,255,255,0.06)) 25%,
+    color-mix(in srgb, var(--accent) 22%, var(--bg-card-hover, rgba(255,255,255,0.06))) 37%,
+    var(--bg-card-hover, rgba(255,255,255,0.06)) 63%);
+  background-size: 400% 100%;
+  animation: bf-shimmer 1.4s ease infinite;
+}
+.briefings-root .bf-gen-bars span:nth-child(2) { width: 82%; }
+.briefings-root .bf-gen-bars span:nth-child(3) { width: 56%; }
+@keyframes bf-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
