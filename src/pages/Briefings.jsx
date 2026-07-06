@@ -3,8 +3,9 @@ import { RotateCw, Plus } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
 import {
   useBriefingsData,
-  N8N_NEW_COMPETITOR_WEBHOOK,
-  N8N_UPDATE_ALL_WEBHOOK,
+  callBriefingProxy,
+  BRIEFING_NEW_PATH,
+  BRIEFING_UPDATE_ALL_PATH,
 } from '../hooks/useBriefingsData'
 import './briefings.css'
 
@@ -103,14 +104,7 @@ function WebhookBar({ urns, showToast, refetch }) {
   async function submitNew({ company, url }) {
     setBusy('new')
     try {
-      const body = { 'Competitor Name': company, 'Competitor URL': url }
-      const r = await fetch(N8N_NEW_COMPETITOR_WEBHOOK, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        mode: 'cors',
-      })
-      if (!r.ok) throw new Error(`webhook returned ${r.status}`)
+      await callBriefingProxy(BRIEFING_NEW_PATH, { 'Competitor Name': company, 'Competitor URL': url })
       showToast(`${company} queued — refetching…`, 'ok')
       setShowModal(false)
       setTimeout(refetch, 2500)
@@ -125,13 +119,7 @@ function WebhookBar({ urns, showToast, refetch }) {
     if (!confirm('Re-scrape and update ALL existing briefs? This may take a while.')) return
     setBusy('loop')
     try {
-      const r = await fetch(N8N_UPDATE_ALL_WEBHOOK, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-        mode: 'cors',
-      })
-      if (!r.ok) throw new Error(`webhook returned ${r.status}`)
+      await callBriefingProxy(BRIEFING_UPDATE_ALL_PATH, {})
       showToast('Update-all loop triggered — refetching in 5s…', 'ok')
       setTimeout(refetch, 5000)
     } catch (e) {
