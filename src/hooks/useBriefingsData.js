@@ -1,11 +1,32 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
-// Hardcoded n8n webhooks for the briefing flows.
-// Generate-one-new = POST { "Competitor Name", "Competitor URL" } → writes one row to competitor_briefings.
-// Update-all-loop  = POST {} → re-scrapes & updates every existing brief.
-export const N8N_NEW_COMPETITOR_WEBHOOK = 'https://twine-security.app.n8n.cloud/webhook/e5c7839b-e076-4e2a-8de3-1db5fdfb750d'
-export const N8N_UPDATE_ALL_WEBHOOK = 'https://twine-security.app.n8n.cloud/webhook/43a45fbb-cbb4-4b38-8cb2-1f46044011dc'
+// Briefing flows are triggered through a SAME-ORIGIN Cloudflare Worker proxy
+// (worker/index.js) that verifies the caller's Supabase session before
+// forwarding to the real n8n webhooks. The n8n URLs are Worker SECRETS now —
+// deliberately NOT in the client bundle — so a random visitor can't read them
+// and fire (paid) briefing scrapes. See audit finding F1.
+//   /api/briefing/new        → POST { "Competitor Name", "Competitor URL" } → one competitor_briefings row
+//   /api/briefing/update-all → POST {} → re-scrape + update every existing brief
+export const BRIEFING_NEW_PATH = '/api/briefing/new'
+export const BRIEFING_UPDATE_ALL_PATH = '/api/briefing/update-all'
+
+// POST to the gated briefing proxy with the current user's Supabase access
+// token. Throws on no session / non-2xx so callers can toast a clear message.
+export async function callBriefingProxy(path, body) {
+  const { data } = await supabase.auth.getSession()
+  const token = data?.session?.access_token
+  if (!token) throw new Error('You must be signed in to do that.')
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify(body || {}),
+  })
+  if (!r.ok) {
+    throw new Error(r.status === 401 ? 'Session expired — sign in again.' : `Request failed (${r.status})`)
+  }
+  return r
+}
 
 // Some array columns are stored as JSON-stringified arrays (e.g.
 // "[\"a\",\"b\"]"). Tolerate both real arrays and JSON strings.

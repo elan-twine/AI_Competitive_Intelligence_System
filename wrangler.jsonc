@@ -2,13 +2,20 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "competitive-intelligence-system",
   "compatibility_date": "2026-06-17",
+  "main": "worker/index.js",
   "observability": {
     "enabled": true
   },
   "assets": {
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
   },
   "compatibility_flags": [
     "nodejs_compat"
-  ]
+  ],
+  "vars": {
+    "SUPABASE_URL": "https://addwjngdezmmnxddulll.supabase.co",
+    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZHdqbmdkZXptbW54ZGR1bGxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4Nzk1MjUsImV4cCI6MjA4NzQ1NTUyNX0.t-SI3JkUEyUQRZuc36PcJZ_E2F6FHGq_gzXysUeM1RY"
+  }
 }
