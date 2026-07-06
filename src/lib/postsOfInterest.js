@@ -5,36 +5,60 @@
 // then by competitor, with an auto-detected content TYPE (guide / webinar / ad
 // / event / …) so a reader can scan what each competitor is pushing.
 
-// ---- Content-type detection -------------------------------------------------
-// Ordered most-specific → most-generic; first hit wins. Matched against the
-// summary + reason text (the LLM-written description of what the post is).
+// ---- Content-type taxonomy --------------------------------------------------
+// The canonical set (see sov-tooling/POI_GENERATOR_SPEC.md) is the 22 types the
+// manual reviewers used. The weekly generator writes one of these into
+// posts_of_interest.post_type, which the UI prefers. detectPostType() is only a
+// FALLBACK for rows with no stored type (the legacy April backfill): a
+// most-specific-first regex sweep over the summary + reason text.
 const TYPE_RULES = [
-  ['Webinar', /webinar|fireside|live session|virtual event|ama\b/i],
-  ['Report', /whitepaper|white paper|e-?book|buyer'?s guide|\bguide\b|playbook|checklist|\breport\b|research|study|findings|infographic|\bbrief\b|survey/i],
-  ['Event', /conference|summit|\bbooth\b|\brsac\b|identiverse|gartner|black ?hat|def ?con|sponsor|expo|meetup|road ?show|\bevent\b|dinner|tailgate|showcase|attend/i],
-  ['Partnership', /partner|integrat|alliance|joins forces|collaborat|available on .*marketplace|teams? up/i],
-  ['Funding', /\braise[ds]?\b|funding|series [a-e]\b|\$\s?\d|investment|invests?|\bround\b|valuation|backed by/i],
-  ['Product', /launch|introduc|unveil|new feature|now available|general availability|\bga\b|releases? (?:a |the |new |its )|announc\w* .*(feature|product|agent|platform|capabilit)/i],
-  ['Video', /\bvideo\b|animated|explainer|\bdemo\b|watch\b|reel\b/i],
-  ['Award', /\baward|recognized|named (?:a |to |one )|finalist|honor|ranked|\bmilestone|followers\b|celebrat|anniversary/i],
-  ['Campaign', /campaign|advertisement|\bad(?:s|vert)?\b|spotlight|billboard|promot|guerilla|guerrilla/i],
-  ['Thought Leadership', /thought leadership|\bblog\b|\bmemo\b|perspective|op-?ed|point of view|weighs? in|reacts?|take on|hot take/i],
-  ['Hiring', /hiring|join our team|open role|now hiring|we'?re growing/i],
+  ['Earned Media', /\bthe hacker news\b|posts about (?:their|the).*(?:partner|integration)|(?:featured|covered|mentioned) (?:in|by) |press|coverage|globe ?newswire|named .*(?:by|in) (?:the )?[A-Z]/i],
+  ['Webinar', /webinar|fireside|live session|virtual event|round ?table|live demo|\bama\b/i],
+  ['Networking Event', /happy hour|\bdinner\b|pickleball|golf|tailgate|giveaway|mixer|reception|party/i],
+  ['Event', /conference|summit|\bbooth\b|\brsac\b|identiverse|gartner|black ?hat|def ?con|sponsor|expo|meetup|road ?show|\bevent\b|showcase|attend|speaking session/i],
+  ['Funding', /\braise[ds]?\b|funding|series [a-e]\b|seed round|\bround\b|investor|investment|invests?|valuation|backed by|nasdaq|nyse/i],
+  ['Partnership', /partner|integrat|alliance|joins forces|collaborat|available on .*marketplace|teams? up|1-click|one-click/i],
+  ['Award', /\baward|finalist|\bhonor|ranked|\bcyber ?\d+\b|hottest|top \d+|excellence|voice of the customer|\bvoc\b/i],
+  ['Milestone', /\d[\d,]*\s*(?:followers|customers|users)|anniversary|\d+\s*years|celebrat|reaches?\b/i],
+  ['Positioning Shift', /rebrand|renam|new (?:banner|tagline|category)|now (?:calling|labeling|referring)|changes? .*banner|coin(?:s|ed|ing)? (?:the term|a new)|introduc\w* .*(?:category|market)\b/i],
+  ['Research', /security research|vulnerabilit|\bcve\b|exploit|malware|threat report|\bdbir\b|global threat|breach\b/i],
+  ['Product', /launch|introduc|unveil|new feature|now available|general availability|\bga\b|releases? (?:a |the |new |its )?(?:feature|product|agent|platform|capabilit)|announc\w* .*(?:feature|product|agent|platform|capabilit)/i],
+  ['Video', /\bvideo\b|animated|explainer|\bdemo\b|\breel\b|\bveo\b/i],
+  ['Customer Story', /customer story|case study|testimonial|quote from .*(?:ciso|customer)|success story/i],
+  ['Campaign', /campaign|advertisement|\bad(?:s|vert)?\b|ad[- ]library|spotlight|billboard|message ad|promot/i],
+  ['Thought Leadership', /whitepaper|white paper|e-?book|buyer'?s guide|\bguide\b|playbook|checklist|\breport\b|study|findings|infographic|\bbrief\b|survey|\bblog\b|\bmemo\b|perspective|op-?ed|point of view|thought leadership|weighs? in|take on|hot take/i],
+  ['Community', /community|alliance|\bgsia\b|cohort|user group|founders/i],
+  ['Interactive', /\bpoll\b|quiz|caption this|guess|this or that|poem|meme/i],
+  ['Seasonal', /happy (?:hannukah|hanukkah|holidays|new year|thanksgiving)|valentine|super ?bowl|halloween|christmas|\bpride\b|nasa/i],
+  ['Hiring', /hiring|join our team|open role|now hiring|we'?re growing|paid leave|employer brand/i],
+  ['Exec Commentary', /\bceo\b|\bcto\b|\bcpo\b|founder|reposts?|thought leadership on|reacts?/i],
 ]
 
-// Muted, theme-safe badge colors per type.
+// Muted, theme-safe badge colors. Covers the full canonical taxonomy plus the
+// legacy "Report" label so old rows still render a color.
 export const TYPE_COLORS = {
-  'Webinar': '#8B5CF6',
-  'Report': '#0EA5E9',
+  'Thought Leadership': '#6366F1',
   'Event': '#F59E0B',
-  'Partnership': '#14B8A6',
-  'Funding': '#22C55E',
-  'Product': '#EC4899',
+  'Webinar': '#8B5CF6',
+  'Networking Event': '#FB923C',
+  'Campaign': '#F97316',
   'Video': '#EF4444',
   'Award': '#EAB308',
-  'Campaign': '#F97316',
-  'Thought Leadership': '#6366F1',
+  'Earned Media': '#38BDF8',
+  'Exec Commentary': '#818CF8',
+  'Product': '#EC4899',
+  'Partnership': '#14B8A6',
+  'Research': '#A855F7',
+  'Positioning Shift': '#F43F5E',
+  'Funding': '#22C55E',
+  'Distribution Tactic': '#2DD4BF',
   'Hiring': '#64748B',
+  'Milestone': '#EAB308',
+  'Customer Story': '#10B981',
+  'Seasonal': '#E879F9',
+  'Community': '#0EA5E9',
+  'Interactive': '#C084FC',
+  'Report': '#0EA5E9', // legacy alias of Thought Leadership
   'Post': '#94A3B8',
 }
 
@@ -58,9 +82,10 @@ export function linkedinUrlForActivity(id) {
 }
 
 // ---- Period bucketing -------------------------------------------------------
-// The manual reviews run on a ~bi-weekly cadence. We bucket post dates into
-// fixed 14-day windows from a stable anchor (a Monday), so periods are
-// deterministic and reproducible (no dependence on "today").
+// The weekly generator runs on a 7-day cadence. We bucket post dates into fixed
+// 7-day windows from a stable anchor (a Monday), so periods are deterministic
+// and reproducible (no dependence on "today"). Legacy rows fall into whichever
+// week their post date lands in.
 const PERIOD_ANCHOR = Date.UTC(2026, 0, 5) // 2026-01-05, a Monday
 const DAY = 86400000
 
@@ -86,7 +111,7 @@ function toUtcMs(date) {
   return new Date(s).getTime()
 }
 
-export function periodStartFor(date, windowDays = 14) {
+export function periodStartFor(date, windowDays = 7) {
   const t = toUtcMs(date)
   if (isNaN(t)) return null
   const span = windowDays * DAY
@@ -94,7 +119,7 @@ export function periodStartFor(date, windowDays = 14) {
   return ymd(PERIOD_ANCHOR + idx * span)
 }
 
-export function periodRangeLabel(startKey, windowDays = 14) {
+export function periodRangeLabel(startKey, windowDays = 7) {
   if (startKey === 'all') return 'All periods'
   if (!startKey) return '—'
   const start = new Date(startKey + 'T00:00:00Z')
@@ -106,24 +131,37 @@ export function periodRangeLabel(startKey, windowDays = 14) {
   return `${s} – ${e}`
 }
 
-// Normalize one posts_of_interest row into a display item, joined with LinkedIn
-// engagement when the post is present in linkedin_posts (matched by activity id).
+// Normalize one posts_of_interest row into a display item. Prefers the fields
+// the weekly generator writes (post_type, strategic_angle, engagement snapshot,
+// collapsed_count) and falls back gracefully for the legacy April rows that only
+// had summary/relevance_reason/url.
 function toItem(row, engagementIndex) {
   const summary = row.summary || row.relevance_reason || 'Flagged post'
   const reason = (row.summary && row.relevance_reason && row.relevance_reason !== row.summary)
     ? row.relevance_reason : ''
-  const actId = activityIdFromUrl(row.url)
+  const actId = row.source_id || activityIdFromUrl(row.url)
   const url = row.url || linkedinUrlForActivity(actId)
-  const eng = actId && engagementIndex ? engagementIndex.get(actId) : null
+  // Stored engagement snapshot wins; fall back to a live join against the loaded
+  // LinkedIn posts (older rows have no snapshot).
+  const stored = (row.reactions != null || row.comments != null || row.reshares != null)
+    ? { reactions: Number(row.reactions) || 0, comments: Number(row.comments) || 0, reshares: Number(row.reshares) || 0 }
+    : null
+  const eng = stored || (actId && engagementIndex ? engagementIndex.get(actId) : null)
+  const collapsed = Math.max(1, Number(row.collapsed_count) || 1)
   return {
     id: row.id ?? row.url ?? summary,
     company: row.author || 'Unknown',
     date: row.date || row.created_at,
     summary,
     reason,
+    // The strategic angle the review meeting produces — AI-suggested "what this
+    // means for Twine / how we might respond". The most valuable field.
+    strategicAngle: row.strategic_angle || '',
     url,
-    type: detectPostType(summary, reason),
+    // Generator-assigned category wins over the client-side regex fallback.
+    type: row.post_type || detectPostType(summary, reason),
     engagement: eng || null,
+    collapsedCount: collapsed,
   }
 }
 
@@ -158,7 +196,7 @@ function canonicalCompany(author, competitorNames) {
 // Main builder. Returns period buckets (newest first) + an "all" bucket, each
 // with items grouped by company and light metrics.
 export function buildPostsOfInterest(rows, opts = {}) {
-  const { competitors = [], engagementIndex = null, windowDays = 14 } = opts
+  const { competitors = [], engagementIndex = null, windowDays = 7 } = opts
   const names = competitors.map(c => c.name)
   const items = (rows || []).map(r => {
     const it = toItem(r, engagementIndex)
