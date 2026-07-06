@@ -4,6 +4,7 @@ import { GlassCard } from '../components/GlassCard'
 import {
   useBriefingsData,
   callBriefingProxy,
+  keyFor,
   BRIEFING_NEW_PATH,
   BRIEFING_UPDATE_ALL_PATH,
 } from '../hooks/useBriefingsData'
@@ -43,8 +44,12 @@ function ThreatPill({ threat }) {
 
 export default function Briefings() {
   const { briefings, urns, loading, refetch } = useBriefingsData()
-  // Roster from the Competitors page (source of truth), to offer as options.
+  // Roster from the Competitors page (source of truth), to offer as options —
+  // minus any competitor that ALREADY has a brief (use "Update all briefs" to
+  // refresh those). briefings is keyed by keyFor(name), so match on that.
   const { activeCompetitors } = useCompetitors()
+  const briefedKeys = new Set(Object.keys(briefings || {}))
+  const unbriefedCompetitors = (activeCompetitors || []).filter(c => !briefedKeys.has(keyFor(c.name)))
   const [subtab, setSubtab] = useState('overview')
   const [activeBrief, setActiveBrief] = useState(null)
   const [toast, setToast] = useState(null)
@@ -88,7 +93,7 @@ export default function Briefings() {
           <Overview
             data={briefings}
             urns={urns}
-            competitors={activeCompetitors}
+            competitors={unbriefedCompetitors}
             loading={loading}
             openBrief={openBrief}
             showToast={showToast}
