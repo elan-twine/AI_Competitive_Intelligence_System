@@ -18,11 +18,11 @@ const EXAMPLE = {
   stages: [
     { id: 'engagement', value: '89.5',  unit: 'eng' },
     { id: 'reach',      value: '81.8',  unit: 'reach' },
-    { id: 'sentiment',  value: '1.03',  unit: '× sentMult' },
+    { id: 'sentiment',  value: '+1',    unit: 'sentiment · display only' },
     { id: 'decay',      value: '1.0',   unit: '× decay' },
-    { id: 'weight',     value: '174.2', unit: 'post_weight' },
+    { id: 'weight',     value: '168.6', unit: 'post_weight' },
     { id: 'author',     value: 'external', unit: 'B=5 · M=2' },
-    { id: 'share',      value: '29.9%', unit: 'LinkedIn share' },
+    { id: 'share',      value: '29.2%', unit: 'LinkedIn share' },
     { id: 'sov',        value: '→ SOV%', unit: 'this share, combined across platforms' },
   ],
 }
@@ -128,11 +128,10 @@ function DecayTip({ active, payload, label }) {
 /* ------------------------------------------------------------------ */
 const HERO_NODES = [
   { id: 'engagement', label: 'Engagement', x: 18,  y: 88 },
-  { id: 'reach',      label: 'Reach',      x: 138, y: 88 },
-  { id: 'sentiment',  label: '× Sentiment', x: 258, y: 88 },
-  { id: 'decay',      label: '× Decay', x: 388, y: 88 },
-  { id: 'weight',     label: 'Per-item Weight', x: 510, y: 88 },
-  { id: 'share',      label: 'Platform Share', x: 648, y: 88 },
+  { id: 'reach',      label: 'Reach',      x: 158, y: 88 },
+  { id: 'decay',      label: '× Decay', x: 298, y: 88 },
+  { id: 'weight',     label: 'Per-item Weight', x: 438, y: 88 },
+  { id: 'share',      label: 'Platform Share', x: 578, y: 88 },
 ]
 
 function Hero({ active, onJump }) {
@@ -144,23 +143,23 @@ function Hero({ active, onJump }) {
   return (
     <div className="hero-wrap">
       <svg viewBox="0 0 860 200" width="100%" role="img" aria-label="Share of Voice pipeline flow diagram" className="hero-svg">
-        {/* main flow rail: post → … → share → SOV */}
-        <path d="M114 105 H138 M234 105 H258 M354 105 H388 M484 105 H510 M606 105 H648 M744 105 H772" stroke="var(--accent)" strokeWidth="2" fill="none" opacity="0.55" />
+        {/* main flow rail: post → … → share → SOV (sentiment is NOT on this rail — decoupled 2026-07-07) */}
+        <path d="M114 105 H158 M254 105 H298 M394 105 H438 M534 105 H578 M674 105 H772" stroke="var(--accent)" strokeWidth="2" fill="none" opacity="0.55" />
 
         {/* author fork: three tiers split before weight, rejoin at weight */}
-        <path d="M450 105 C470 58, 488 58, 500 74" stroke="var(--text-muted)" strokeWidth="1.4" fill="none" opacity="0.7" />
-        <path d="M450 105 C468 40, 494 40, 505 60" stroke="var(--meth-purple, #7a4ef5)" strokeWidth="1.4" fill="none" opacity="0.7" />
-        <path d="M450 105 C470 152, 488 152, 500 136" stroke="var(--accent)" strokeWidth="1.4" fill="none" opacity="0.7" />
-        <text x="468" y="70" className="hero-mini" fill="var(--text-muted)">company</text>
-        <text x="470" y="36" className="hero-mini" fill="var(--meth-purple, #7a4ef5)">employee</text>
-        <text x="466" y="168" className="hero-mini" fill="var(--accent)">external</text>
+        <path d="M378 105 C398 58, 416 58, 428 74" stroke="var(--text-muted)" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <path d="M378 105 C396 40, 422 40, 433 60" stroke="var(--meth-purple, #7a4ef5)" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <path d="M378 105 C398 152, 416 152, 428 136" stroke="var(--accent)" strokeWidth="1.4" fill="none" opacity="0.7" />
+        <text x="396" y="70" className="hero-mini" fill="var(--text-muted)">company</text>
+        <text x="398" y="36" className="hero-mini" fill="var(--meth-purple, #7a4ef5)">employee</text>
+        <text x="394" y="168" className="hero-mini" fill="var(--accent)">external</text>
 
-        {/* sentiment side-channel peels off and dead-ends */}
-        <path d="M306 122 C320 162, 320 176, 350 178" stroke="var(--neutral)" strokeWidth="1.4" strokeDasharray="3 3" fill="none" opacity="0.8" />
-        <g>
-          <rect x="350" y="166" width="150" height="26" rx="13" fill="var(--inner-bg)" stroke="var(--neutral)" strokeWidth="1" opacity="0.9" />
-          <text x="425" y="183" textAnchor="middle" className="hero-mini" fill="var(--neutral)">Sentiment · display only</text>
-        </g>
+        {/* sentiment side-channel peels off the item and dead-ends — it never re-enters the score */}
+        <path d="M206 122 C220 162, 220 176, 250 178" stroke="var(--neutral)" strokeWidth="1.4" strokeDasharray="3 3" fill="none" opacity="0.8" />
+        <a onClick={() => onJump('sentiment')} style={{ cursor: 'pointer' }}>
+          <rect x="250" y="166" width="150" height="26" rx="13" fill="var(--inner-bg)" stroke="var(--neutral)" strokeWidth="1" opacity="0.9" />
+          <text x="325" y="183" textAnchor="middle" className="hero-mini" fill="var(--neutral)">Sentiment · display only</text>
+        </a>
 
         {/* nodes */}
         {HERO_NODES.map(n => (
@@ -184,7 +183,7 @@ function Hero({ active, onJump }) {
           <path d="M37 62 V80" stroke="var(--accent)" strokeWidth="1.4" opacity="0.5" />
         </g>
       </svg>
-      <div className="hero-caption">One item, left to right. The lime rail is the score; the fork up top is who posted it; sentiment peels off as a display-only readout. Click any step to jump to it.</div>
+      <div className="hero-caption">One item, left to right. The lime rail is the score; the fork up top is who posted it; sentiment peels off as a display-only readout and never re-enters the score. Click any step to jump to it.</div>
     </div>
   )
 }
@@ -258,21 +257,21 @@ function ReachCurve() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Visual 4 — sentMult mapping ramp                                  */
+/*  Visual 4 — sentiment display scale (NOT a weight input)           */
 /* ------------------------------------------------------------------ */
-function SentMultRamp() {
-  // sentiment -3..+3 mapped to x; example +1 → 1.03
+function SentimentScale() {
+  // sentiment -3..+3 on the display scale; example item scored +1
   const W = 700, H = 64, padL = 8, padR = 8
   const span = W - padL - padR
   const xAt = (s) => padL + ((s + 3) / 6) * span
   const ticks = [
-    { s: -3, out: '0.5' },
-    { s: 0, out: '0.9' },
-    { s: 3, out: '1.3' },
+    { s: -3, out: 'very negative' },
+    { s: 0, out: 'neutral' },
+    { s: 3, out: 'very positive' },
   ]
   return (
     <div className="ramp-wrap">
-      <svg viewBox={`0 0 ${W} ${H + 34}`} width="100%" role="img" aria-label="sentiment multiplier ramp">
+      <svg viewBox={`0 0 ${W} ${H + 34}`} width="100%" role="img" aria-label="sentiment display scale">
         <defs>
           <linearGradient id="sentGrad" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="var(--negative)" />
@@ -285,14 +284,14 @@ function SentMultRamp() {
           <g key={t.s}>
             <line x1={xAt(t.s)} y1="4" x2={xAt(t.s)} y2="32" stroke="var(--text-muted)" strokeWidth="1" />
             <text x={xAt(t.s)} y="46" textAnchor="middle" className="ramp-tick">sent {t.s > 0 ? '+' : ''}{t.s}</text>
-            <text x={xAt(t.s)} y="60" textAnchor="middle" className="ramp-out">→ {t.out}</text>
+            <text x={xAt(t.s)} y="60" textAnchor="middle" className="ramp-out">{t.out}</text>
           </g>
         ))}
         {/* example marker at +1 */}
         <g>
           <polygon points={`${xAt(1)},2 ${xAt(1) - 5},-6 ${xAt(1) + 5},-6`} fill="var(--accent)" transform="translate(0,8)" />
           <circle cx={xAt(1)} cy="18" r="5" fill="#0B0D00" stroke="var(--accent)" strokeWidth="1.5" />
-          <text x={xAt(1)} y="60" textAnchor="middle" className="ramp-mark">+1 → 1.03</text>
+          <text x={xAt(1)} y="60" textAnchor="middle" className="ramp-mark">+1 · this item</text>
         </g>
       </svg>
     </div>
@@ -357,16 +356,14 @@ function WeightBus() {
         <span className="bus-core">
           <span className="bus-tile">reach</span>
           <span className="bus-op">×</span>
-          <span className="bus-tile">sentMult</span>
-          <span className="bus-op">×</span>
           <span className="bus-tile">decay</span>
         </span>
         <span className="bus-eq">=</span>
         <span className="bus-tile bus-out">post_weight</span>
       </div>
-      <div className="bus-core-label">shared core (reach · sentMult · decay) is identical on every platform; only the front factor changes</div>
+      <div className="bus-core-label">shared core (reach · decay) is identical on every platform; only the front factor changes</div>
       <div className="bus-example">
-        example (external author): (5 + 81.8·2) · 1.03 · 1.0 ≈ <strong>174.2</strong>
+        example (external author): (5 + 81.8·2) · 1.0 ≈ <strong>168.6</strong>
       </div>
       <table className="meth-table">
         <thead>
@@ -423,9 +420,9 @@ function AuthorFork() {
 /*  Visual 8 — Within-platform share pool                             */
 /* ------------------------------------------------------------------ */
 function SharePoolBar() {
-  // one LinkedIn pool of ~583 weight; this company/example = 174.2 → 29.9%
+  // one LinkedIn pool of ~577 weight; this company/example = 168.6 → 29.2%
   const segments = [
-    { name: 'this company', val: 174.2, accent: true },
+    { name: 'this company', val: 168.6, accent: true },
     { name: 'competitor B', val: 150 },
     { name: 'competitor C', val: 128 },
     { name: 'others', val: 130.5 },
@@ -444,14 +441,14 @@ function SharePoolBar() {
             <g key={seg.name}>
               <rect x={x} y="0" width={w - 1.5} height={H} rx="5" fill={seg.accent ? 'var(--accent)' : 'var(--inner-bg)'} stroke={seg.accent ? 'var(--accent)' : 'var(--divider)'} strokeWidth="1" />
               <text x={x + (w / 2)} y={H / 2 + 4} textAnchor="middle" className="pool-seg-text" fill={seg.accent ? '#0B0D00' : 'var(--text-secondary)'}>
-                {seg.accent ? '29.9%' : ''}
+                {seg.accent ? '29.2%' : ''}
               </text>
             </g>
           )
         })}
       </svg>
       <div className="pool-note">
-        LinkedIn share = <Fraction num="174.2 (this company)" den="582.7 (all direct competitors on LinkedIn)" /> = <strong>29.9%</strong>
+        LinkedIn share = <Fraction num="168.6 (this company)" den="577.1 (all direct competitors on LinkedIn)" /> = <strong>29.2%</strong>
       </div>
       <div className="chip pool-guard">quiet-platform guard: if a platform’s total post-weight for the period is below 3, it’s dropped from that period’s SOV and the remaining platform weights renormalize to sum to 1 — so one stray item can’t swing the board</div>
     </div>
@@ -462,10 +459,10 @@ function SharePoolBar() {
 /*  Visual 9 — Cross-platform blend + renormalization                 */
 /* ------------------------------------------------------------------ */
 const BLEND = [
-  { name: 'LinkedIn', w: 0.35, color: 'var(--linkedin-color)' },
-  { name: 'Google News', w: 0.30, color: 'var(--news-color)' },
-  { name: 'Reddit', w: 0.20, color: 'var(--reddit-color)' },
+  { name: 'LinkedIn', w: 0.40, color: 'var(--linkedin-color)' },
+  { name: 'Google News', w: 0.35, color: 'var(--news-color)' },
   { name: 'X', w: 0.15, color: 'var(--x-color)' },
+  { name: 'Reddit', w: 0.10, color: 'var(--reddit-color)' },
 ]
 function BlendStackedBar({ data, label }) {
   const W = 700, H = 30
@@ -517,7 +514,7 @@ function SovKeystone() {
     <div className="sov-key-wrap">
       <GlassCard className="stat-card sov-stat" intensity={8}>
         <div className="label">HEADLINE SOV%</div>
-        <div className="value accent">29.9</div>
+        <div className="value accent">29.2</div>
         <div className="sub">your weighted share of the conversation</div>
       </GlassCard>
       <div className="sov-micro">
@@ -562,9 +559,9 @@ const GLOSSARY = [
   ['indirect competitor', 'tracked and graphed, but left out of SOV%'],
   ['eng', 'an item’s interactions, weighted by type'],
   ['reach', 'eng^(49/50) — eyeballs, gently flattened'],
-  ['sentMult', 'tone multiplier, 0.5–1.3'],
+  ['sentiment', 'tone score, −3…+3, external items only; display-only — decoupled from the weight 2026-07-07'],
   ['decay', 'age weighting; 7-day grace then halving'],
-  ['post_weight', 'one item’s final score (reach × tone × freshness, scaled by author)'],
+  ['post_weight', 'one item’s final score (reach × freshness, scaled by author)'],
   ['author tier', 'company ×1 · employee ×2 · external ×5 (baseline B; reach mult M = 1 / 1.2 / 2)'],
   ['platform share', 'a company’s post_weight ÷ the platform pool'],
 ]
@@ -608,7 +605,7 @@ export default function Equations({ onLogout, onNavigate }) {
   }
 
   // hero highlight maps the author/blend/sov ids back to a hero node
-  const heroActive = ['engagement', 'reach', 'sentiment', 'decay', 'weight', 'share'].includes(activeStage)
+  const heroActive = ['engagement', 'reach', 'decay', 'weight', 'share'].includes(activeStage)
     ? activeStage
     : (activeStage === 'author' ? 'weight' : (['blend', 'sov', 'sentiment-metric'].includes(activeStage) ? 'sov' : null))
 
@@ -690,14 +687,21 @@ export default function Equations({ onLogout, onNavigate }) {
             <div className="meth-example-line">example: 89.5^0.98 ≈ <strong>81.8</strong></div>
           </Stage>
 
-          {/* 3 — SENTIMENT MULTIPLIER */}
-          <Stage number="3" id="sentiment" title="Sentiment multiplier"
-            intuition="Positive buzz is worth more than a pile-on — tone nudges the score, never zeroes it."
+          {/* 3 — SENTIMENT (measured here, decoupled from the score 2026-07-07) */}
+          <Stage number="3" id="sentiment" title="Sentiment (measured, not weighted)"
+            intuition="Tone is scored per item and charted next to SOV% — it does not touch the weight."
             pill={trace('sentiment')}>
-            <EquationRow>sentMult = 0.5 + ((clamp(sentiment, −3, 3) + 3) / 6) · 0.8</EquationRow>
-            <Callout>Runs 0.5 (very negative) → 0.9 (neutral) → 1.3 (very positive). A glowing item is worth ≈2.6× a trashed one of the same size. An item with no stored sentiment (a company’s own posts keep none by design) counts as neutral — multiplier 1.0.</Callout>
-            <SentMultRamp />
-            <div className="meth-example-line">example: sentiment +1 → 0.5 + (4/6)·0.8 = <strong>1.03</strong></div>
+            <div className="meth-fence-label">DISPLAY METRIC · NOT IN SOV%</div>
+            <EquationRow>sentiment = clamp(LLM tone score, −3, +3) — external items only</EquationRow>
+            <Callout>
+              <strong>Decoupled 2026-07-07.</strong> Sentiment used to multiply each item’s weight by 0.5–1.3
+              (0.5 very negative → 0.9 neutral → 1.3 very positive). That multiplier is now switched off — the
+              pipeline’s sentiment clamp is collapsed to 1.0 — so tone can never move the ranking. SOV% measures
+              purely how much you’re talked about; sentiment stays on the dashboard as a paired metric showing how
+              it landed, which is also the industry-standard treatment.
+            </Callout>
+            <SentimentScale />
+            <div className="meth-example-line">example: sentiment +1 → shown on the dashboard; weight unchanged</div>
           </Stage>
 
           {/* 4 — TIME DECAY */}
@@ -714,16 +718,17 @@ export default function Equations({ onLogout, onNavigate }) {
 
           {/* 5 — PER-POST WEIGHT */}
           <Stage number="5" id="weight" title="Per-item weight"
-            intuition="One item’s final score: reach × tone × freshness, scaled by who posted it."
+            intuition="One item’s final score: reach × freshness, scaled by who posted it."
             pill={trace('weight')}>
             <EquationRow label="LinkedIn" color="var(--linkedin-color)">
-              post_weight = (B<sub>author</sub> + reach·M<sub>author</sub>) · sentMult · decay
+              post_weight = (B<sub>author</sub> + reach·M<sub>author</sub>) · decay
             </EquationRow>
-            <EquationRow label="X" color="var(--x-color)">post_weight = reach · authorWeight · sentMult · decay</EquationRow>
-            <EquationRow label="Reddit" color="var(--reddit-color)">post_weight = reach · sentMult · decay</EquationRow>
-            <EquationRow label="News" color="var(--news-color)">post_weight = 1 · authorityMult · sentMult · decay</EquationRow>
+            <EquationRow label="X" color="var(--x-color)">post_weight = reach · authorWeight · decay</EquationRow>
+            <EquationRow label="Reddit" color="var(--reddit-color)">post_weight = reach · decay</EquationRow>
+            <EquationRow label="News" color="var(--news-color)">post_weight = 1 · authorityMult · decay</EquationRow>
+            <Callout>No tone term. Until 2026-07-07 every chain above also carried a <code className="eq-inline">· sentMult</code> factor (0.5–1.3); it’s now decoupled — see step 3.</Callout>
             <WeightBus />
-            <div className="meth-example-line">example (external author): (5 + 81.8·2) · 1.03 · 1.0 ≈ <strong>174.2</strong></div>
+            <div className="meth-example-line">example (external author): (5 + 81.8·2) · 1.0 ≈ <strong>168.6</strong></div>
           </Stage>
 
           {/* 6 — AUTHOR TYPE */}
@@ -750,7 +755,7 @@ export default function Equations({ onLogout, onNavigate }) {
               platform share = <Fraction num="this company’s total post_weight on the platform" den="total post_weight of all DIRECT competitors there" />
             </div>
             <SharePoolBar />
-            <div className="meth-example-line">example: 174.2 out of a ~583 LinkedIn pool → <strong>29.9%</strong> of the LinkedIn conversation</div>
+            <div className="meth-example-line">example: 168.6 out of a ~577 LinkedIn pool → <strong>29.2%</strong> of the LinkedIn conversation</div>
           </Stage>
 
           {/* 8 — CROSS-PLATFORM BLEND */}
@@ -758,7 +763,7 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="Combine the four platform shares, weighting each by how much it matters."
             pill={trace('blend')}>
             <EquationRow>weighted-share = Σ (weight<sub>p</sub> · share<sub>p</sub>) · 100</EquationRow>
-            <Callout>Weights: LinkedIn 0.35 · Google News 0.30 · Reddit 0.20 · X 0.15. If a platform’s total post-weight for the period falls below 3, it’s dropped and the surviving platforms’ weights re-balance to sum to 1.</Callout>
+            <Callout>Weights: LinkedIn 0.40 · Google News 0.35 · X 0.15 · Reddit 0.10. News carries more because security trade press is the credibility layer for security buyers; Reddit carries least as the lowest-volume channel. The weights are versioned in the pipeline config with a changelog — the values shown here are current as of 2026-07-07. If a platform’s total post-weight for the period falls below 3, it’s dropped and the surviving platforms’ weights re-balance to sum to 1.</Callout>
             <BlendWeights />
           </Stage>
 

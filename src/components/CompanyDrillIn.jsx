@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink, ChevronRight, Flame, Star } from 'lucide-react'
+import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink, ChevronRight, Flame, Star, Download } from 'lucide-react'
+import { downloadCSV } from '../lib/csv'
 import { computeWeightedSOV, postWeightOf, isoWeekStart } from '../lib/metrics'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
 import './companyDrillIn.css'
@@ -289,6 +290,27 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
             <span><strong>{why.ext}</strong> earned</span>
             <span className="cdi-dot">·</span>
             <span><strong>{why.own}</strong> own</span>
+            {totalPosts > 0 && (
+              <button
+                className="csv-btn cdi-csv"
+                title={`Download every ${company} item in the current view as CSV`}
+                onClick={() => downloadCSV(
+                  `${company.toLowerCase().replace(/\s+/g, '-')}-posts`,
+                  weeks.flatMap(w => w.posts),
+                  [
+                    { key: 'platform', label: 'platform' },
+                    { key: p => p.ts ? new Date(p.ts).toISOString().slice(0, 10) : '', label: 'date' },
+                    { key: p => p.title || (p.text || '').slice(0, 300), label: 'text' },
+                    { key: p => p.authorType || (p.external ? 'external' : 'company'), label: 'author_type' },
+                    { key: p => (typeof p.weight === 'number' ? p.weight.toFixed(4) : ''), label: 'post_weight' },
+                    { key: p => p.sentiment ?? '', label: 'sentiment' },
+                    { key: 'url', label: 'url' },
+                  ]
+                )}
+              >
+                <Download size={12} /> CSV
+              </button>
+            )}
           </div>
         </div>
 

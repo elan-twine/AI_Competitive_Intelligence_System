@@ -1281,3 +1281,31 @@ a.poi-row:hover { border-color: var(--border-hover); background: var(--bg-card-h
   .poi-co-items { padding-left: 10px; }
   .poi-row-head { flex-wrap: wrap; }
 }
+
+/* ---- CSV export button (shared: ranking table, drill-in, AI visibility) ---- */
+.csv-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid var(--border); border-radius: 7px; padding: 4px 10px;
+  cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.csv-btn:hover, .csv-btn:focus-visible {
+  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent); outline: none;
+}
+.csv-btn:disabled { opacity: 0.5; cursor: default; }
+.cdi-csv { margin-left: auto; }
+
+/* ---- AI Visibility (share of model) ---- */
+.ai-engines { display: flex; flex-direction: column; gap: 22px; margin-top: 6px; }
+.ai-engine {
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-card); padding: 12px 14px 6px;
+}
+.ai-engine-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.ai-engine-name { font-size: 0.88rem; font-weight: 700; color: var(--text-primary); }
+.ai-engine-meta {
+  margin-left: auto; font-size: 0.72rem; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}

@@ -4,16 +4,16 @@ import { supabase } from '../lib/supabase'
 // Tunable knobs for the SOV methodology (see SOV_METHODOLOGY.md). Stored as a
 // single jsonb row in `sov_config` (id = 1).
 //
-// ⚠️ RLS: `sov_config` is currently NOT anon-readable, so the logged-in web app
-// (anon key) gets an empty result and FALLS BACK to these defaults. They must
-// therefore stay in sync with the live row, or the dashboard silently computes
-// on stale weights. Kept in lockstep with the deployed sov_config as of
-// 2026-07-06. Once the anon-SELECT grant lands (migration
-// 2026-07-06_sov_config_public_read.sql) the live row wins and this is just a
-// fallback. The values the frontend actually USES for SOV math are
+// sov_config is anon-readable (grant applied 2026-07-06), so the live row wins;
+// these defaults are the offline fallback and must stay in sync with it.
+// Kept in lockstep as of 2026-07-07: platform weights rebalanced (News raised —
+// trade press is the security-buyer credibility layer; Reddit cut — lowest-volume
+// channel) and sentimentClamp collapsed to 1.0 — sentiment is DECOUPLED from the
+// SOV weight and is display-only. Weight changes are versioned in the live row's
+// weightsChangelog. The values the frontend actually USES for SOV math are
 // platformWeights + minPlatformVolume (post_weight itself is precomputed by n8n).
 export const DEFAULT_SOV_CONFIG = {
-  platformWeights: { LinkedIn: 0.35, 'Google News': 0.30, Reddit: 0.20, X: 0.15 },
+  platformWeights: { LinkedIn: 0.40, 'Google News': 0.35, Reddit: 0.10, X: 0.15 },
   halfLifeDays: { LinkedIn: 14, 'Google News': 30, Reddit: 10, X: 7 },
   engagementWeights: {
     LinkedIn: { reaction: 1, comment: 3, reshare: 10, image: 1.5 },
@@ -24,7 +24,7 @@ export const DEFAULT_SOV_CONFIG = {
   authorEngMult: { company: 1, employee: 1.2, external: 2 },
   overallWeights: { weighted: 1, unweighted: 0, sentiment: 0 },
   enabledPlatforms: ['LinkedIn', 'Google News', 'Reddit', 'X'],
-  sentimentClamp: { min: 0.5, max: 1.3 },
+  sentimentClamp: { min: 1.0, max: 1.0 }, // decoupled 2026-07-07 — tone never moves the ranking
   perPostCapPct: 0.10,
   minPlatformVolume: 3,
 }
