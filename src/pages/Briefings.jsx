@@ -7,7 +7,15 @@ import {
   BRIEFING_NEW_PATH,
   BRIEFING_UPDATE_ALL_PATH,
 } from '../hooks/useBriefingsData'
+import { useCompetitors } from '../hooks/useCompetitors'
 import './briefings.css'
+
+// Best "company website" URL for a tracked competitor, to prefill the brief form.
+function siteUrlFor(c) {
+  if (!c) return ''
+  if (c.domain) return /^https?:\/\//.test(c.domain) ? c.domain : 'https://' + String(c.domain).replace(/^\/+/, '')
+  return c.linkedin_url || ''
+}
 
 const COMP_COLORS = {
   twine_security: 'var(--accent)',
@@ -35,6 +43,8 @@ function ThreatPill({ threat }) {
 
 export default function Briefings() {
   const { briefings, urns, loading, refetch } = useBriefingsData()
+  // Roster from the Competitors page (source of truth), to offer as options.
+  const { activeCompetitors } = useCompetitors()
   const [subtab, setSubtab] = useState('overview')
   const [activeBrief, setActiveBrief] = useState(null)
   const [toast, setToast] = useState(null)
@@ -78,6 +88,7 @@ export default function Briefings() {
           <Overview
             data={briefings}
             urns={urns}
+            competitors={activeCompetitors}
             loading={loading}
             openBrief={openBrief}
             showToast={showToast}
@@ -97,7 +108,7 @@ export default function Briefings() {
   )
 }
 
-function WebhookBar({ urns, showToast, refetch }) {
+function WebhookBar({ urns, competitors, showToast, refetch }) {
   const [busy, setBusy] = useState(null) // 'new' | 'loop' | null
   const [showModal, setShowModal] = useState(false)
 
@@ -152,7 +163,7 @@ function WebhookBar({ urns, showToast, refetch }) {
 
       {showModal && (
         <NewCompetitorModal
-          urns={urns}
+          competitors={competitors}
           onClose={() => setShowModal(false)}
           onSubmit={submitNew}
           busy={busy === 'new'}
@@ -162,13 +173,25 @@ function WebhookBar({ urns, showToast, refetch }) {
   )
 }
 
-function NewCompetitorModal({ urns, onClose, onSubmit, busy }) {
+function NewCompetitorModal({ competitors = [], onClose, onSubmit, busy }) {
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
+
+  // Options come from the tracked roster (Competitors page). Names already with a
+  // brief are marked so you don't unknowingly regenerate one. Still free-text —
+  // you can type a brand-new competitor not yet on the list.
+  const roster = [...competitors].sort((a, b) => a.name.localeCompare(b.name))
 
   const trimmedName = name.trim()
   const trimmedUrl = url.trim()
   const valid = !!trimmedName && !!trimmedUrl
+
+  // Picking a listed competitor auto-fills its website into the URL field.
+  function onNameChange(v) {
+    setName(v)
+    const c = roster.find(x => x.name.toLowerCase() === v.trim().toLowerCase())
+    if (c) { const s = siteUrlFor(c); if (s) setUrl(s) }
+  }
 
   function handleSubmit() {
     if (!valid) return
@@ -179,18 +202,18 @@ function NewCompetitorModal({ urns, onClose, onSubmit, busy }) {
     <div className="bf-ov open" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bf-mod">
         <h2>New competitor</h2>
-        <div className="sub">Generate a brief and write it to <code>competitor_briefings</code>.</div>
+        <div className="sub">Generate a brief and write it to <code>competitor_briefings</code>. Pick a tracked competitor or type a new one.</div>
         <label>Competitor name</label>
         <input
-          list="bf-urn-list"
+          list="bf-competitor-list"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={e => onNameChange(e.target.value)}
           placeholder="e.g. Linx Security"
           autoFocus
           onKeyDown={e => { if (e.key === 'Enter' && valid) handleSubmit() }}
         />
-        <datalist id="bf-urn-list">
-          {urns.map(u => <option key={u.id} value={u.company} />)}
+        <datalist id="bf-competitor-list">
+          {roster.map(c => <option key={c.id} value={c.name} />)}
         </datalist>
         <label>Competitor URL</label>
         <input
@@ -210,7 +233,7 @@ function NewCompetitorModal({ urns, onClose, onSubmit, busy }) {
   )
 }
 
-function Overview({ data, urns, loading, openBrief, showToast, refetch }) {
+function Overview({ data, urns, competitors, loading, openBrief, showToast, refetch }) {
   const all = Object.values(data)
   const uniqProducts = new Set(all.flatMap(c => c.products || []))
   const highCount = all.filter(c => c.threat === 'high' || c.threat === 'critical').length
@@ -219,7 +242,7 @@ function Overview({ data, urns, loading, openBrief, showToast, refetch }) {
 
   return (
     <>
-      <WebhookBar urns={urns} showToast={showToast} refetch={refetch} />
+      <WebhookBar urns={urns} competitors={competitors} showToast={showToast} refetch={refetch} />
 
       <div className="bf-stats">
         <StatCard label="Competitors" value={all.length} />
