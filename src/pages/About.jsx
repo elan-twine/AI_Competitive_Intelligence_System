@@ -32,8 +32,8 @@ const PRINCIPLES = [
   },
   {
     icon: MessageCircle,
-    title: 'Tone is shown, not scored',
-    body: 'How the market feels about a company is tracked separately as sentiment. Share of Voice measures how much you’re talked about — magnitude — so tone sits right alongside it and never quietly inflates the number.',
+    title: 'Tone is shown, and gently weighted',
+    body: 'How the market feels about a company is tracked as its own sentiment dimension — but tone also nudges each item’s weight within a capped 0.5–1.3 band (0.5 at very negative, 1.0 neutral, 1.3 at very positive), so a glowing mention is worth ≈2.6× a trashed one of the same size. Tone can tilt the number, but the band keeps it from ever dominating raw magnitude — Share of Voice still fundamentally measures how much you’re talked about.',
   },
 ]
 
@@ -96,6 +96,11 @@ export default function About({ onLogout, onNavigate }) {
               <span className="about-tier-note">the real signal — new, independent eyes</span>
             </span>
           </div>
+          <p className="about-tiers-foot">
+            These are the baseline floors (the “B” term), not a fixed ranking. Each item’s full weight is
+            <code> (B + reach × M) × tone × freshness</code>, and engagement enters through <code>reach × M</code> — so a
+            company’s own high-engagement post can still outweigh a low-engagement external one.
+          </p>
         </GlassCard>
 
         {/* See the brain */}

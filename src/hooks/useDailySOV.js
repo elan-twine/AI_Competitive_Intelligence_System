@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 
 // Reads the rolling daily SOV board (`sov_daily`) written each run by the
 // pipeline — one row per (snapshot_date, company, window_days). window_days is
@@ -20,17 +20,24 @@ export function useDailySOV(windowDays = 7, metric = 'overall') {
   useEffect(() => {
     let cancelled = false
     setReady(false)
-    supabase
+    // Paginated: sov_daily grows ~26 rows/day (13 companies × 2 windows), so it
+    // crosses Supabase's 1000-row cap in weeks — an unpaginated query would
+    // silently drop the oldest days and starve the trend.
+    fetchAllRows(() => supabase
       .from('sov_daily')
       .select('snapshot_date,company,window_days,overall,weighted_pct,sentiment_pct,posts_count')
       .eq('window_days', windowDays)
-      .order('snapshot_date', { ascending: true })
-      .then(({ data, error }) => {
+      .order('snapshot_date', { ascending: true }))
+      .then(data => {
         if (cancelled) return
-        // Table may not exist yet (pre-migration) — fail soft to an empty series.
-        if (error) { setRows([]); setReady(true); return }
         setRows((data || []).filter(r => r.snapshot_date >= SOV_HISTORY_START))
         setReady(true)
+      })
+      .catch(err => {
+        if (cancelled) return
+        // Table may not exist yet (pre-migration) — fail soft to an empty series.
+        console.warn('[sov_daily]', err?.message || err)
+        setRows([]); setReady(true)
       })
     return () => { cancelled = true }
   }, [windowDays])

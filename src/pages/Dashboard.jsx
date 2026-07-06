@@ -12,7 +12,7 @@ import { CompanyDrillIn } from '../components/CompanyDrillIn'
 import { TopPostsWeek } from '../components/TopPostsWeek'
 import { PostsOfInterest } from '../components/PostsOfInterest'
 import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
-import { PLATFORM_COLORS, registerCompanyColors } from '../lib/colors'
+import { PLATFORM_COLORS, registerCompanyColors, isTwine } from '../lib/colors'
 import Briefings from './Briefings'
 import '../App.css'
 
@@ -156,7 +156,6 @@ function Dashboard({ onLogout, onNavigate }) {
     )
   }
 
-  const isTwine = (name) => /twine/i.test(name || '')
   const twineIdx = ranked.findIndex(r => isTwine(r.company))
   const twineRow = twineIdx >= 0 ? ranked[twineIdx] : null
   const twineRank = twineIdx >= 0 ? twineIdx + 1 : null

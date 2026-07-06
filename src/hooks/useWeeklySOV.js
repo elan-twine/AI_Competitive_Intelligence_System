@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 
 // Reads the immutable weekly SOV snapshots written by the workflow each run
 // (table `sov_weekly`) and shapes them for recharts. Each point is that week's
@@ -23,16 +23,22 @@ export function useWeeklySOV(metric = 'overall') {
 
   useEffect(() => {
     let cancelled = false
-    supabase
+    // Paginated: sov_weekly grows ~13 rows/week, so it will cross Supabase's
+    // 1000-row response cap; an unpaginated query would silently drop old weeks.
+    fetchAllRows(() => supabase
       .from('sov_weekly')
       .select('week_start,company,overall,weighted_pct,unweighted_pct,sentiment_pct')
-      .order('week_start', { ascending: true })
-      .then(({ data, error }) => {
+      .order('week_start', { ascending: true }))
+      .then(data => {
         if (cancelled) return
-        // Table may not exist yet (pre-migration) — fail soft to an empty series.
-        if (error) { setRows([]); setReady(true); return }
         setRows((data || []).filter(r => r.week_start >= SOV_HISTORY_START))
         setReady(true)
+      })
+      .catch(err => {
+        if (cancelled) return
+        // Table may not exist yet (pre-migration) — fail soft to an empty series.
+        console.warn('[sov_weekly]', err?.message || err)
+        setRows([]); setReady(true)
       })
     return () => { cancelled = true }
   }, [])

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 
 // Curated "posts of interest" — competitor posts (their accounts/employees)
 // flagged as showing marketing-strategy shifts, launches, campaigns, etc.
@@ -15,17 +15,13 @@ export function usePostsOfInterest() {
     setLoading(true)
     setError(null)
     try {
-      const res = await supabase
+      // Paginated: posts_of_interest accumulates every notable competitor post,
+      // so it will eventually cross Supabase's 1000-row response cap.
+      const rows = await fetchAllRows(() => supabase
         .from('posts_of_interest')
         .select('*')
-        .order('date', { ascending: false })
-      if (res.error) {
-        console.warn('[posts_of_interest] query error:', res.error.message)
-        setPosts([])
-        setError(res.error.message)
-      } else {
-        setPosts(res.data || [])
-      }
+        .order('date', { ascending: false }))
+      setPosts(rows || [])
     } catch (err) {
       console.warn('[posts_of_interest] threw:', err)
       setPosts([])

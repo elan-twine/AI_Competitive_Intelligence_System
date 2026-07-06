@@ -13,6 +13,23 @@ if (!supabaseAnonKey) {
   )
 }
 
+// Supabase caps EVERY response at 1000 rows. Any table that grows without bound
+// (sov_daily ~26/day, sov_weekly ~13/week, posts_of_interest, …) will silently
+// truncate to the newest 1000 on a plain query — a data bug that gets worse over
+// time. Paginate with .range() until a short page. `buildQuery` is a FACTORY
+// (invoked per page) because supabase-js query builders are single-use/thenable.
+export async function fetchAllRows(buildQuery, { pageSize = 1000, maxPages = 25 } = {}) {
+  const all = []
+  for (let i = 0; i < maxPages; i++) {
+    const { data, error } = await buildQuery().range(i * pageSize, (i + 1) * pageSize - 1)
+    if (error) throw error
+    const rows = data || []
+    all.push(...rows)
+    if (rows.length < pageSize) break
+  }
+  return all
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     // PKCE returns the session as a `?code=` query param (exchanged for a

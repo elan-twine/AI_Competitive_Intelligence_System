@@ -72,10 +72,6 @@ export function companyRow(posts, company) {
   return { company, postCount, unweightedSOV, weightedSOV, avgSentiment, sentimentCount: sentimentRows.length, posts: rows }
 }
 
-export function totalWeightedSOV(posts) {
-  return posts.reduce((s, p) => s + (p.weightedSOV || 0), 0)
-}
-
 // ---------------------------------------------------------------------------
 // Methodology core: per-platform brand share → cross-platform weighted SOV.
 // Returns a Map(company -> weightedPct 0..100) plus the effective platform
@@ -388,26 +384,18 @@ export function rankings(posts, config = DEFAULT_SOV_CONFIG) {
     .sort((a, b) => b.overall - a.overall)
 }
 
+// Per-company post COUNT by platform (used by the Compare tab's platform grid).
+// Only `count` is consumed; the old `sov` accumulator summed the legacy per-post
+// `sov` field (= 1/totalPosts, a flat count-share) and was never displayed, so
+// it's dropped to avoid implying a weighted value.
 export function platformSplit(posts, company) {
   const rows = company ? posts.filter(p => p.companyName === company) : posts
   const platforms = {}
   for (const p of rows) {
-    if (!platforms[p.platform]) platforms[p.platform] = { count: 0, sov: 0 }
+    if (!platforms[p.platform]) platforms[p.platform] = { count: 0 }
     platforms[p.platform].count++
-    platforms[p.platform].sov += p.sov || 0
   }
   return platforms
-}
-
-export function sentimentBuckets(posts, company) {
-  const rows = (company ? posts.filter(p => p.companyName === company) : posts).filter(p => p.sentiment != null)
-  let positive = 0, neutral = 0, negative = 0
-  for (const p of rows) {
-    if (p.sentiment > 0) positive++
-    else if (p.sentiment < 0) negative++
-    else neutral++
-  }
-  return { positive, neutral, negative, total: rows.length }
 }
 
 export function compare(posts, companyA, companyB, config = DEFAULT_SOV_CONFIG) {
