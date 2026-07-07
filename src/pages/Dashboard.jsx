@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Filter, Info } from 'lucide-react'
+import { Filter, Info, Download } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
@@ -11,6 +11,8 @@ import { CompetitiveReview } from '../components/CompetitiveReview'
 import { CompanyDrillIn } from '../components/CompanyDrillIn'
 import { TopPostsWeek } from '../components/TopPostsWeek'
 import { PostsOfInterest } from '../components/PostsOfInterest'
+import { AIVisibility } from '../components/AIVisibility'
+import { downloadCSV } from '../lib/csv'
 import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
 import { PLATFORM_COLORS, registerCompanyColors, isTwine } from '../lib/colors'
 import Briefings from './Briefings'
@@ -180,6 +182,7 @@ function Dashboard({ onLogout, onNavigate }) {
       <div className="tab-nav">
         <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
         <button className={`tab ${tab === 'posts' ? 'active' : ''}`} onClick={() => setTab('posts')}>Posts of Interest</button>
+        <button className={`tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>AI Visibility</button>
         <button className={`tab ${tab === 'compare' ? 'active' : ''}`} onClick={() => setTab('compare')}>Compare</button>
       </div>
 
@@ -189,8 +192,14 @@ function Dashboard({ onLogout, onNavigate }) {
         <PostsOfInterest competitors={competitors} allPosts={allPosts} />
       )}
 
+      {/* AI Visibility (share of model) runs on its own weekly cadence across
+          AI engines — the global platform/time filters don't apply to it. */}
+      {tab === 'ai' && (
+        <AIVisibility />
+      )}
+
       {/* Global filter bar (platform + time only) */}
-      {tab !== 'posts' && (
+      {tab !== 'posts' && tab !== 'ai' && (
       <GlassCard className="card filter-bar" intensity={3} interactive>
         <div className="filter-icon"><Filter size={14} /></div>
         <div className="filter-group">
@@ -317,9 +326,26 @@ function Dashboard({ onLogout, onNavigate }) {
 
           {/* All-companies breakdown table (moved above Sentiment) */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
-            <div className="card-header">
+            <div className="card-header" style={{ display: 'flex', alignItems: 'center' }}>
               <span className="card-title">Direct competitors · SOV ranking</span>
-                          </div>
+              <button
+                className="csv-btn"
+                style={{ marginLeft: 'auto' }}
+                title="Download this ranking (current filters) as CSV"
+                onClick={() => downloadCSV(
+                  `sov-ranking-${windowLabel.replace(/\s+/g, '-')}`,
+                  sortedRanked,
+                  [
+                    { key: 'company', label: 'company' },
+                    { key: 'postCount', label: 'items' },
+                    { key: r => (r.weightedPct ?? 0).toFixed(2), label: 'sov_pct' },
+                    { key: r => r.sentimentCount ? (r.avgSentiment ?? 0).toFixed(2) : '', label: 'avg_sentiment' },
+                  ]
+                )}
+              >
+                <Download size={13} /> CSV
+              </button>
+            </div>
             {sortedRanked.length === 0 ? (
               <div className="empty-state"><p>No data for the current filters</p></div>
             ) : (

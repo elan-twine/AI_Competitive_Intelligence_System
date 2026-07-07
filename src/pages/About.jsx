@@ -32,8 +32,8 @@ const PRINCIPLES = [
   },
   {
     icon: MessageCircle,
-    title: 'Tone is shown, and gently weighted',
-    body: 'How the market feels about a company is tracked as its own sentiment dimension — but tone also nudges each item’s weight within a capped 0.5–1.3 band (0.5 at very negative, 1.0 neutral, 1.3 at very positive), so a glowing mention is worth ≈2.6× a trashed one of the same size. Tone can tilt the number, but the band keeps it from ever dominating raw magnitude — Share of Voice still fundamentally measures how much you’re talked about.',
+    title: 'Tone is shown, never scored',
+    body: 'How the market feels about a company is tracked as its own sentiment dimension — scored per item from independent voices only and charted right alongside SOV%. But it does not touch the score: sentiment is fully decoupled from the weighting, so a glowing mention and a trashed one of the same size count the same. Share of Voice measures how much you’re talked about; the sentiment trend next to it shows how it landed — the industry-standard pairing.',
   },
 ]
 
@@ -98,7 +98,7 @@ export default function About({ onLogout, onNavigate }) {
           </div>
           <p className="about-tiers-foot">
             These are the baseline floors (the “B” term), not a fixed ranking. Each item’s full weight is
-            <code> (B + reach × M) × tone × freshness</code>, and engagement enters through <code>reach × M</code> — so a
+            <code> (B + reach × M) × freshness</code>, and engagement enters through <code>reach × M</code> — so a
             company’s own high-engagement post can still outweigh a low-engagement external one.
           </p>
         </GlassCard>
