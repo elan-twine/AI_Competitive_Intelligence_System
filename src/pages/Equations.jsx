@@ -725,8 +725,9 @@ export default function Equations({ onLogout, onNavigate }) {
             </EquationRow>
             <EquationRow label="X" color="var(--x-color)">post_weight = reach · authorWeight · decay</EquationRow>
             <EquationRow label="Reddit" color="var(--reddit-color)">post_weight = reach · decay</EquationRow>
-            <EquationRow label="News" color="var(--news-color)">post_weight = 1 · authorityMult · decay</EquationRow>
+            <EquationRow label="News" color="var(--news-color)">post_weight = tierMult · decay</EquationRow>
             <Callout>No tone term. Until 2026-07-07 every chain above also carried a <code className="eq-inline">· sentMult</code> factor (0.5–1.3); it’s now decoupled — see step 3.</Callout>
+            <Callout>News <code className="eq-inline">tierMult</code> weights an article by its outlet, matched on domain: Tier-1 security press (The Hacker News, Dark Reading, BleepingComputer, SecurityWeek…) ×2.5 · mainstream/business tech ×1.5 · neutral ×1 · PR wires (Business Wire, PR Newswire — self-placed, not earned) ×0.5. The domain→tier map is versioned in the pipeline config; it replaced an earlier per-article credibility score that the daily re-age silently dropped.</Callout>
             <WeightBus />
             <div className="meth-example-line">example (external author): (5 + 81.8·2) · 1.0 ≈ <strong>168.6</strong></div>
           </Stage>
