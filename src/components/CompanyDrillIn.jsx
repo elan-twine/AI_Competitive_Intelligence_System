@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink, ChevronRight, Flame, Star, Download } from 'lucide-react'
 import { downloadCSV } from '../lib/csv'
+import { resolvePostUrl } from '../lib/postUrl'
 import { computeWeightedSOV, postWeightOf, isoWeekStart } from '../lib/metrics'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
 import './companyDrillIn.css'
@@ -75,7 +76,10 @@ export function normalizePost(p) {
     author,
     text,
     title,
-    url,
+    // Always resolve a canonical URL (falls back to constructing one from the
+    // post's stable id) so every item is openable; keep the per-platform url as
+    // the last resort.
+    url: resolvePostUrl(p) || url,
     source,
     engagement,
     sentiment: p.sentiment,
