@@ -22,8 +22,9 @@ const EXAMPLE = {
     { id: 'decay',      value: '1.0',   unit: '× decay' },
     { id: 'weight',     value: '168.6', unit: 'post_weight' },
     { id: 'author',     value: 'external', unit: 'B=5 · M=2' },
-    { id: 'share',      value: '29.2%', unit: 'LinkedIn share' },
-    { id: 'sov',        value: '→ SOV%', unit: 'this share, combined across platforms' },
+    { id: 'share',      value: '168.6', unit: 'pool units (× LinkedIn ×1)' },
+    { id: 'blend',      value: '29.2%', unit: 'share of the pool' },
+    { id: 'sov',        value: '29.2%', unit: 'SOV%' },
   ],
 }
 const trace = (id) => EXAMPLE.stages.find(s => s.id === id)
@@ -131,7 +132,7 @@ const HERO_NODES = [
   { id: 'reach',      label: 'Reach',      x: 158, y: 88 },
   { id: 'decay',      label: '× Decay', x: 298, y: 88 },
   { id: 'weight',     label: 'Per-item Weight', x: 438, y: 88 },
-  { id: 'share',      label: 'Platform Share', x: 578, y: 88 },
+  { id: 'share',      label: '× Multiplier', x: 578, y: 88 },
 ]
 
 function Hero({ active, onJump }) {
@@ -367,10 +368,10 @@ function WeightBus() {
       </div>
       <table className="meth-table">
         <thead>
-          <tr><th>LinkedIn author</th><th>B (baseline)</th><th>M (reach mult)</th><th>why</th></tr>
+          <tr><th>LinkedIn & X author</th><th>B (baseline)</th><th>M (reach mult)</th><th>why</th></tr>
         </thead>
         <tbody>
-          <tr><td>own item (company page)</td><td>1</td><td>1.0</td><td>impressions floor</td></tr>
+          <tr><td>own item (company page / own tweet)</td><td>1</td><td>1.0</td><td>impressions floor</td></tr>
           <tr className="meth-table-emp"><td>employee</td><td>2</td><td>1.2</td><td>closer to earned, still an insider</td></tr>
           <tr className="meth-table-hl"><td>external / earned</td><td>5</td><td>2.0</td><td>new eyes worth most</td></tr>
         </tbody>
@@ -417,10 +418,10 @@ function AuthorFork() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Visual 8 — Within-platform share pool                             */
+/*  Visual 8 — The cross-platform mindshare pool                      */
 /* ------------------------------------------------------------------ */
 function SharePoolBar() {
-  // one LinkedIn pool of ~577 weight; this company/example = 168.6 → 29.2%
+  // one pooled ~577-unit period (all platforms, common units); example = 168.6 units → 29.2%
   const segments = [
     { name: 'this company', val: 168.6, accent: true },
     { name: 'competitor B', val: 150 },
@@ -433,7 +434,7 @@ function SharePoolBar() {
   const offsets = segments.reduce((acc, seg) => [...acc, acc[acc.length - 1] + (seg.val / total) * W], [0])
   return (
     <div className="pool-wrap">
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="within-platform share pool">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="cross-platform mindshare pool">
         {segments.map((seg, i) => {
           const w = (seg.val / total) * W
           const x = offsets[i]
@@ -448,58 +449,42 @@ function SharePoolBar() {
         })}
       </svg>
       <div className="pool-note">
-        LinkedIn share = <Fraction num="168.6 (this company)" den="577.1 (all direct competitors on LinkedIn)" /> = <strong>29.2%</strong>
+        SOV = <Fraction num="168.6 units (this company, all platforms)" den="577.1 units (all direct competitors, all platforms)" /> = <strong>29.2%</strong>
       </div>
-      <div className="chip pool-guard">quiet-platform guard: if a platform’s total post-weight for the period is below 3, it’s dropped from that period’s SOV and the remaining platform weights renormalize to sum to 1 — so one stray item can’t swing the board</div>
     </div>
   )
 }
 
 /* ------------------------------------------------------------------ */
-/*  Visual 9 — Cross-platform blend + renormalization                 */
+/*  Visual 9 — Cross-platform exchange rates (trust multipliers)      */
 /* ------------------------------------------------------------------ */
-const BLEND = [
-  { name: 'LinkedIn', w: 0.40, color: 'var(--linkedin-color)' },
-  { name: 'Google News', w: 0.35, color: 'var(--news-color)' },
-  { name: 'X', w: 0.15, color: 'var(--x-color)' },
-  { name: 'Reddit', w: 0.10, color: 'var(--reddit-color)' },
+const MULTIPLIERS = [
+  { name: 'LinkedIn', m: 1, color: 'var(--linkedin-color)', why: 'vendor-social baseline' },
+  { name: 'X', m: 1, color: 'var(--x-color)', why: 'vendor-social baseline' },
+  { name: 'Reddit', m: 3, color: 'var(--reddit-color)', why: 'peer / community trust' },
+  { name: 'Google News', m: 30, color: 'var(--news-color)', why: 'editorial trust × article reach' },
 ]
-function BlendStackedBar({ data, label }) {
-  const W = 700, H = 30
-  // Pre-compute each segment's left offset so the render is purely functional.
-  const offsets = data.reduce((acc, b) => [...acc, acc[acc.length - 1] + b.w * W], [0])
+function MultiplierBars() {
+  const max = 30, trackW = 480, barH = 16, gap = 12, labelW = 110
   return (
-    <div className="blend-bar-block">
-      <div className="blend-bar-label">{label}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label}>
-        {data.map((b, i) => {
-          const w = b.w * W
-          const x = offsets[i]
+    <div className="blend-wrap">
+      <div className="blend-bar-label">Cross-platform exchange rates (trust-weighted)</div>
+      <svg viewBox={`0 0 ${labelW + trackW + 60} ${MULTIPLIERS.length * (barH + gap)}`} width="100%" role="img" aria-label="platform multipliers — cross-platform exchange rates">
+        {MULTIPLIERS.map((p, i) => {
+          const w = Math.max((p.m / max) * trackW, 14)
+          const y = i * (barH + gap)
           return (
-            <g key={b.name}>
-              <rect x={x} y="0" width={w - 1.5} height={H} rx="4" fill={b.color} opacity="0.85" />
-              <text x={x + w / 2} y={H / 2 + 4} textAnchor="middle" className="blend-seg-text">{(b.w * 100).toFixed(0)}%</text>
+            <g key={p.name}>
+              <text x={labelW - 8} y={y + barH - 3} textAnchor="end" className="eng-term">{p.name}</text>
+              <rect x={labelW} y={y} width={w} height={barH} rx="4" fill={p.color} opacity="0.85" />
+              <text x={labelW + w + 6} y={y + barH - 3} className="eng-coef">×{p.m}</text>
             </g>
           )
         })}
       </svg>
-    </div>
-  )
-}
-function BlendWeights() {
-  const renorm = (() => {
-    // drop X → renormalize remaining three to sum 1
-    const kept = BLEND.filter(b => b.name !== 'X')
-    const sum = kept.reduce((s, b) => s + b.w, 0)
-    return kept.map(b => ({ ...b, w: b.w / sum }))
-  })()
-  return (
-    <div className="blend-wrap">
-      <BlendStackedBar data={BLEND} label="Base weights (all 4 platforms eligible)" />
-      <BlendStackedBar data={renorm} label="X dropped → remaining three renormalized to sum 1" />
       <div className="blend-legend">
-        {BLEND.map(b => (
-          <span key={b.name} className="cl-item"><span className="eq-dot" style={{ background: b.color }} />{b.name} {b.w}</span>
+        {MULTIPLIERS.map(p => (
+          <span key={p.name} className="cl-item"><span className="eq-dot" style={{ background: p.color }} />{p.name} ×{p.m} — {p.why}</span>
         ))}
       </div>
     </div>
@@ -515,10 +500,10 @@ function SovKeystone() {
       <GlassCard className="stat-card sov-stat" intensity={8}>
         <div className="label">HEADLINE SOV%</div>
         <div className="value accent">29.2</div>
-        <div className="sub">your weighted share of the conversation</div>
+        <div className="sub">your share of the mindshare pool</div>
       </GlassCard>
       <div className="sov-micro">
-        That’s it — SOV% <em>is</em> the cross-platform weighted share. <strong>Direct</strong> competitors sum to exactly 100%; <strong>indirect</strong> ones are tracked and graphed but left out of the %.
+        That’s it — SOV% <em>is</em> your share of the pooled, trust-weighted attention. <strong>Direct</strong> competitors sum to exactly 100%; <strong>indirect</strong> ones are tracked and graphed but left out of the %.
       </div>
     </div>
   )
@@ -554,7 +539,7 @@ function SentimentSpark() {
 /*  Footer glossary                                                   */
 /* ------------------------------------------------------------------ */
 const GLOSSARY = [
-  ['Share of Voice', 'your slice of the competitor conversation, 0–100%'],
+  ['Share of Voice', 'your share of the pooled cross-platform attention, 0–100%'],
   ['direct competitor', 'counted in SOV%; the set sums to 100%'],
   ['indirect competitor', 'tracked and graphed, but left out of SOV%'],
   ['eng', 'an item’s interactions, weighted by type'],
@@ -562,8 +547,9 @@ const GLOSSARY = [
   ['sentiment', 'tone score, −3…+3, external items only; display-only — decoupled from the weight 2026-07-07'],
   ['decay', 'age weighting; 7-day grace then halving'],
   ['post_weight', 'one item’s final score (reach × freshness, scaled by author)'],
-  ['author tier', 'company ×1 · employee ×2 · external ×5 (baseline B; reach mult M = 1 / 1.2 / 2)'],
-  ['platform share', 'a company’s post_weight ÷ the platform pool'],
+  ['author tier', 'company ×1 · employee ×2 · external ×5 (baseline B; reach mult M = 1 / 1.2 / 2) — LinkedIn and X'],
+  ['platform multiplier', 'the cross-platform exchange rate: LinkedIn ×1 · X ×1 · Reddit ×3 · News ×30 (trust-weighted)'],
+  ['pool units', 'post_weight × platform multiplier — one item’s contribution to the shared attention pool'],
 ]
 
 /* ------------------------------------------------------------------ */
@@ -681,8 +667,12 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="Turn engagement into a rough audience size, so one viral item can’t dominate."
             pill={trace('reach')}>
             <EquationRow label="default" color="var(--text-muted)">reach = eng^(49/50)</EquationRow>
-            <EquationRow label="X" color="var(--x-color)" note="X gives real impressions">reach = (viewCount + eng)^(49/50)</EquationRow>
             <EquationRow label="News" color="var(--news-color)" note="presence is the signal">reach = 1</EquationRow>
+            <Callout>
+              X reports view counts, but we deliberately don’t use them (dropped 2026-07-08): a view is
+              “scrolled past”, not a considered thought — and it isn’t unique. Every platform is scored on
+              engagement only, because engagement is what measures considered attention.
+            </Callout>
             <ReachCurve />
             <div className="meth-example-line">example: 89.5^0.98 ≈ <strong>81.8</strong></div>
           </Stage>
@@ -723,7 +713,9 @@ export default function Equations({ onLogout, onNavigate }) {
             <EquationRow label="LinkedIn" color="var(--linkedin-color)">
               post_weight = (B<sub>author</sub> + reach·M<sub>author</sub>) · decay
             </EquationRow>
-            <EquationRow label="X" color="var(--x-color)">post_weight = reach · authorWeight · decay</EquationRow>
+            <EquationRow label="X" color="var(--x-color)" note="same ternary tiers as LinkedIn">
+              post_weight = (B<sub>author</sub> + reach·M<sub>author</sub>) · decay
+            </EquationRow>
             <EquationRow label="Reddit" color="var(--reddit-color)">post_weight = reach · decay</EquationRow>
             <EquationRow label="News" color="var(--news-color)">post_weight = tierMult · decay</EquationRow>
             <Callout>No tone term. Until 2026-07-07 every chain above also carried a <code className="eq-inline">· sentMult</code> factor (0.5–1.3); it’s now decoupled — see step 3.</Callout>
@@ -744,38 +736,53 @@ export default function Equations({ onLogout, onNavigate }) {
               attention, worth the most. This switch sets the B and M factors in step 5.
             </p>
             <AuthorFork />
-            <Callout><strong>X self-post discount:</strong> on X specifically, a company’s own tweets (author handle == its tracked x_handle) have their authorWeight forced to <strong>1</strong> — the earned-attention principle taken to its logical end, so a brand’s own tweets count least on X.</Callout>
+            <Callout><strong>X uses the same three tiers.</strong> A company’s own tweets (author handle == its tracked x_handle) score B=1 · M=1 and count least — the earned-attention principle taken to its logical end — while everyone else’s tweets are external (B=5 · M=2). The old follower-tier author boost is gone (2026-07-08): what matters is whose words they are, not how many followers they have.</Callout>
             <div className="meth-example-line">example: posted by an outsider → <strong>external (B=5, M=2)</strong></div>
           </Stage>
 
-          {/* 7 — WITHIN-PLATFORM SHARE */}
-          <Stage number="7" id="share" title="Share on one platform"
-            intuition="On each platform, your total score ÷ everyone’s total score = your slice."
+          {/* 7 — CONVERT TO ONE SCALE */}
+          <Stage number="7" id="share" title="Convert to one scale"
+            intuition="Multiply each item’s weight by its platform’s exchange rate, so every platform lands on one common considered-attention scale."
             pill={trace('share')}>
-            <div className="eq-frac-block">
-              platform share = <Fraction num="this company’s total post_weight on the platform" den="total post_weight of all DIRECT competitors there" />
-            </div>
-            <SharePoolBar />
-            <div className="meth-example-line">example: 168.6 out of a ~577 LinkedIn pool → <strong>29.2%</strong> of the LinkedIn conversation</div>
+            <EquationRow>pool units = post_weight × platform multiplier</EquationRow>
+            <Callout>
+              Multipliers: <strong>LinkedIn ×1 · X ×1 · Reddit ×3 · Google News ×30</strong>. They’re trust ratios
+              grounded in B2B buyer research — buyers put roughly 3× more stock in peer/community discussion, and
+              about 2× more in editorial press, than in vendor social (6sense 2025: 73% rank word-of-mouth #1;
+              Gartner: ~79% call peer reviews most trustworthy; TrustRadius: 54% consult peers vs 15% vendor
+              content; Edelman–LinkedIn 2025: 73% trust thought leadership over vendor marketing). News ×30 =
+              trust (≈2) × reach scale (≈15 — one tier-1 article is read by thousands of buyers, not one feed’s
+              worth of scrollers); it’s the team-tunable dial, versioned in the pipeline config. So a fresh tier-1
+              article = 2.5 × 30 = <strong>75 units</strong> ≈ 75 LinkedIn engagements.
+            </Callout>
+            <MultiplierBars />
+            <div className="meth-example-line">example: 168.6 × LinkedIn ×1 = <strong>168.6 units</strong> into the pool</div>
           </Stage>
 
-          {/* 8 — CROSS-PLATFORM BLEND */}
-          <Stage number="8" id="blend" title="Blend the platforms"
-            intuition="Combine the four platform shares, weighting each by how much it matters."
+          {/* 8 — SHARE OF THE POOL */}
+          <Stage number="8" id="blend" title="Share of the pool"
+            intuition="Every item from every platform pools together; your SOV is your units divided by everyone’s."
             pill={trace('blend')}>
-            <EquationRow>weighted-share = Σ (weight<sub>p</sub> · share<sub>p</sub>) · 100</EquationRow>
-            <Callout>Weights: LinkedIn 0.40 · Google News 0.35 · X 0.15 · Reddit 0.10. News carries more because security trade press is the credibility layer for security buyers; Reddit carries least as the lowest-volume channel. The weights are versioned in the pipeline config with a changelog — the values shown here are current as of 2026-07-07. If a platform’s total post-weight for the period falls below 3, it’s dropped and the surviving platforms’ weights re-balance to sum to 1.</Callout>
-            <BlendWeights />
+            <div className="eq-frac-block">
+              SOV% = <Fraction num="Σ multiplier · post_weight — this company, all platforms" den="Σ multiplier · post_weight — all DIRECT competitors, all platforms" /> × 100
+            </div>
+            <Callout>
+              Platform influence is <strong>emergent, not entitled</strong>: there’s no preset per-platform budget
+              and no minimum-volume cutoff. A quiet platform simply contributes the few units it actually earned;
+              a loud one contributes more. One big room, one pool of considered attention.
+            </Callout>
+            <SharePoolBar />
+            <div className="meth-example-line">example: 168.6 units of a ~577-unit pool → <strong>29.2%</strong></div>
           </Stage>
 
           {/* 9 — HEADLINE SOV% */}
           <Stage number="9" id="sov" title="The number: SOV%"
-            intuition="The blended share IS your Share of Voice. No extra step."
+            intuition="Your share of the pool IS your Share of Voice. No extra step."
             pill={trace('sov')}>
-            <EquationRow>SOV% = weighted-share</EquationRow>
+            <EquationRow>SOV% = your pool units ÷ the whole pool × 100</EquationRow>
             <Callout>
-              <strong>Why nothing else?</strong> Posting more already lifts your score — more items means more total
-              weight in step 7. Adding a separate “how often” term would count volume twice, so we don’t.
+              <strong>Why nothing else?</strong> Posting more already lifts your score — more items means more
+              units in the pool. Adding a separate “how often” term would count volume twice, so we don’t.
             </Callout>
             <SovKeystone />
           </Stage>

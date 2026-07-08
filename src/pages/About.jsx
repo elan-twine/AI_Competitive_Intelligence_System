@@ -53,8 +53,10 @@ export default function About({ onLogout, onNavigate }) {
           </p>
           <p className="meth-thesis">
             Every week the tool reads public mentions across <strong>LinkedIn, Google News, Reddit, and X</strong>, scores each one by
-            how much attention it genuinely earned, and adds up each company’s share. The result is a single percentage per
-            competitor, refreshed weekly, plus the trends and item-level detail behind it.
+            how much attention it genuinely earned, and converts every item onto one shared “considered-attention” scale using
+            research-based exchange rates — peer discussion and press count for more per engagement than vendor social. All of it
+            pools together, and SOV% is your share of the total. The result is a single percentage per competitor, refreshed weekly,
+            plus the trends and item-level detail behind it.
           </p>
         </GlassCard>
 

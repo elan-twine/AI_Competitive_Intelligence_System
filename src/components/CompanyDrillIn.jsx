@@ -117,7 +117,7 @@ function sentClass(s) {
 
 // --- "WHY" derivation: which platform drives the weighted score, external vs
 //     own split, top high-impact post. Mirrors computeWeightedSOV's inner loop
-//     so the per-platform contribution is honest (respects the min-vol guard). ---
+//     (mindshare pool: multiplier-scaled impact ÷ cross-platform pool total). ---
 function deriveWhy(allDirectPosts, company, config) {
   const { weightedPct, grandTotal, mult } = computeWeightedSOV(allDirectPosts, config)
   const sov = weightedPct.get(company) || 0
