@@ -82,11 +82,12 @@ export function linkedinUrlForActivity(id) {
 }
 
 // ---- Period bucketing -------------------------------------------------------
-// The weekly generator runs on a 7-day cadence. We bucket post dates into fixed
-// 7-day windows from a stable anchor (a Monday), so periods are deterministic
-// and reproducible (no dependence on "today"). Legacy rows fall into whichever
-// week their post date lands in.
-const PERIOD_ANCHOR = Date.UTC(2026, 0, 5) // 2026-01-05, a Monday
+// The weekly generator runs on a Thursday cadence, synced to the Thursday OKR
+// meeting. We bucket post dates into fixed 7-day windows from a stable THURSDAY
+// anchor, so each period is exactly the Thursday→Wednesday week reviewed at the
+// meeting (and matches metrics.WEEK_ANCHOR_DAY + the SOV-ranking "Week of" label).
+// Deterministic (no dependence on "today"); legacy rows fall into their week.
+const PERIOD_ANCHOR = Date.UTC(2026, 0, 1) // 2026-01-01, a Thursday
 const DAY = 86400000
 
 function ymd(t) {
@@ -125,10 +126,13 @@ export function periodRangeLabel(startKey, windowDays = 7) {
   const start = new Date(startKey + 'T00:00:00Z')
   if (isNaN(start.getTime())) return startKey
   const end = new Date(start.getTime() + (windowDays - 1) * DAY)
-  const o = { month: 'short', day: 'numeric', timeZone: 'UTC' }
-  const s = start.toLocaleDateString(undefined, o)
-  const e = end.toLocaleDateString(undefined, { ...o, year: 'numeric' })
-  return `${s} – ${e}`
+  const sM = start.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' })
+  const eM = end.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' })
+  const sD = start.getUTCDate(), eD = end.getUTCDate()
+  // "Week of Jul 2 – 8" (same month) or "Week of Jul 30 – Aug 5". The "Week of"
+  // prefix marks the Thursday OKR week; drop it for non-weekly windows.
+  const range = sM === eM ? `${sM} ${sD} – ${eD}` : `${sM} ${sD} – ${eM} ${eD}`
+  return windowDays === 7 ? `Week of ${range}` : range
 }
 
 // Normalize one posts_of_interest row into a display item. Prefers the fields
