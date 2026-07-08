@@ -4,6 +4,7 @@ import { GlassCard } from './GlassCard'
 import { buildWeekly, weekRangeLabel, weekStartLabel } from '../lib/competitiveReview'
 import { usePostsOfInterest } from '../hooks/usePostsOfInterest'
 import { colorForPlatform } from '../lib/colors'
+import { resolvePostUrl } from '../lib/postUrl'
 
 // Match a posts_of_interest.author (a company name string) to a tracked company.
 function sameCompany(author, name) {
@@ -181,7 +182,9 @@ export function CompetitiveReview({ posts, competitors }) {
                   <div className="cr-posts">
                     {c.linkedin.posts.length === 0 ? (
                       <div className="cr-post-empty">No LinkedIn items this week.</div>
-                    ) : c.linkedin.posts.map((p, i) => (
+                    ) : c.linkedin.posts.map((p, i) => {
+                      const purl = resolvePostUrl({ platform: 'LinkedIn', activity_id: p.activity_id ?? p.id, post_url: p.url }) || p.url
+                      return (
                       <div className="cr-post" key={p.id ?? i}>
                         <div className="cr-post-main">
                           <div className="cr-post-text">{p.text ? (p.text.length > 220 ? p.text.slice(0, 220) + '…' : p.text) : '(no text)'}</div>
@@ -190,11 +193,12 @@ export function CompetitiveReview({ posts, competitors }) {
                             <span className="cr-post-eng"><ThumbsUp size={11} /> {p.reactions}</span>
                             <span className="cr-post-eng"><MessageSquare size={11} /> {p.comments}</span>
                             <span className="cr-post-eng"><Repeat2 size={11} /> {p.reshares}</span>
-                            {p.url && <a href={p.url} target="_blank" rel="noopener noreferrer" className="cr-post-link">open ↗</a>}
+                            {purl && <a href={purl} target="_blank" rel="noopener noreferrer" className="cr-post-link">open ↗</a>}
                           </div>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
