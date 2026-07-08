@@ -119,20 +119,20 @@ function sentClass(s) {
 //     own split, top high-impact post. Mirrors computeWeightedSOV's inner loop
 //     so the per-platform contribution is honest (respects the min-vol guard). ---
 function deriveWhy(allDirectPosts, company, config) {
-  const { weightedPct, effectiveWeights, platformTotals } = computeWeightedSOV(allDirectPosts, config)
+  const { weightedPct, grandTotal, mult } = computeWeightedSOV(allDirectPosts, config)
   const sov = weightedPct.get(company) || 0
   const mine = allDirectPosts.filter(p => p.companyName === company)
 
-  const byPlat = {} // platform -> Σ post_weight for this company
-  for (const p of mine) {
-    if (!p.platform || platformTotals[p.platform] == null) continue
-    byPlat[p.platform] = (byPlat[p.platform] || 0) + postWeightOf(p)
-  }
+  // Each platform's contribution to THIS company's SOV = its multiplier-scaled
+  // impact as a share of the whole cross-platform pool.
   const contrib = {} // platform -> points (0..100) toward this company's score
-  for (const plat of Object.keys(byPlat)) {
-    const ew = effectiveWeights[plat] || 0
-    const share = byPlat[plat] / (platformTotals[plat] || 1)
-    contrib[plat] = ew * share * 100
+  for (const p of mine) {
+    const m = mult[p.platform] != null ? mult[p.platform] : 0
+    if (!m) continue
+    contrib[p.platform] = (contrib[p.platform] || 0) + m * postWeightOf(p)
+  }
+  for (const plat of Object.keys(contrib)) {
+    contrib[plat] = grandTotal > 0 ? (contrib[plat] / grandTotal) * 100 : 0
   }
   const sorted = Object.entries(contrib).sort((a, b) => b[1] - a[1])
   const top = sorted[0] || [null, 0]

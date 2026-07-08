@@ -13,6 +13,14 @@ import { supabase } from '../lib/supabase'
 // weightsChangelog. The values the frontend actually USES for SOV math are
 // platformWeights + minPlatformVolume (post_weight itself is precomputed by n8n).
 export const DEFAULT_SOV_CONFIG = {
+  // Mindshare-pool multipliers (2026-07-08): convert each platform's per-post
+  // impact onto one common "considered-attention" scale, then pool. Trust ratios
+  // grounded in B2B buyer research — peer/community (Reddit) 3× and editorial
+  // press (News) ≈ tunable > vendor social (LinkedIn/X) = 1. News is the dial the
+  // team sets; the rest are ~locked. SOV = share of the pooled total.
+  platformMultipliers: { LinkedIn: 1, 'Google News': 30, Reddit: 3, X: 1 },
+  // Legacy within-platform-share weights — retained for reference/rollback only;
+  // the live math now uses platformMultipliers above.
   platformWeights: { LinkedIn: 0.40, 'Google News': 0.35, Reddit: 0.10, X: 0.15 },
   halfLifeDays: { LinkedIn: 14, 'Google News': 30, Reddit: 10, X: 7 },
   engagementWeights: {
