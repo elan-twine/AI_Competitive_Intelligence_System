@@ -1191,6 +1191,38 @@
   .cr-company-name { flex: 1 0 100%; margin-bottom: 4px; }
 }
 
+/* ---- Social Briefs — per-post 👍/👎 feedback + generator-pick markers ---- */
+.sb-star { color: var(--accent); vertical-align: middle; }
+.sb-star-inline { margin-right: 5px; }
+.sb-scoreboard {
+  display: flex; flex-wrap: wrap; gap: 20px 26px;
+  padding: 12px 16px; margin: 6px 0 16px;
+  background: var(--inner-bg); border: 1px solid var(--border); border-radius: 12px;
+}
+.sb-score { display: flex; flex-direction: column; gap: 2px; }
+.sb-score-v { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.sb-score-v.sb-up { color: var(--positive); }
+.sb-score-v.sb-warn { color: var(--neutral); }
+.sb-score-l { font-size: 0.72rem; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px; }
+.sb-progress { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.cr-post-date { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.cr-post.sb-post { display: flex; align-items: flex-start; gap: 14px; padding: 6px 0; }
+.sb-post .cr-post-main { flex: 1; min-width: 0; }
+.sb-rated-up { border-left: 3px solid var(--positive); padding-left: 10px; }
+.sb-rated-down { border-left: 3px solid var(--negative); padding-left: 10px; opacity: 0.68; }
+
+.sb-vote { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.sb-vote-btn {
+  width: 34px; height: 34px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.sb-vote-btn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+.sb-vote-btn.up.on { background: var(--positive); border-color: var(--positive); color: #fff; }
+.sb-vote-btn.down.on { background: var(--negative); border-color: var(--negative); color: #fff; }
+
 /* Competitive Review — flagged posts (posts_of_interest) in the weekly report */
 .cr-report-count {
   display: inline-flex; align-items: center; justify-content: center;

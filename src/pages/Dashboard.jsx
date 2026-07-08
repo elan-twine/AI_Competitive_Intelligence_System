@@ -7,7 +7,7 @@ import { useLastUpdated } from '../hooks/useLastUpdated'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
 import { SOVTrendChart } from '../components/SOVTrendChart'
-import { CompetitiveReview } from '../components/CompetitiveReview'
+import { SocialBriefs } from '../components/SocialBriefs'
 import { CompanyDrillIn } from '../components/CompanyDrillIn'
 import { TopPostsWeek } from '../components/TopPostsWeek'
 import { PostsOfInterest } from '../components/PostsOfInterest'
@@ -37,6 +37,18 @@ function windowMeta(days) {
   return { windowDays: null, label: 'year-to-date' }
 }
 
+// Calendar date range covered by the current window, ending today:
+// "Jul 5 – 11" (same month) or "Jul 28 – Aug 3". Prefixed "Week of " on the
+// 7-day view (where the ranking IS a week); plain range on 30d/YTD.
+function windowRangeLabel(days) {
+  const end = new Date()
+  const start = new Date(); start.setDate(start.getDate() - (days - 1))
+  const sM = start.toLocaleDateString(undefined, { month: 'short' })
+  const eM = end.toLocaleDateString(undefined, { month: 'short' })
+  const range = sM === eM ? `${sM} ${start.getDate()} – ${end.getDate()}` : `${sM} ${start.getDate()} – ${eM} ${end.getDate()}`
+  return days === 7 ? `Week of ${range}` : range
+}
+
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
@@ -62,7 +74,7 @@ function Dashboard({ onLogout, onNavigate }) {
   // assignment — see colors.js). Must run before children render their lines.
   useMemo(() => registerCompanyColors((competitors || []).map(c => c.name)), [competitors])
 
-  // Top-level view: SOV dashboard vs Briefings (siblings, not nested)
+  // Top-level view: SOV dashboard · Social Briefs · Comp Briefs (siblings, not nested)
   const [view, setView] = useState('sov')
 
   // SOV-internal tabs
@@ -167,12 +179,14 @@ function Dashboard({ onLogout, onNavigate }) {
   return (
     <div className="app">
       <AppHeader
-        page={view === 'sov' ? 'SOV' : 'Briefings'}
+        page={view === 'sov' ? 'SOV' : view === 'social' ? 'Social Briefs' : 'Comp Briefs'}
         onNavigate={onNavigate}
         onLogout={onLogout}
         view={view}
         onViewChange={setView}
       />
+
+      {view === 'social' && <SocialBriefs posts={allPosts} competitors={competitors} />}
 
       {view === 'briefings' && <Briefings />}
 
@@ -327,7 +341,9 @@ function Dashboard({ onLogout, onNavigate }) {
           {/* All-companies breakdown table (moved above Sentiment) */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header" style={{ display: 'flex', alignItems: 'center' }}>
-              <span className="card-title">Direct competitors · SOV ranking</span>
+              <span className="card-title">Direct competitors · SOV ranking
+                <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: '0.85em' }}> · {windowRangeLabel(days)}</span>
+              </span>
               <button
                 className="csv-btn"
                 style={{ marginLeft: 'auto' }}
@@ -409,9 +425,8 @@ function Dashboard({ onLogout, onNavigate }) {
             />
           </GlassCard>
 
-          {/* Competitive Review — weekly view of competitor-authored posts +
-              engagement (replaces the old Recent Mentions feed) */}
-          <CompetitiveReview posts={allPosts} competitors={competitors} />
+          {/* The weekly competitor-authored review now lives in its own
+              "Social Briefs" view (with per-post 👍/👎 feedback). */}
         </>
       )}
 

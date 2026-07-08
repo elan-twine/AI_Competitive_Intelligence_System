@@ -115,7 +115,7 @@ export default function Briefings() {
         {[
           ['overview', 'Overview'],
           ['compare', 'Compare All'],
-          ['briefs', 'Briefings'],
+          ['briefs', 'Briefs'],
         ].map(([t, label]) => (
           <button
             key={t}
