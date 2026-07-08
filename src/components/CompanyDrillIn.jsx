@@ -12,10 +12,17 @@ function weekKey(date) {
   return `${w.getFullYear()}-${String(w.getMonth() + 1).padStart(2, '0')}-${String(w.getDate()).padStart(2, '0')}`
 }
 function weekLabel(key) {
-  // key = 'YYYY-MM-DD' (the week-anchor day). Render "Week of Jun 23".
+  // key = 'YYYY-MM-DD' (the Thursday week-anchor day). Render the full week
+  // range "Week of Jul 2 – 8" (same month) or "Week of Jul 30 – Aug 5".
   const [y, m, d] = key.split('-').map(Number)
-  const dt = new Date(y, m - 1, d)
-  return `Week of ${dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+  const start = new Date(y, m - 1, d)
+  const end = new Date(start); end.setDate(end.getDate() + 6)
+  const sM = start.toLocaleDateString(undefined, { month: 'short' })
+  const eM = end.toLocaleDateString(undefined, { month: 'short' })
+  const range = sM === eM
+    ? `${sM} ${start.getDate()} – ${end.getDate()}`
+    : `${sM} ${start.getDate()} – ${eM} ${end.getDate()}`
+  return `Week of ${range}`
 }
 
 // --- Cross-platform field normalization. The hook surfaces every DB column
