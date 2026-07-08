@@ -8,7 +8,14 @@ import { Info, Brain, Users, LayoutDashboard, Sun, Moon, LogOut } from 'lucide-r
 //
 // `page` is the title suffix after "Twine" (also used to hide the nav button for
 // the page you're already on). Pass `view` + `onViewChange` (Dashboard only) to
-// render the centered SOV/Briefings switch.
+// render the centered SOV Dashboard / Social Briefs / Comp Briefs switch.
+const DASHBOARD_VIEWS = [
+  ['sov', 'SOV Dashboard'],
+  ['social', 'Social Briefs'],
+  ['briefings', 'Comp Briefs'],
+]
+const DASHBOARD_PAGES = new Set(['SOV', 'Social Briefs', 'Comp Briefs'])
+
 export function AppHeader({ page, onNavigate, onLogout, view, onViewChange }) {
   const [dark, setDark] = useState(() => localStorage.getItem('twine-sov-theme') === 'dark')
   useEffect(() => {
@@ -16,7 +23,7 @@ export function AppHeader({ page, onNavigate, onLogout, view, onViewChange }) {
     localStorage.setItem('twine-sov-theme', dark ? 'dark' : 'light')
   }, [dark])
 
-  const onDashboard = page === 'SOV' || page === 'Briefings'
+  const onDashboard = DASHBOARD_PAGES.has(page)
   const NAV = [
     { key: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard, show: !!onNavigate && !onDashboard },
     { key: 'about', label: 'About — what this measures', Icon: Info, show: !!onNavigate && page !== 'About' },
@@ -33,8 +40,9 @@ export function AppHeader({ page, onNavigate, onLogout, view, onViewChange }) {
 
       {view && onViewChange && (
         <div className="view-switch">
-          <button className={`view-seg ${view === 'sov' ? 'active' : ''}`} onClick={() => onViewChange('sov')}>SOV Dashboard</button>
-          <button className={`view-seg ${view === 'briefings' ? 'active' : ''}`} onClick={() => onViewChange('briefings')}>Briefings</button>
+          {DASHBOARD_VIEWS.map(([k, label]) => (
+            <button key={k} className={`view-seg ${view === k ? 'active' : ''}`} onClick={() => onViewChange(k)}>{label}</button>
+          ))}
         </div>
       )}
 
