@@ -2,16 +2,19 @@
 // { companyName, sov, sentiment, platform, ts, unweightedSOV, weightedSOV,
 //   postWeight, ... }) and return derived data.
 //
-// SOV methodology (see SOV_METHODOLOGY.md):
-//   1. Per-post weight: n8n stores `post_weight` per row (preferred). Older
-//      rows lack it, so we fall back to the legacy `weightedSOV` field.
-//   2. Within-platform share FIRST: each brand's share of total weight on a
-//      platform (0..1, scale-free — never sum raw engagement across platforms).
-//   3. Weighted-average across platforms using config platform weights.
-//   4. Min-volume guard: drop a platform whose total weighted score is below
-//      `minPlatformVolume` for the period, then renormalize platform weights.
-//   5. Sentiment is its own dimension (net + positive/negative split); a
-//      negative-mention spike never inflates SOV.
+// SOV methodology (mindshare-pool model, 2026-07-08):
+//   1. Per-post impact: n8n stores `post_weight` per row (preferred; legacy
+//      `weightedSOV` fallback). It measures ENGAGEMENT depth (considered
+//      attention), not raw reach.
+//   2. Cross-platform common currency: multiply each post's impact by its
+//      platform multiplier (config.platformMultipliers) to convert every
+//      platform's impact onto ONE comparable "considered-attention" scale.
+//      Multipliers are trust/consideration ratios grounded in B2B buyer
+//      research (peer/community > editorial press > vendor social).
+//   3. Pool + share: sum all scaled impact into a single pool; a brand's SOV is
+//      its share of that pool. Platform influence is EMERGENT (a thin platform
+//      contributes little) — no preset per-platform budget, no min-volume guard.
+//   4. Sentiment is its own dimension; a negative-mention spike never inflates SOV.
 
 import { DEFAULT_SOV_CONFIG } from '../hooks/useSOVConfig'
 
@@ -78,51 +81,40 @@ export function companyRow(posts, company) {
 // weights actually used (after min-volume guard + renormalization).
 // ---------------------------------------------------------------------------
 export function computeWeightedSOV(posts, config = DEFAULT_SOV_CONFIG) {
-  const platformWeights = config.platformWeights || DEFAULT_SOV_CONFIG.platformWeights
-  const minVolume = config.minPlatformVolume ?? DEFAULT_SOV_CONFIG.minPlatformVolume
+  const mult = config.platformMultipliers || DEFAULT_SOV_CONFIG.platformMultipliers
 
-  // Σ post_weight per platform, and per (platform, company).
-  const platformTotals = {}          // platform -> total weight
-  const platformCompany = {}         // platform -> { company -> weight }
+  // Scale each post's impact by its platform multiplier into a common
+  // "considered-attention" unit, then pool ALL platforms together.
+  const platformTotals = {}          // platform -> Σ (mult · post_weight)
+  const platformCompany = {}         // platform -> { company -> Σ (mult · post_weight) }
+  const byCompany = {}               // company  -> Σ across all platforms
+  let grand = 0
   for (const p of posts) {
     const plat = p.platform
     if (!plat || !p.companyName) continue
-    const w = postWeightOf(p)
-    platformTotals[plat] = (platformTotals[plat] || 0) + w
+    const m = mult[plat] != null ? mult[plat] : 0
+    if (!m) continue
+    const v = m * postWeightOf(p)
+    platformTotals[plat] = (platformTotals[plat] || 0) + v
     if (!platformCompany[plat]) platformCompany[plat] = {}
-    platformCompany[plat][p.companyName] = (platformCompany[plat][p.companyName] || 0) + w
+    platformCompany[plat][p.companyName] = (platformCompany[plat][p.companyName] || 0) + v
+    byCompany[p.companyName] = (byCompany[p.companyName] || 0) + v
+    grand += v
   }
 
-  // Min-volume guard: drop low-signal platforms for this period.
-  const livePlatforms = Object.keys(platformTotals).filter(
-    plat => platformTotals[plat] >= minVolume
-  )
-  // If the guard removed everything (very small dataset), fall back to all.
-  const usePlatforms = livePlatforms.length ? livePlatforms : Object.keys(platformTotals)
-
-  // Renormalize platform weights over the surviving platforms.
-  const weightSum = usePlatforms.reduce((s, plat) => s + (platformWeights[plat] || 0), 0) || 1
-  const effectiveWeights = {}
-  for (const plat of usePlatforms) {
-    effectiveWeights[plat] = (platformWeights[plat] || 0) / weightSum
-  }
-
-  // SOV_total(brand) = Σ_platform [ platform_weight × within-platform share ].
-  const out = new Map()
-  for (const plat of usePlatforms) {
-    const total = platformTotals[plat] || 0
-    if (total <= 0) continue
-    const pw = effectiveWeights[plat]
-    for (const [company, w] of Object.entries(platformCompany[plat] || {})) {
-      const share = w / total
-      out.set(company, (out.get(company) || 0) + pw * share)
-    }
-  }
-
-  // Scale 0..1 → 0..100 for display.
+  // SOV = a brand's share of the single cross-platform pool.
   const pct = new Map()
-  for (const [company, v] of out) pct.set(company, v * 100)
-  return { weightedPct: pct, effectiveWeights, platformTotals }
+  for (const [company, v] of Object.entries(byCompany)) {
+    pct.set(company, grand > 0 ? (v / grand) * 100 : 0)
+  }
+
+  // Emergent platform influence = each platform's share of the whole pool.
+  const effectiveWeights = {}
+  for (const plat of Object.keys(platformTotals)) {
+    effectiveWeights[plat] = grand > 0 ? platformTotals[plat] / grand : 0
+  }
+
+  return { weightedPct: pct, effectiveWeights, platformTotals, grandTotal: grand, mult }
 }
 
 // ---------------------------------------------------------------------------
