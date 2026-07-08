@@ -5,6 +5,7 @@ import { buildWeekly, weekRangeLabel } from '../lib/competitiveReview'
 import { usePostsOfInterest } from '../hooks/usePostsOfInterest'
 import { useSocialBriefFeedback } from '../hooks/useSocialBriefFeedback'
 import { resolvePostUrl } from '../lib/postUrl'
+import { fmtPostDate } from '../lib/dates'
 
 // Social Briefs — the weekly competitor-social review, one row per
 // competitor-AUTHORED LinkedIn post (company page + employees). Each post gets a
@@ -12,15 +13,6 @@ import { resolvePostUrl } from '../lib/postUrl'
 // auto-flagged are starred, so the human vote can be compared against the
 // machine pick over time (the learning loop). LinkedIn only for now — authorship
 // is only reliable there, and that's the generator's universe.
-
-// Posted-date label for a post row, e.g. "Jul 5" (adds the year if not current).
-function fmtPostDate(ts) {
-  const dt = new Date(ts)
-  if (isNaN(dt.getTime())) return ''
-  const opts = { month: 'short', day: 'numeric' }
-  if (dt.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
-  return dt.toLocaleDateString(undefined, opts)
-}
 
 // Extract a stable POI pick key set from posts_of_interest rows.
 function pickSets(poiPosts) {

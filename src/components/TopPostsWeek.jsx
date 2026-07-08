@@ -4,6 +4,7 @@ import { GlassCard } from './GlassCard'
 import { normalizePost, whyDidWell } from './CompanyDrillIn'
 import { colorForCompany } from '../lib/colors'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
+import { fmtPostDate } from '../lib/dates'
 import './topPosts.css'
 
 /* The wild-outliers reel: the highest-impact posts from the TRAILING 7 DAYS
@@ -48,6 +49,7 @@ function TopPostRow({ post }) {
         {post.isOutlier && (
           <span className="twp-outlier" title="Well above this week's typical item"><Flame size={11} /> outlier</span>
         )}
+        {post.ts && <span className="twp-date" title={new Date(post.ts).toLocaleString()}>{fmtPostDate(post.ts)}</span>}
         <span className="twp-weight" title="This item's weighted impact on Share of Voice">⚡ {Math.round(post.weight * 100) / 100}</span>
         {post.url && <ExternalLink size={13} className="twp-ext" />}
       </div>

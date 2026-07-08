@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink, ChevronRight, Flame, Star, Download } from 'lucide-react'
 import { downloadCSV } from '../lib/csv'
 import { resolvePostUrl } from '../lib/postUrl'
+import { fmtPostDate } from '../lib/dates'
 import { computeWeightedSOV, postWeightOf, isoWeekStart } from '../lib/metrics'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
 import './companyDrillIn.css'
@@ -408,6 +409,9 @@ function StandoutChip({ post }) {
           </span>
         )}
         <AuthorTypeBadge authorType={post.authorType} platform={post.platform} />
+        {post.ts && (
+          <span className="cdi-date" title={new Date(post.ts).toLocaleString()}>{fmtPostDate(post.ts)}</span>
+        )}
         <span className="cdi-chip-weight" title="This item's impact on the company's Share of Voice">
           ⚡ {Math.round(post.weight * 100) / 100}
         </span>
@@ -446,6 +450,9 @@ function PostRow({ post }) {
             </span>
           )}
           <AuthorTypeBadge authorType={post.authorType} platform={post.platform} />
+          {post.ts && (
+            <span className="cdi-date" title={new Date(post.ts).toLocaleString()}>{fmtPostDate(post.ts)}</span>
+          )}
           <span
             className="cdi-weight"
             title="This item's impact — how much it adds to the company's Share of Voice (engagement, reach, sentiment, recency, and who posted it). Not a percentage — a raw weight."
