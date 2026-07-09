@@ -46,8 +46,8 @@ export default function Landing({ onNavigate, onLoginSuccess }) {
               <span className="accent-text">Twine SOV</span>
             </h1>
             <p className="landing-sub">
-              Real-time Share of Voice across X, Reddit, Google News, and LinkedIn —
-              weighted by reach, recency, and sentiment. Built for the Twine team.
+              Daily Share of Voice across LinkedIn, X, Google News, and Reddit —
+              weighted by engagement, reach, and platform trust. Built for the Twine team.
             </p>
             <div className="landing-cta">
               <button className="cta-primary" onClick={() => setLoginOpen(true)}>
