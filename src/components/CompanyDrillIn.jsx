@@ -401,20 +401,24 @@ function StandoutChip({ post }) {
   const Body = (
     <>
       <div className="cdi-chip-top">
-        <span className="cdi-plat-dot" style={{ background: color }} />
-        <span className="cdi-chip-plat">{post.platform}</span>
-        {post.isOutlier && (
-          <span className="cdi-chip-outlier" title="Statistical outlier — well above this company's typical item">
-            <Flame size={11} /> outlier
+        <div className="cdi-chip-row cdi-chip-row-1">
+          <span className="cdi-plat-dot" style={{ background: color }} />
+          <span className="cdi-chip-plat">{post.platform}</span>
+          {post.ts && (
+            <span className="cdi-date" title={new Date(post.ts).toLocaleString()}>{fmtPostDate(post.ts)}</span>
+          )}
+        </div>
+        <div className="cdi-chip-row cdi-chip-row-2">
+          {post.isOutlier && (
+            <span className="cdi-chip-outlier" title="Statistical outlier — well above this company's typical item">
+              <Flame size={11} /> outlier
+            </span>
+          )}
+          <AuthorTypeBadge authorType={post.authorType} platform={post.platform} />
+          <span className="cdi-chip-weight" title="This item's impact on the company's Share of Voice">
+            ⚡ {Math.round(post.weight * 100) / 100}
           </span>
-        )}
-        <AuthorTypeBadge authorType={post.authorType} platform={post.platform} />
-        {post.ts && (
-          <span className="cdi-date" title={new Date(post.ts).toLocaleString()}>{fmtPostDate(post.ts)}</span>
-        )}
-        <span className="cdi-chip-weight" title="This item's impact on the company's Share of Voice">
-          ⚡ {Math.round(post.weight * 100) / 100}
-        </span>
+        </div>
       </div>
       <div className="cdi-chip-text">{short}</div>
       <div className="cdi-chip-why"><Star size={11} /> {phrase}</div>

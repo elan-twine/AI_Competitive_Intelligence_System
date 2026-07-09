@@ -389,9 +389,18 @@ a.cdi-chip:hover {
 }
 .cdi-chip-top {
   display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cdi-chip-row {
+  display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 4px 7px;
+}
+/* Row 1: platform · date (date pushed to the right) */
+.cdi-chip-row-1 .cdi-date {
+  margin-left: auto;
 }
 .cdi-chip-plat {
   font-size: 0.7rem;
