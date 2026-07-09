@@ -390,7 +390,8 @@ a.cdi-chip:hover {
 .cdi-chip-top {
   display: flex;
   align-items: center;
-  gap: 7px;
+  flex-wrap: wrap;
+  gap: 4px 7px;
 }
 .cdi-chip-plat {
   font-size: 0.7rem;

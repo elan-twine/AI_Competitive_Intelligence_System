@@ -82,7 +82,6 @@ function keyFor(name) {
 
 export function useBriefingsData() {
   const [briefings, setBriefings] = useState({})
-  const [posts, setPosts] = useState([])
   const [urns, setUrns] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -94,9 +93,8 @@ export function useBriefingsData() {
       try { const r = await fn(); if (r.error) { console.warn('[briefings]', r.error.message); return [] } return r.data || [] }
       catch (e) { console.warn('[briefings] threw:', e); return [] }
     }
-    const [bRows, pRows, uRows] = await Promise.all([
+    const [bRows, uRows] = await Promise.all([
       safe(() => supabase.from('competitor_briefings').select('*').order('created_at', { ascending: false })),
-      safe(() => supabase.from('linkedin_scrape').select('*').order('date', { ascending: false })),
       safe(() => supabase.from('linkedin_URNs').select('*').order('company', { ascending: true })),
     ])
     // Newest briefing wins per company (rows are desc by created_at).
@@ -108,14 +106,13 @@ export function useBriefingsData() {
       if (!map[k]) map[k] = b
     }
     setBriefings(map)
-    setPosts(pRows)
     setUrns(uRows)
     setLoading(false)
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  return { briefings, posts, urns, loading, error, refetch: fetchAll }
+  return { briefings, urns, loading, error, refetch: fetchAll }
 }
 
 export { keyFor }

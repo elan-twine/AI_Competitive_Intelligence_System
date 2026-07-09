@@ -164,6 +164,7 @@
   font-variant-numeric: tabular-nums;
   flex: 1;
   min-width: 0;
+  overflow-x: auto;
 }
 .eq-formula sub { font-size: 0.72em; opacity: 0.85; }
 .eq-row-note {
@@ -267,6 +268,8 @@
   border: 1px solid var(--divider);
   border-radius: var(--radius-sm);
   padding: 14px;
+  max-width: 100%;
+  overflow-x: auto;
 }
 .eq-frac-block sub { font-size: 0.72em; }
 

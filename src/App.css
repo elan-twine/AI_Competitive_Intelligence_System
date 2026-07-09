@@ -627,6 +627,7 @@
 /* ---- Tab nav ---- */
 .tab-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 20px;
   padding: 4px;
@@ -635,6 +636,7 @@
   border-radius: 12px;
   border: 1px solid var(--divider);
   width: fit-content;
+  max-width: 100%;
 }
 
 .tab-nav .tab {
@@ -1187,6 +1189,8 @@
 .cr-footnote { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5; }
 
 @media (max-width: 640px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .cr-company-head { flex-wrap: wrap; }
   .cr-metrics { gap: 9px; }
   .cr-company-name { flex: 1 0 100%; margin-bottom: 4px; }
 }
