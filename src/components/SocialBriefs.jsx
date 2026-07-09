@@ -29,6 +29,12 @@ export function SocialBriefs({ posts, competitors }) {
     () => Object.fromEntries((competitors || []).map(c => [c.name, c.linkedin_urn])),
     [competitors]
   )
+  // Exclude ourselves — we don't brief on Twine's own activity. Covers direct +
+  // indirect competitors, self only removed.
+  const selfNames = useMemo(
+    () => new Set((competitors || []).filter(c => c.is_self).map(c => c.name)),
+    [competitors]
+  )
   const model = useMemo(() => buildWeekly(posts, urnByName), [posts, urnByName])
   const { posts: poiPosts } = usePostsOfInterest()
   const picks = useMemo(() => pickSets(poiPosts), [poiPosts])
@@ -48,9 +54,9 @@ export function SocialBriefs({ posts, competitors }) {
     if (!data) return []
     return Object.entries(data.companies)
       .map(([name, d]) => ({ name, posts: d.linkedin.posts }))
-      .filter(r => r.posts.length > 0)
+      .filter(r => r.posts.length > 0 && !selfNames.has(r.name))
       .sort((a, b) => b.posts.length - a.posts.length || a.name.localeCompare(b.name))
-  }, [data])
+  }, [data, selfNames])
 
   // Week-level learning comparison: generator picks vs human votes.
   const stats = useMemo(() => {
