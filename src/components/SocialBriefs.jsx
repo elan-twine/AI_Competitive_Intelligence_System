@@ -40,6 +40,38 @@ export function SocialBriefs({ posts, competitors }) {
   const picks = useMemo(() => pickSets(poiPosts), [poiPosts])
   const { byId, setVerdict } = useSocialBriefFeedback()
 
+  // RAG taste_score per generator pick (written by the learning generator; null
+  // until it has run with the column live). Keyed by source_id and by url.
+  const tasteBySid = useMemo(() => {
+    const m = {}
+    for (const p of poiPosts || []) {
+      if (p.taste_score == null) continue
+      if (p.source_id != null) m[String(p.source_id)] = p.taste_score
+      if (p.url) m[String(p.url)] = p.taste_score
+    }
+    return m
+  }, [poiPosts])
+  const tasteOf = (p) => tasteBySid[String(p.id)] ?? (p.url ? tasteBySid[String(p.url)] : undefined)
+
+  // Convergence: of the generator's ⭐ picks you rated each week, the share you
+  // 👍'd (precision). Rising over weeks = it's learning your taste. From all
+  // post_feedback rows, so it spans every week you've reviewed.
+  const trend = useMemo(() => {
+    const wk = {}
+    for (const k in byId) {
+      const r = byId[k]
+      if (!r || !r.generator_picked) continue
+      if (r.verdict !== 'up' && r.verdict !== 'down') continue
+      if (!r.week_start) continue
+      wk[r.week_start] = wk[r.week_start] || { up: 0, tot: 0 }
+      wk[r.week_start].tot++
+      if (r.verdict === 'up') wk[r.week_start].up++
+    }
+    return Object.entries(wk)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([week, v]) => ({ week, pct: Math.round((100 * v.up) / v.tot), n: v.tot }))
+  }, [byId])
+
   const weeks = model.weeks || []
   const [weekIdx, setWeekIdx] = useState(0)
   const [collapsed, setCollapsed] = useState({})   // company -> bool (collapsed)
@@ -120,6 +152,23 @@ export function SocialBriefs({ posts, competitors }) {
           <div className="sb-score"><span className="sb-score-v">{stats.precision == null ? '—' : stats.precision + '%'}</span><span className="sb-score-l">agreement on picks</span></div>
         </div>
 
+        {/* Convergence: generator precision week over week — rising = it's learning your taste. */}
+        {trend.length >= 2 && (
+          <div className="sb-trend" title="Of the generator's ⭐ picks you rated each week, the share you 👍'd">
+            <span className="sb-trend-label">Generator precision by week</span>
+            <div className="sb-trend-bars">
+              {trend.map(t => (
+                <div className="sb-trend-col" key={t.week} title={`${weekRangeLabel(t.week)} · ${t.pct}% of ${t.n} rated picks 👍`}>
+                  <div className="sb-trend-bar-track">
+                    <div className="sb-trend-bar-fill" style={{ height: `${t.pct}%` }} />
+                  </div>
+                  <span className="sb-trend-pct">{t.pct}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {companyRows.length === 0 ? (
           <div className="empty-state"><p>No competitor-authored posts captured for this week yet.</p></div>
         ) : (
@@ -141,6 +190,7 @@ export function SocialBriefs({ posts, competitors }) {
                     <div className="cr-posts">
                       {c.posts.map((p, i) => {
                         const gp = isPicked(p)
+                        const taste = gp ? tasteOf(p) : undefined
                         const v = byId[String(p.id)]?.verdict
                         const purl = resolvePostUrl({ platform: 'LinkedIn', activity_id: p.id, post_url: p.url }) || p.url
                         return (
@@ -148,6 +198,11 @@ export function SocialBriefs({ posts, competitors }) {
                             <div className="cr-post-main">
                               <div className="cr-post-text">
                                 {gp && <Star size={13} className="sb-star sb-star-inline" aria-label="Generator pick" />}
+                                {taste != null && (
+                                  <span className={`sb-taste ${taste >= 0 ? 'pos' : 'neg'}`} title="RAG taste score: how strongly this pick matches your past 👍 (positive) vs 👎 (negative)">
+                                    {taste >= 0 ? '+' : ''}{taste.toFixed(2)}
+                                  </span>
+                                )}
                                 {p.text ? (p.text.length > 240 ? p.text.slice(0, 240) + '…' : p.text) : '(no text)'}
                               </div>
                               <div className="cr-post-meta">
