@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useCallback } from 'react'
 import { supabase, fetchAllRows } from '../lib/supabase'
+import { useCachedFetch } from './useCachedFetch'
 
 // Reads the immutable weekly SOV snapshots written by the workflow each run
 // (table `sov_weekly`) and shapes them for recharts. Each point is that week's
@@ -15,33 +16,29 @@ import { supabase, fetchAllRows } from '../lib/supabase'
 // scrape coverage, so they are neither displayed nor used in any computation
 // (forward-fill, etc.). The old rows stay in the table (not deleted) — they're
 // just filtered out here.
+//
+// Cached (localStorage) — the board changes at most once/twice a day, so reloads
+// read from cache instead of refetching.
 import { SOV_HISTORY_START } from '../lib/metrics'
 
 export function useWeeklySOV(metric = 'overall') {
-  const [rows, setRows] = useState([])
-  const [ready, setReady] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    // Paginated: sov_weekly grows ~13 rows/week, so it will cross Supabase's
-    // 1000-row response cap; an unpaginated query would silently drop old weeks.
-    fetchAllRows(() => supabase
-      .from('sov_weekly')
-      .select('week_start,company,overall,weighted_pct,unweighted_pct,sentiment_pct')
-      .order('week_start', { ascending: true }))
-      .then(data => {
-        if (cancelled) return
-        setRows((data || []).filter(r => r.week_start >= SOV_HISTORY_START))
-        setReady(true)
-      })
-      .catch(err => {
-        if (cancelled) return
-        // Table may not exist yet (pre-migration) — fail soft to an empty series.
-        console.warn('[sov_weekly]', err?.message || err)
-        setRows([]); setReady(true)
-      })
-    return () => { cancelled = true }
+  const fetcher = useCallback(async () => {
+    try {
+      const data = await fetchAllRows(() => supabase
+        .from('sov_weekly')
+        .select('week_start,company,overall,weighted_pct,unweighted_pct,sentiment_pct')
+        .order('week_start', { ascending: true }))
+      return (data || []).filter(r => r.week_start >= SOV_HISTORY_START)
+    } catch (err) {
+      // Table may not exist yet (pre-migration) — fail soft to an empty series.
+      console.warn('[sov_weekly]', err?.message || err)
+      return []
+    }
   }, [])
+
+  const { data, loading } = useCachedFetch('sov_weekly', fetcher, {})
+  const rows = data || []
+  const ready = !loading
 
   return useMemo(() => {
     const weeks = [...new Set(rows.map(r => r.week_start))].sort()

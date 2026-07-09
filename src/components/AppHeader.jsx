@@ -17,7 +17,8 @@ const DASHBOARD_VIEWS = [
 const DASHBOARD_PAGES = new Set(['SOV', 'Social Briefs', 'Comp Briefs'])
 
 export function AppHeader({ page, onNavigate, onLogout, view, onViewChange }) {
-  const [dark, setDark] = useState(() => localStorage.getItem('twine-sov-theme') === 'dark')
+  // Dark is the default; only an explicit 'light' choice opts out.
+  const [dark, setDark] = useState(() => localStorage.getItem('twine-sov-theme') !== 'light')
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
     localStorage.setItem('twine-sov-theme', dark ? 'dark' : 'light')
