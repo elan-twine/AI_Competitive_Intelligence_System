@@ -64,13 +64,13 @@ function App() {
     if (!oauthInUrl) {
       window.location.hash = view === 'landing' ? '' : view
     }
+    // Dark is the site-wide default; the theme toggle persists an explicit
+    // choice. Landing is always dark (marketing page).
     if (effectiveView === 'landing') {
       document.documentElement.setAttribute('data-theme', 'dark')
-    } else if (effectiveView === 'login' || effectiveView === 'docs') {
-      document.documentElement.setAttribute('data-theme', 'light')
     } else {
       const saved = localStorage.getItem('twine-sov-theme')
-      document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light')
+      document.documentElement.setAttribute('data-theme', saved === 'light' ? 'light' : 'dark')
     }
   }, [view, effectiveView])
 

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useCallback } from 'react'
 import { supabase, fetchAllRows } from '../lib/supabase'
+import { useCachedFetch } from './useCachedFetch'
 
 // Reads the rolling daily SOV board (`sov_daily`) written each run by the
 // pipeline — one row per (snapshot_date, company, window_days). window_days is
@@ -11,36 +12,29 @@ import { supabase, fetchAllRows } from '../lib/supabase'
 //
 // metric: 'overall' (default) | 'weighted_pct' | 'sentiment_pct'
 //   (sov_daily has no unweighted_pct column — those three only.)
+//
+// Cached (localStorage), keyed per window_days.
 import { SOV_HISTORY_START } from '../lib/metrics'
 
 export function useDailySOV(windowDays = 7, metric = 'overall') {
-  const [rows, setRows] = useState([])
-  const [ready, setReady] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    setReady(false)
-    // Paginated: sov_daily grows ~26 rows/day (13 companies × 2 windows), so it
-    // crosses Supabase's 1000-row cap in weeks — an unpaginated query would
-    // silently drop the oldest days and starve the trend.
-    fetchAllRows(() => supabase
-      .from('sov_daily')
-      .select('snapshot_date,company,window_days,overall,weighted_pct,sentiment_pct,posts_count')
-      .eq('window_days', windowDays)
-      .order('snapshot_date', { ascending: true }))
-      .then(data => {
-        if (cancelled) return
-        setRows((data || []).filter(r => r.snapshot_date >= SOV_HISTORY_START))
-        setReady(true)
-      })
-      .catch(err => {
-        if (cancelled) return
-        // Table may not exist yet (pre-migration) — fail soft to an empty series.
-        console.warn('[sov_daily]', err?.message || err)
-        setRows([]); setReady(true)
-      })
-    return () => { cancelled = true }
+  const fetcher = useCallback(async () => {
+    try {
+      const data = await fetchAllRows(() => supabase
+        .from('sov_daily')
+        .select('snapshot_date,company,window_days,overall,weighted_pct,sentiment_pct,posts_count')
+        .eq('window_days', windowDays)
+        .order('snapshot_date', { ascending: true }))
+      return (data || []).filter(r => r.snapshot_date >= SOV_HISTORY_START)
+    } catch (err) {
+      // Table may not exist yet (pre-migration) — fail soft to an empty series.
+      console.warn('[sov_daily]', err?.message || err)
+      return []
+    }
   }, [windowDays])
+
+  const { data, loading } = useCachedFetch(`sov_daily_${windowDays}`, fetcher, {})
+  const rows = data || []
+  const ready = !loading
 
   return useMemo(() => {
     const dates = [...new Set(rows.map(r => r.snapshot_date))].sort()

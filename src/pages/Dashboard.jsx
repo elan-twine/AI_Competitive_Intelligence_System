@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
 import { useLastUpdated } from '../hooks/useLastUpdated'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
 import { SOVTrendChart } from '../components/SOVTrendChart'
@@ -74,17 +75,18 @@ function Dashboard({ onLogout, onNavigate }) {
   // assignment — see colors.js). Must run before children render their lines.
   useMemo(() => registerCompanyColors((competitors || []).map(c => c.name)), [competitors])
 
-  // Top-level view: SOV dashboard · Social Briefs · Comp Briefs (siblings, not nested)
-  const [view, setView] = useState('sov')
+  // Top-level view: SOV dashboard · Social Briefs · Comp Briefs (siblings, not
+  // nested). Persisted so a reload keeps you on the same page.
+  const [view, setView] = usePersistedState('twinesov:nav:view', 'sov')
 
-  // SOV-internal tabs
-  const [tab, setTab] = useState('overview')
+  // SOV-internal tabs (persisted too).
+  const [tab, setTab] = usePersistedState('twinesov:nav:tab', 'overview')
 
   // Global filters (platform + time only — sentiment is local to feed now).
   // Platform is MULTI-select: an array of selected platform names. Empty = no
   // platform filter (the "All" chip clears the selection). Time stays single-select.
-  const [selectedPlatforms, setSelectedPlatforms] = useState([])
-  const [days, setDays] = useState(YTD_DAYS)
+  const [selectedPlatforms, setSelectedPlatforms] = usePersistedState('twinesov:nav:platforms', [])
+  const [days, setDays] = usePersistedState('twinesov:nav:days', YTD_DAYS)
 
   // Toggle a platform in/out of the selection. Clicking "All" clears everything.
   const togglePlatform = (p) => {

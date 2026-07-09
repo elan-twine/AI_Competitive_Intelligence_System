@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useCompetitors } from './useCompetitors'
+import { useCachedFetch } from './useCachedFetch'
 
 // The set of company names/aliases we track now comes from the `competitors`
 // table (source of truth), not a hardcoded list. Anything else in the source
@@ -29,18 +30,10 @@ export function useSOVData(competitorsArg) {
   const own = useCompetitors()
   const competitors = competitorsArg ?? own.competitors
 
-  const [tweets, setTweets] = useState([])
-  const [redditPosts, setRedditPosts] = useState([])
-  const [googleNews, setGoogleNews] = useState([])
-  const [linkedinPosts, setLinkedinPosts] = useState([])
-  const [authorAff, setAuthorAff] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  async function fetchAll() {
-    setLoading(true)
-    setError(null)
-
+  // The raw post firehose updates once/twice a day (pipeline-driven), so it's
+  // cached (IndexedDB — several MB, over the localStorage cap) and only refetched
+  // when the cache is stale (TTL) or forced. This is what made reloads slow.
+  const fetcher = useCallback(async () => {
     // Supabase caps every response at 1000 rows. linkedin_posts crossed that
     // (2.8k+ and growing daily), so a single query silently returned only the
     // newest ~6 days of LinkedIn history — starving rankings, sentiment, and
@@ -73,42 +66,32 @@ export function useSOVData(competitorsArg) {
 
     // Generous: pagination means up to a few sequential round-trips per table.
     const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 15000))
-
-    try {
-      const result = await Promise.race([
-        Promise.all([
-          safeQuery('tweets', 'createdAt'),
-          safeQuery('reddit_posts', 'createdAt'),
-          safeQuery('googlenews', 'publishedAt'),
-          safeQuery('linkedin_posts', 'posted_at'),
-          // author-affiliation classifier cache (employee vs external). Public-read;
-          // returns [] if the table isn't applied yet, so the heuristic still works.
-          safeQuery('author_affiliation', 'checked_at'),
-        ]),
-        timeout,
-      ])
-
-      if (result === 'timeout') {
-        console.warn('[SOV] fetch timed out after 15s — rendering empty state')
-        setTweets([]); setRedditPosts([]); setGoogleNews([]); setLinkedinPosts([]); setAuthorAff([])
-      } else {
-        const [tw, rd, gn, li, aff] = result
-        setTweets(tw)
-        setRedditPosts(rd)
-        setGoogleNews(gn)
-        setLinkedinPosts(li)
-        setAuthorAff(aff)
-      }
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
+    const result = await Promise.race([
+      Promise.all([
+        safeQuery('tweets', 'createdAt'),
+        safeQuery('reddit_posts', 'createdAt'),
+        safeQuery('googlenews', 'publishedAt'),
+        safeQuery('linkedin_posts', 'posted_at'),
+        // author-affiliation classifier cache (employee vs external). Public-read;
+        // returns [] if the table isn't applied yet, so the heuristic still works.
+        safeQuery('author_affiliation', 'checked_at'),
+      ]),
+      timeout,
+    ])
+    if (result === 'timeout') {
+      console.warn('[SOV] fetch timed out after 15s — rendering empty state')
+      return { tweets: [], redditPosts: [], googleNews: [], linkedinPosts: [], authorAff: [] }
     }
-  }
-
-  useEffect(() => {
-    fetchAll()
+    const [tw, rd, gn, li, aff] = result
+    return { tweets: tw, redditPosts: rd, googleNews: gn, linkedinPosts: li, authorAff: aff }
   }, [])
+
+  const { data, loading, error, refetch } = useCachedFetch('sov-raw', fetcher, { idb: true })
+  const tweets = data?.tweets || []
+  const redditPosts = data?.redditPosts || []
+  const googleNews = data?.googleNews || []
+  const linkedinPosts = data?.linkedinPosts || []
+  const authorAff = data?.authorAff || []
 
   // Tracked-name index from the competitor list (name + aliases, case-insensitive,
   // trimmed). isTracked returns the canonical name (or null) so attributed posts
@@ -221,7 +204,7 @@ export function useSOVData(competitorsArg) {
     allPosts, companies, competitors,
     loading: loading || own.loading,
     error: error || own.error,
-    refetch: fetchAll,
+    refetch,
     getCompanySOV, getCompanySentiment, getPlatformBreakdown,
   }
 }
