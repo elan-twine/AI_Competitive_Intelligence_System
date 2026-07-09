@@ -1211,6 +1211,20 @@
 .sb-progress { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .cr-post-date { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
+/* Convergence trend — generator precision week over week */
+.sb-trend { margin: -6px 0 16px; padding: 12px 16px; background: var(--inner-bg); border: 1px solid var(--border); border-radius: 12px; }
+.sb-trend-label { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.sb-trend-bars { display: flex; align-items: flex-end; gap: 8px; height: 64px; margin-top: 10px; }
+.sb-trend-col { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 0 0 auto; width: 34px; }
+.sb-trend-bar-track { width: 12px; height: 46px; display: flex; align-items: flex-end; background: var(--divider); border-radius: 3px; overflow: hidden; }
+.sb-trend-bar-fill { width: 100%; background: var(--accent); border-radius: 3px; min-height: 2px; transition: height 0.2s; }
+.sb-trend-pct { font-size: 0.66rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Per-⭐ RAG taste score */
+.sb-taste { font-size: 0.66rem; font-weight: 700; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 999px; margin-right: 5px; vertical-align: middle; }
+.sb-taste.pos { color: var(--positive); border: 1px solid var(--positive); }
+.sb-taste.neg { color: var(--neutral); border: 1px solid var(--neutral); }
+
 .cr-post.sb-post { display: flex; align-items: flex-start; gap: 14px; padding: 6px 0; }
 .sb-post .cr-post-main { flex: 1; min-width: 0; }
 .sb-rated-up { border-left: 3px solid var(--positive); padding-left: 10px; }
