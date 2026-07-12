@@ -133,6 +133,12 @@ function Dashboard({ onLogout, onNavigate }) {
     [allPosts, selectedPlatforms, directNames]
   )
   const ranked = useMemo(() => rankings(directPosts, sovConfig), [directPosts, sovConfig])
+  // Current live standing (same numbers as the ranking table) → fed to the trend
+  // chart as its "Now" tip so the graph ends where the table says.
+  const nowValues = useMemo(
+    () => Object.fromEntries((ranked || []).map(r => [r.company, r.weightedPct])),
+    [ranked]
+  )
   // When the platform filter is narrowed, the weekly trend charts switch from the
   // frozen (cross-platform) board to a live series computed off the filtered posts,
   // so they reflect the selected platform(s). "All" = frozen board, full history.
@@ -346,6 +352,7 @@ function Dashboard({ onLogout, onNavigate }) {
               live={platformFiltered}
               config={sovConfig}
               windowDays={windowDays}
+              nowValues={nowValues}
             />
           </GlassCard>
 
