@@ -16,6 +16,9 @@ const MAX_WEEKLY_POINTS = 52   // ~1 year of weekly snapshots
 
 function TrendTooltip({ active, payload, isDaily, isSentiment }) {
   if (!active || !payload?.length) return null
+  // Daily-cumulative fill points are on the line but not individually viewable —
+  // only weekly snapshots + the Now point get a popup.
+  if (payload[0]?.payload?.__fill) return null
   const rows = [...payload]
     .filter(p => p.value != null && p.strokeOpacity !== 0)
     .sort((a, b) => (b.value || 0) - (a.value || 0))
@@ -66,6 +69,11 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const toDisplay = (v) => (v == null || isNaN(v)) ? v : (isSentiment ? Math.round(((v / 100) * 6 - 3) * 100) / 100 : v)
   const { series: frozenSeries } = useWeeklySOV(metric)
   const { series: dailySeries } = useDailySOV(windowDays === 30 ? 30 : 7, metric)
+  // Daily CUMULATIVE (YTD) standings — sov_daily window_days=0, written end-of-day
+  // by the Snapshot from 2026-07-12 on. Same all-time metric as the weekly board,
+  // so the YTD line can flow THROUGH these daily values. They are NOT drawn or
+  // hoverable — only the weekly snapshots + the Now point are.
+  const { series: cumDailySeries } = useDailySOV(0, metric)
   const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
   const [active, setActive] = useState(null)              // legend-hovered company (spotlight)
   // Weekly (YTD) SOV has TWO valid readings and the chart offers both:
@@ -123,7 +131,18 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       ? rollingDailySentimentSeries(posts, { windowDays })
       : rollingDailySOVSeries(posts, config, { windowDays, fillZeroFor: fillNames })
   }, [isDaily, live, posts, dailySeries.length, metric, config, windowDays, fillNames])
-  const series = liveSeries || isolatedSeries || dailyFallback || (isDaily ? dailySeries : frozenSeries)
+  // YTD Standings line flows THROUGH the daily-cumulative points where they exist:
+  // weekly snapshots are the marked/hoverable points (`__weekly`); daily days are
+  // on-the-line-only (`__fill` — no dot, no tooltip, no x-tick). Merged by date,
+  // weekly wins a shared date. History predating the daily series stays weekly-only.
+  const weeklyMerged = useMemo(() => {
+    if (isDaily || live || effMode === 'weekly' || metric !== 'overall') return frozenSeries
+    const byDate = new Map()
+    for (const row of frozenSeries) byDate.set(row.week, { ...row, __weekly: true })
+    for (const row of cumDailySeries) if (!byDate.has(row.week)) byDate.set(row.week, { ...row, __fill: true })
+    return [...byDate.values()].sort((a, b) => (a.week < b.week ? -1 : a.week > b.week ? 1 : 0))
+  }, [isDaily, live, effMode, metric, frozenSeries, cumDailySeries])
+  const series = liveSeries || isolatedSeries || dailyFallback || (isDaily ? dailySeries : weeklyMerged)
 
   const data = useMemo(() => {
     const n = isDaily ? MAX_DAILY_POINTS : MAX_WEEKLY_POINTS
@@ -160,7 +179,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   // We only track public mentions of DIRECT competitors, so the chart is always
   // direct-only (+ Twine) — no All/indirect view.
   const lines = useMemo(() => {
-    const META = new Set(['week', 't'])
+    const META = new Set(['week', 't', '__weekly', '__fill'])
     const present = new Set()
     for (const row of data) for (const k of Object.keys(row)) if (!META.has(k)) present.add(k)
     const activeNames = (competitors || []).filter(c => c && c.active !== false).map(c => c.name)
@@ -210,6 +229,13 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   // its timestamp (for the reference line on the numeric time axis).
   const nowShown = data.length > 0 && data[data.length - 1].week === 'Now'
   const nowTs = nowShown ? data[data.length - 1].t : null
+  // When the line flows through hidden daily-fill points (YTD), pin the x-axis
+  // ticks to the weekly snapshots + Now only — so no daily dates are labelled.
+  // Other views (daily/isolated/sentiment) have no fill → let recharts auto-tick.
+  const xTicks = useMemo(() => {
+    if (!data.some(r => r.__fill)) return undefined
+    return data.filter(r => r.__weekly || r.week === 'Now').map(r => r.t)
+  }, [data])
   // Date formatter for the time x-axis ticks.
   const fmtTick = (t) => {
     const d = new Date(t)
@@ -317,6 +343,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
             type="number"
             scale="time"
             domain={['dataMin', 'dataMax']}
+            ticks={xTicks}
             tickFormatter={fmtTick}
             tick={{ fill: 'var(--text-secondary)', fontSize: 12 }}
             tickLine={false}
@@ -375,7 +402,14 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
                 strokeWidth={active === name ? (twine ? 4.5 : 3) : (twine ? 3.25 : 1.75)}
                 strokeOpacity={dim ? 0.16 : 1}
                 hide={hidden.has(name)}
-                dot={data.length <= 16 ? { r: twine ? 3 : 2, strokeWidth: 0, fill: color } : false}
+                dot={(props) => {
+                  const { cx, cy, payload, index } = props
+                  if (cx == null || cy == null || !payload) return null
+                  if (payload.__fill) return null // daily-cumulative value: on the line, not drawn
+                  const real = payload.__weekly || payload.week === 'Now'
+                  if (!real && data.length > 16) return null // dense daily/rolling views stay clean
+                  return <circle key={`${name}-${index}`} cx={cx} cy={cy} r={twine ? 3 : 2} fill={color} />
+                }}
                 activeDot={{ r: twine ? 6 : 4 }}
                 connectNulls
                 isAnimationActive={false}
