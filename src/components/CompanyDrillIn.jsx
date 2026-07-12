@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink, ChevronRight, Flame, Star, Download } from 'lucide-react'
 import { downloadCSV } from '../lib/csv'
 import { resolvePostUrl } from '../lib/postUrl'
-import { fmtPostDate, ymd } from '../lib/dates'
+import { fmtPostDate, ymd, fmtDateRange } from '../lib/dates'
 import { computeWeightedSOV, postWeightOf, isoWeekStart } from '../lib/metrics'
+import { extractEngagement } from '../lib/engagement'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
 import { MisattributeButton } from './MisattributeButton'
 import './companyDrillIn.css'
@@ -18,12 +19,7 @@ function weekLabel(key) {
   const [y, m, d] = key.split('-').map(Number)
   const start = new Date(y, m - 1, d)
   const end = new Date(start); end.setDate(end.getDate() + 6)
-  const sM = start.toLocaleDateString(undefined, { month: 'short' })
-  const eM = end.toLocaleDateString(undefined, { month: 'short' })
-  const range = sM === eM
-    ? `${sM} ${start.getDate()} – ${end.getDate()}`
-    : `${sM} ${start.getDate()} – ${eM} ${end.getDate()}`
-  return `Week of ${range}`
+  return `Week of ${fmtDateRange(start, end)}`
 }
 
 // --- Cross-platform field normalization. The hook surfaces every DB column
@@ -39,6 +35,9 @@ export function normalizePost(p, mult = 1) {
   let url = ''
   let source = ''
   let engagement = [] // [{ icon, label, value }]
+  // Raw per-platform engagement values (column mapping centralized in
+  // lib/engagement); num() below preserves null so absent metrics stay hidden.
+  const eng = extractEngagement(p)
 
   if (plat === 'LinkedIn') {
     const a = p.author && typeof p.author === 'object' ? p.author : {}
@@ -50,9 +49,9 @@ export function normalizePost(p, mult = 1) {
     title = p.title || ''
     url = p.post_url || ''
     engagement = [
-      { key: 'reactions', icon: ThumbsUp, label: 'reactions', value: num(p.totalReactions) },
-      { key: 'comments', icon: MessageSquare, label: 'comments', value: num(p.comments) },
-      { key: 'reshares', icon: Repeat2, label: 'reposts', value: num(p.reshares) },
+      { key: 'reactions', icon: ThumbsUp, label: 'reactions', value: num(eng.reactions) },
+      { key: 'comments', icon: MessageSquare, label: 'comments', value: num(eng.comments) },
+      { key: 'reshares', icon: Repeat2, label: 'reposts', value: num(eng.reshares) },
     ]
   } else if (plat === 'X') {
     text = p.text || ''
@@ -61,11 +60,11 @@ export function normalizePost(p, mult = 1) {
     // the last-resort fallback.
     url = p.url || p.twitterUrl || ''
     engagement = [
-      { key: 'likes', icon: ThumbsUp, label: 'likes', value: num(p.likeCount) },
-      { key: 'replies', icon: MessageSquare, label: 'replies', value: num(p.replyCount) },
-      { key: 'reposts', icon: Repeat2, label: 'reposts', value: num(p.retweetCount) },
-      { key: 'quotes', icon: Quote, label: 'quotes', value: num(p.quoteCount) },
-      { key: 'views', icon: Eye, label: 'views', value: num(p.viewCount) },
+      { key: 'likes', icon: ThumbsUp, label: 'likes', value: num(eng.likes) },
+      { key: 'replies', icon: MessageSquare, label: 'replies', value: num(eng.replies) },
+      { key: 'reposts', icon: Repeat2, label: 'reposts', value: num(eng.reposts) },
+      { key: 'quotes', icon: Quote, label: 'quotes', value: num(eng.quotes) },
+      { key: 'views', icon: Eye, label: 'views', value: num(eng.views) },
     ].filter(e => e.value != null)
   } else if (plat === 'Reddit') {
     text = p.selfText || ''
@@ -73,8 +72,8 @@ export function normalizePost(p, mult = 1) {
     url = p.url || p.permalink || ''
     source = p.subreddit ? `r/${p.subreddit}` : ''
     engagement = [
-      { key: 'upvotes', icon: ArrowUp, label: 'upvotes', value: num(p.score) },
-      { key: 'comments', icon: MessageSquare, label: 'comments', value: num(p.numComments) },
+      { key: 'upvotes', icon: ArrowUp, label: 'upvotes', value: num(eng.upvotes) },
+      { key: 'comments', icon: MessageSquare, label: 'comments', value: num(eng.comments) },
     ]
   } else if (plat === 'Google News') {
     title = p.title || ''

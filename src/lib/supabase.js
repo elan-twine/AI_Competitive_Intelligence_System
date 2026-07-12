@@ -18,11 +18,24 @@ if (!supabaseAnonKey) {
 // truncate to the newest 1000 on a plain query — a data bug that gets worse over
 // time. Paginate with .range() until a short page. `buildQuery` is a FACTORY
 // (invoked per page) because supabase-js query builders are single-use/thenable.
-export async function fetchAllRows(buildQuery, { pageSize = 1000, maxPages = 25 } = {}) {
+// onError: 'throw' (default) rejects on the first page error — callers that need
+// all-or-nothing. 'partial' logs and returns whatever paged in so far — for the
+// post firehose, which races a 15s timeout and must never throw. `label` tags
+// the soft-fail warning with the table name.
+export async function fetchAllRows(buildQuery, { pageSize = 1000, maxPages = 25, onError = 'throw', label = '' } = {}) {
   const all = []
   for (let i = 0; i < maxPages; i++) {
-    const { data, error } = await buildQuery().range(i * pageSize, (i + 1) * pageSize - 1)
-    if (error) throw error
+    let data, error
+    try {
+      ({ data, error } = await buildQuery().range(i * pageSize, (i + 1) * pageSize - 1))
+    } catch (err) {
+      if (onError === 'partial') { console.warn(`[fetchAllRows] ${label} threw:`, err); break }
+      throw err
+    }
+    if (error) {
+      if (onError === 'partial') { console.warn(`[fetchAllRows] ${label} error:`, error.message); break }
+      throw error
+    }
     const rows = data || []
     all.push(...rows)
     if (rows.length < pageSize) break
