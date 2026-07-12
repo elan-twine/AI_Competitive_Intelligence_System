@@ -5,6 +5,7 @@ import { resolvePostUrl } from '../lib/postUrl'
 import { fmtPostDate } from '../lib/dates'
 import { computeWeightedSOV, postWeightOf, isoWeekStart } from '../lib/metrics'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
+import { MisattributeButton } from './MisattributeButton'
 import './companyDrillIn.css'
 
 // --- Week bucketing: shared scrape-anchored weeks (metrics.isoWeekStart) ---
@@ -347,7 +348,7 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
                   </div>
                   <div className="cdi-standouts-list">
                     {standouts.items.map((p, i) => (
-                      <StandoutChip post={p} key={i} />
+                      <StandoutChip post={p} company={company} key={i} />
                     ))}
                   </div>
                 </div>
@@ -370,7 +371,7 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
                     {open && (
                       <div className="cdi-posts">
                         {w.posts.map((p, i) => (
-                          <PostRow post={p} key={i} />
+                          <PostRow post={p} company={company} key={i} />
                         ))}
                       </div>
                     )}
@@ -400,7 +401,7 @@ function AuthorTypeBadge({ authorType, platform }) {
   )
 }
 
-function StandoutChip({ post }) {
+function StandoutChip({ post, company }) {
   const color = PLATFORM_COLOR_VAR[post.platform] || 'var(--text-muted)'
   const preview = (post.title || post.text || '(no preview text)').trim()
   const short = preview.length > 90 ? preview.slice(0, 90) + '…' : preview
@@ -429,6 +430,7 @@ function StandoutChip({ post }) {
       </div>
       <div className="cdi-chip-text">{short}</div>
       <div className="cdi-chip-why"><Star size={11} /> {phrase}</div>
+      <div className="cdi-chip-actions"><MisattributeButton post={post} company={company} compact /></div>
     </>
   )
   if (post.url) {
@@ -441,7 +443,7 @@ function StandoutChip({ post }) {
   return <div className="cdi-chip">{Body}</div>
 }
 
-function PostRow({ post }) {
+function PostRow({ post, company }) {
   const color = PLATFORM_COLOR_VAR[post.platform] || 'var(--text-muted)'
   const snippet = post.text || post.title || ''
   const headline = post.title && post.text ? post.title : ''
@@ -490,6 +492,7 @@ function PostRow({ post }) {
             })}
           </div>
           <div className="cdi-foot-right">
+            <MisattributeButton post={post} company={company} compact />
             {post.sentiment != null && (
               <span className={`cdi-sent ${sentClass(post.sentiment)}`}>{fmtSent(post.sentiment)}</span>
             )}

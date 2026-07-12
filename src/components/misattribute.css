@@ -1,0 +1,28 @@
+/* "Misattributed" soft-remove control on item cards. */
+.misattr-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent; border: 1px solid var(--divider); border-radius: 999px;
+  color: var(--text-muted); font-family: inherit; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; cursor: pointer; transition: all 0.15s; opacity: 0.6;
+  vertical-align: middle;
+}
+.misattr-btn:hover { opacity: 1; color: var(--negative); border-color: var(--negative); }
+.misattr-btn.compact { padding: 2px; border-radius: 6px; }
+.misattr-btn-label { white-space: nowrap; }
+
+.misattr-confirm {
+  display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  vertical-align: middle;
+}
+.misattr-confirm.compact { gap: 4px; }
+.misattr-q { font-size: 11px; color: var(--text-secondary); }
+.misattr-yes, .misattr-no {
+  font-family: inherit; font-size: 11px; font-weight: 700; border-radius: 6px;
+  padding: 2px 8px; cursor: pointer; border: 1px solid transparent;
+}
+.misattr-yes { background: var(--negative); color: #fff; }
+.misattr-yes:hover { filter: brightness(1.08); }
+.misattr-yes:disabled { opacity: 0.6; cursor: default; }
+.misattr-no { background: transparent; border-color: var(--divider); color: var(--text-secondary); }
+.misattr-no:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.misattr-done { font-size: 11px; font-weight: 600; color: var(--text-muted); font-style: italic; vertical-align: middle; }

@@ -6,6 +6,7 @@ import { usePostsOfInterest } from '../hooks/usePostsOfInterest'
 import { useSocialBriefFeedback } from '../hooks/useSocialBriefFeedback'
 import { resolvePostUrl } from '../lib/postUrl'
 import { fmtPostDate } from '../lib/dates'
+import { MisattributeButton } from './MisattributeButton'
 
 // Social Briefs — the weekly competitor-social review, one row per
 // competitor-AUTHORED LinkedIn post (company page + employees). Each post gets a
@@ -212,6 +213,7 @@ export function SocialBriefs({ posts, competitors }) {
                                 <span className="cr-post-eng"><MessageSquare size={11} /> {p.comments}</span>
                                 <span className="cr-post-eng"><Repeat2 size={11} /> {p.reshares}</span>
                                 {purl && <a href={purl} target="_blank" rel="noopener noreferrer" className="cr-post-link">open ↗</a>}
+                                <MisattributeButton post={{ ...p, platform: 'LinkedIn' }} company={c.name} compact />
                               </div>
                             </div>
                             <div className="sb-vote">

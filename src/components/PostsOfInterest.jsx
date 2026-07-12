@@ -4,6 +4,7 @@ import { GlassCard } from './GlassCard'
 import { usePostsOfInterest } from '../hooks/usePostsOfInterest'
 import { buildPostsOfInterest, buildEngagementIndex, TYPE_COLORS } from '../lib/postsOfInterest'
 import { colorForCompany } from '../lib/colors'
+import { MisattributeButton } from './MisattributeButton'
 
 // Posts of Interest — the app version of the manual bi-weekly "Competitor Social
 // Analysis" review: a curated digest of notable competitor posts, grouped by
@@ -28,7 +29,7 @@ function fmtDate(d) {
   return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-function PostRow({ item }) {
+function PostRow({ item, onFlagged }) {
   const e = item.engagement
   const Body = (
     <>
@@ -55,6 +56,12 @@ function PostRow({ item }) {
             <span><Repeat2 size={11} /> {e.reshares.toLocaleString()}</span>
           </span>
         )}
+        <MisattributeButton
+          post={{ platform: item.platform, source_id: item.sourceId, url: item.url }}
+          company={item.company}
+          onFlagged={onFlagged}
+          compact
+        />
         {item.url && <span className="poi-open"><ExternalLink size={12} /> open</span>}
       </div>
     </>
@@ -76,6 +83,9 @@ export function PostsOfInterest({ competitors = [], allPosts = [] }) {
 
   // Period selector: 0..N-1 index into periods, or 'all'. Default = latest period.
   const [sel, setSel] = useState(0)
+  // Items flagged misattributed this session — hidden locally (POI reads its own
+  // table, so the global SOV refetch doesn't drop them here).
+  const [hidden, setHidden] = useState(() => new Set())
   const isAll = sel === 'all'
   const bucket = isAll ? model.all : (model.periods[sel] || model.periods[0])
   const atNewest = !isAll && sel <= 0
@@ -143,7 +153,9 @@ export function PostsOfInterest({ competitors = [], allPosts = [] }) {
                 <span className="poi-co-count">{items.length}</span>
               </div>
               <div className="poi-co-items">
-                {items.map(it => <PostRow item={it} key={it.id} />)}
+                {items.filter(it => !hidden.has(it.id)).map(it => (
+                  <PostRow item={it} key={it.id} onFlagged={() => setHidden(h => new Set(h).add(it.id))} />
+                ))}
               </div>
             </div>
           ))}

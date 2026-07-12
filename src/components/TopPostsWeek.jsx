@@ -5,6 +5,7 @@ import { normalizePost, whyDidWell } from './CompanyDrillIn'
 import { colorForCompany } from '../lib/colors'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
 import { fmtPostDate } from '../lib/dates'
+import { MisattributeButton } from './MisattributeButton'
 import './topPosts.css'
 
 /* The wild-outliers reel: the highest-impact posts from the TRAILING 7 DAYS
@@ -56,6 +57,7 @@ function TopPostRow({ post }) {
       </div>
       <div className="twp-text">{short || <em>(no preview text)</em>}</div>
       <div className="twp-why"><Star size={11} /> {phrase}</div>
+      <div className="twp-actions"><MisattributeButton post={post} company={post.company} compact /></div>
     </>
   )
   if (post.url) {
