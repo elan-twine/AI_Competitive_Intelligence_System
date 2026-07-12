@@ -385,15 +385,16 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
   )
 }
 
-// Small pill labeling who authored a LinkedIn post: the company's own page,
-// a confirmed employee, or a genuinely external voice. Not shown for other
-// platforms — the backend treats News/X/Reddit as always-external, so the
-// tag would be redundant noise there.
+// Small pill labeling who authored a post: on LinkedIn — the company's own
+// page, a confirmed employee, or a genuinely external voice; on X — the
+// company's own account vs an external voice (binary, from the authorWeight
+// tier marker). Not shown for News/Reddit, which the backend treats as
+// always-external, so the tag would be redundant noise there.
 const AUTHOR_TYPE_LABEL = { company: 'Company', employee: 'Employee', external: 'External' }
 function AuthorTypeBadge({ authorType, platform }) {
-  if (platform !== 'LinkedIn' || !authorType) return null
+  if ((platform !== 'LinkedIn' && platform !== 'X') || !authorType) return null
   return (
-    <span className={`cdi-authortype cdi-authortype-${authorType}`} title="Who posted this — the company's own page, a confirmed employee, or an external voice">
+    <span className={`cdi-authortype cdi-authortype-${authorType}`} title="Who posted this — the company's own account, a confirmed employee, or an external voice">
       {AUTHOR_TYPE_LABEL[authorType] || authorType}
     </span>
   )

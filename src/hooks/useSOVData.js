@@ -142,12 +142,14 @@ export function useSOVData(competitorsArg) {
       .filter(r => r.verdict === 'employee' && r.profile_id && r.competitor)
       .map(r => `${String(r.competitor).trim().toLowerCase()}|${String(r.profile_id)}`)
   )
-  // Ternary author tier — mirrors the n8n post_weight model exactly (company
-  // page < employee < external). Only determinable on LinkedIn; every other
-  // platform is always 'external'. Company page = author.profile_id is the
-  // tracked competitor's own URN. Employee = classifier cache hit or the
-  // company name appears in the author's headline. Else external.
+  // Author tier — mirrors the n8n post_weight model. On LinkedIn it's ternary
+  // (company page < employee < external): company = author.profile_id is the
+  // tracked competitor's own URN; employee = classifier cache hit or the company
+  // name appears in the author's headline; else external. On X it's binary,
+  // keyed off the `authorWeight` tier marker the pipeline stamps (1 = the
+  // company's own account, 5 = external voice). News/Reddit are always external.
   const authorTypeOf = (p) => {
+    if (p.platform === 'X') return (Number(p.authorWeight) || 5) <= 1 ? 'company' : 'external'
     if (p.platform !== 'LinkedIn') return 'external'
     const a = p.author && typeof p.author === 'object' ? p.author : {}
     const prof = String(a.profile_id || '')
