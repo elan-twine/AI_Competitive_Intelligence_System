@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useCompetitors } from './useCompetitors'
 import { useCachedFetch } from './useCachedFetch'
 import { isLocallyFlagged, subscribeFlagged, postIdentity } from '../lib/misattribution'
+import { postWeightOf } from '../lib/metrics'
 
 // The set of company names/aliases we track now comes from the `competitors`
 // table (source of truth), not a hardcoded list. Anything else in the source
@@ -125,16 +126,6 @@ export function useSOVData(competitorsArg) {
     // Normalize aliases onto the canonical competitor name.
     .map(p => ({ ...p, companyName: canonicalOf(p.companyName) }))
 
-  // Per-post weight: prefer the n8n-computed `post_weight` (new field), fall
-  // back to the legacy `weightedSOV` during the data transition. This drives
-  // the within-platform share in metrics.js (computeWeightedSOV).
-  const postWeight = (p) => {
-    const w = p.post_weight
-    if (w != null && !isNaN(w)) return Number(w)
-    if (p.weightedSOV != null && !isNaN(p.weightedSOV)) return Number(p.weightedSOV)
-    return 1
-  }
-
   // Per-post fields the rest of the app expects:
   //   unweightedSOV — pure post-count share (1 / total posts)
   //   weightedSOV   — the per-post weight (within-platform share is computed
@@ -174,7 +165,7 @@ export function useSOVData(competitorsArg) {
   }
   const totalPosts = rawPosts.length || 1
   const allPosts = rawPosts.map(p => {
-    const w = postWeight(p)
+    const w = postWeightOf(p)
     const authorType = authorTypeOf(p)
     return {
       ...p,

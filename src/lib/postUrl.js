@@ -1,3 +1,9 @@
+// Canonical LinkedIn post URL from a bare numeric activity id. Single source of
+// this template (used here and by postsOfInterest's id→url path).
+export function linkedinActivityUrl(id) {
+  return id ? `https://www.linkedin.com/feed/update/urn:li:activity:${id}/` : ''
+}
+
 // Best-effort canonical URL for any tracked post, so EVERY item shown in the
 // dashboard is openable — even when the scrape didn't store an explicit share
 // URL. Falls back to constructing the URL from the platform's stable id
@@ -12,7 +18,7 @@ export function resolvePostUrl(p) {
     const id = digits(p.activity_id)
       || (String(p.full_urn || '').match(/activity[:-](\d{6,})/i) || [])[1]
       || (String(p.post_url || '').match(/activity[:-](\d{6,})/i) || [])[1]
-    return http(p.post_url) || (id ? `https://www.linkedin.com/feed/update/urn:li:activity:${id}/` : '')
+    return http(p.post_url) || linkedinActivityUrl(id)
   }
   if (plat === 'X') {
     const id = digits(p.id)

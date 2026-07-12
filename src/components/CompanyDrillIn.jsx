@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { X, ThumbsUp, MessageSquare, Repeat2, Eye, Quote, ArrowUp, ExternalLink, ChevronRight, Flame, Star, Download } from 'lucide-react'
 import { downloadCSV } from '../lib/csv'
 import { resolvePostUrl } from '../lib/postUrl'
-import { fmtPostDate } from '../lib/dates'
+import { fmtPostDate, ymd } from '../lib/dates'
 import { computeWeightedSOV, postWeightOf, isoWeekStart } from '../lib/metrics'
 import { PLATFORM_COLOR_VAR } from '../lib/colors'
 import { MisattributeButton } from './MisattributeButton'
@@ -10,8 +10,7 @@ import './companyDrillIn.css'
 
 // --- Week bucketing: shared scrape-anchored weeks (metrics.isoWeekStart) ---
 function weekKey(date) {
-  const w = isoWeekStart(date)
-  return `${w.getFullYear()}-${String(w.getMonth() + 1).padStart(2, '0')}-${String(w.getDate()).padStart(2, '0')}`
+  return ymd(isoWeekStart(date))
 }
 function weekLabel(key) {
   // key = 'YYYY-MM-DD' (the Thursday week-anchor day). Render the full week
@@ -57,9 +56,10 @@ export function normalizePost(p, mult = 1) {
     ]
   } else if (plat === 'X') {
     text = p.text || ''
-    // Fall back to a reconstructed status URL when the scrape didn't return one
-    // (we always have the tweet id) so no X post is left without a link.
-    url = p.url || p.twitterUrl || (p.id ? `https://x.com/i/status/${p.id}` : '')
+    // Canonical URL (including id-reconstruction from the tweet id) is resolved by
+    // resolvePostUrl at the return below; keep only the raw stored links here as
+    // the last-resort fallback.
+    url = p.url || p.twitterUrl || ''
     engagement = [
       { key: 'likes', icon: ThumbsUp, label: 'likes', value: num(p.likeCount) },
       { key: 'replies', icon: MessageSquare, label: 'replies', value: num(p.replyCount) },

@@ -112,7 +112,7 @@ function App() {
     )
   }
 
-  if (effectiveView === 'landing') return <Landing onNavigate={navigate} onLoginSuccess={handleLoginSuccess} />
+  if (effectiveView === 'landing') return <Landing onLoginSuccess={handleLoginSuccess} />
   if (effectiveView === 'login') return <Login onNavigate={navigate} onLoginSuccess={handleLoginSuccess} />
   if (effectiveView === 'docs') return <Docs onNavigate={navigate} />
   if (effectiveView === 'dashboard') return <Dashboard onLogout={handleLogout} onNavigate={navigate} />
@@ -120,7 +120,7 @@ function App() {
   if (effectiveView === 'methodology') return <Equations onLogout={handleLogout} onNavigate={navigate} />
   if (effectiveView === 'about') return <About onLogout={handleLogout} onNavigate={navigate} />
 
-  return <Landing onNavigate={navigate} onLoginSuccess={handleLoginSuccess} />
+  return <Landing onLoginSuccess={handleLoginSuccess} />
 }
 
 export default App

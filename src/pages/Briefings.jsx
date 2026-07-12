@@ -43,7 +43,7 @@ function ThreatPill({ threat }) {
 }
 
 export default function Briefings() {
-  const { briefings, urns, loading, refetch } = useBriefingsData()
+  const { briefings, loading, refetch } = useBriefingsData()
   // Roster from the Competitors page (source of truth), to offer as options —
   // minus any competitor that ALREADY has a brief (use "Update all briefs" to
   // refresh those). briefings is keyed by keyFor(name), so match on that.
@@ -129,7 +129,6 @@ export default function Briefings() {
         {subtab === 'overview' && (
           <Overview
             data={briefings}
-            urns={urns}
             competitors={unbriefedCompetitors}
             pending={pending}
             onBriefStarted={startBrief}
@@ -152,7 +151,7 @@ export default function Briefings() {
   )
 }
 
-function WebhookBar({ urns, competitors, onBriefStarted, showToast, refetch }) {
+function WebhookBar({ competitors, onBriefStarted, showToast, refetch }) {
   const [busy, setBusy] = useState(null) // 'new' | 'loop' | null
   const [showModal, setShowModal] = useState(false)
 
@@ -277,7 +276,7 @@ function NewCompetitorModal({ competitors = [], onClose, onSubmit, busy }) {
   )
 }
 
-function Overview({ data, urns, competitors, pending = {}, onBriefStarted, loading, openBrief, showToast, refetch }) {
+function Overview({ data, competitors, pending = {}, onBriefStarted, loading, openBrief, showToast, refetch }) {
   const all = Object.values(data)
   const uniqProducts = new Set(all.flatMap(c => c.products || []))
   const highCount = all.filter(c => c.threat === 'high' || c.threat === 'critical').length
@@ -288,7 +287,7 @@ function Overview({ data, urns, competitors, pending = {}, onBriefStarted, loadi
 
   return (
     <>
-      <WebhookBar urns={urns} competitors={competitors} onBriefStarted={onBriefStarted} showToast={showToast} refetch={refetch} />
+      <WebhookBar competitors={competitors} onBriefStarted={onBriefStarted} showToast={showToast} refetch={refetch} />
 
       <div className="bf-stats">
         <StatCard label="Competitors" value={all.length} />

@@ -17,6 +17,7 @@
 //   4. Sentiment is its own dimension; a negative-mention spike never inflates SOV.
 
 import { DEFAULT_SOV_CONFIG } from '../hooks/useSOVConfig'
+import { ymd } from './dates'
 
 // Per-post weight used for within-platform share. Prefer the n8n-computed
 // `post_weight`; fall back to the legacy normalized `weightedSOV` during the
@@ -58,7 +59,7 @@ export function applyFilters(posts, { platform = 'All', platforms, sentiment = '
   return out
 }
 
-export function companyRow(posts, company) {
+function companyRow(posts, company) {
   const rows = posts.filter(p => p.companyName === company)
   const postCount = rows.length
   const unweightedSOV = rows.reduce((s, p) => s + (p.unweightedSOV || 0), 0)
@@ -147,13 +148,6 @@ export function isoWeekStart(date) {
   const day = (d.getDay() - WEEK_ANCHOR_DAY + 7) % 7
   d.setDate(d.getDate() - day)
   return d
-}
-
-function ymd(date) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${dd}`
 }
 
 export function weeklySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
@@ -297,7 +291,7 @@ export function rollingDailySentimentSeries(posts, opts = {}) {
 
 // Sentiment as its own dimension: net sentiment % and positive-vs-negative
 // SOV split. Net = (pos - neg) / total mentions, expressed as %.
-export function sentimentDimension(posts, company) {
+function sentimentDimension(posts, company) {
   const rows = (company ? posts.filter(p => p.companyName === company) : posts)
     .filter(p => p.sentiment != null)
   let positive = 0, neutral = 0, negative = 0

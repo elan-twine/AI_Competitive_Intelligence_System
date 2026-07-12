@@ -1,9 +1,10 @@
 import { WEEK_ANCHOR_DAY } from './metrics'
+import { ymd } from './dates'
 
 // Competitive Review data model: weekly, per-competitor view of posts the
 // competitors themselves published (their company page + employees), with
-// LinkedIn engagement aggregates. Skeleton for the future weekly insight report
-// (marketing-strategy shifts / campaigns) — that classification is TODO.
+// LinkedIn engagement aggregates. `buildWeekly` + `weekRangeLabel` power the
+// Social Briefs page (SocialBriefs.jsx).
 //
 // Source: reuses the already-loaded `allPosts` (from useSOVData). LinkedIn rows
 // carry the raw engagement + author fields. Authorship is only reliably known on
@@ -12,16 +13,13 @@ import { WEEK_ANCHOR_DAY } from './metrics'
 
 // Week-start label 'YYYY-MM-DD' for a date/timestamp, anchored to the shared
 // scrape-aligned anchor day (metrics.WEEK_ANCHOR_DAY — currently Thursday).
-export function weekStartLabel(d) {
+function weekStartLabel(d) {
   const dt = new Date(d)
   if (isNaN(dt.getTime())) return null
   const x = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
   const day = (x.getDay() - WEEK_ANCHOR_DAY + 7) % 7
   x.setDate(x.getDate() - day)
-  const y = x.getFullYear()
-  const m = String(x.getMonth() + 1).padStart(2, '0')
-  const dd = String(x.getDate()).padStart(2, '0')
-  return `${y}-${m}-${dd}`
+  return ymd(x)
 }
 
 // Human label for a week: "Jun 16 – Jun 22, 2026"
@@ -38,7 +36,7 @@ export function weekRangeLabel(label) {
 
 // Is this post authored BY the competitor (its company page or an employee)?
 // Only meaningful for LinkedIn (we have the author object there).
-export function isCompanyAuthored(post, urnByName) {
+function isCompanyAuthored(post, urnByName) {
   if (post.platform !== 'LinkedIn') return false
   const a = post.author && typeof post.author === 'object' ? post.author : {}
   const cn = String(post.companyName || '')
@@ -50,7 +48,7 @@ export function isCompanyAuthored(post, urnByName) {
   return false
 }
 
-export function linkedinEngagement(p) {
+function linkedinEngagement(p) {
   return {
     reactions: Number(p.totalReactions) || 0,
     comments: Number(p.comments) || 0,
@@ -60,7 +58,7 @@ export function linkedinEngagement(p) {
 
 // Per-platform attributed counts + a coarse engagement number, for the
 // "all platforms" toggle. LinkedIn is handled separately (authored-only).
-export function platformActivity(p) {
+function platformActivity(p) {
   switch (p.platform) {
     case 'X': return (Number(p.likeCount) || 0) + (Number(p.replyCount) || 0) + (Number(p.retweetCount) || 0) + (Number(p.quoteCount) || 0)
     case 'Reddit': return (Number(p.score) || 0) + (Number(p.numComments) || 0)

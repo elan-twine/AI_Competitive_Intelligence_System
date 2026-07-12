@@ -10,7 +10,7 @@ function cell(v) {
 
 // rows: array of plain objects. columns: [{ key, label }] (order + headers);
 // omit to derive from the first row's keys.
-export function toCSV(rows, columns) {
+function toCSV(rows, columns) {
   if (!rows?.length) return ''
   const cols = columns || Object.keys(rows[0]).map(k => ({ key: k, label: k }))
   const head = cols.map(c => cell(c.label)).join(',')
