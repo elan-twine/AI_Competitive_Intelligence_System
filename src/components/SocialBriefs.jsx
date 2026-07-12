@@ -26,17 +26,13 @@ function pickSets(poiPosts) {
 }
 
 export function SocialBriefs({ posts, competitors }) {
-  const urnByName = useMemo(
-    () => Object.fromEntries((competitors || []).map(c => [c.name, c.linkedin_urn])),
-    [competitors]
-  )
   // Exclude ourselves — we don't brief on Twine's own activity. Covers direct +
   // indirect competitors, self only removed.
   const selfNames = useMemo(
     () => new Set((competitors || []).filter(c => c.is_self).map(c => c.name)),
     [competitors]
   )
-  const model = useMemo(() => buildWeekly(posts, urnByName), [posts, urnByName])
+  const model = useMemo(() => buildWeekly(posts), [posts])
   const { posts: poiPosts } = usePostsOfInterest()
   const picks = useMemo(() => pickSets(poiPosts), [poiPosts])
   const { byId, setVerdict } = useSocialBriefFeedback()

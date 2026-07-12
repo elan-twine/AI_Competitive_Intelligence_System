@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, fetchAllRows } from '../lib/supabase'
 import { useCompetitors } from './useCompetitors'
 import { useCachedFetch } from './useCachedFetch'
 import { isLocallyFlagged, subscribeFlagged, postIdentity } from '../lib/misattribution'
 import { postWeightOf } from '../lib/metrics'
+import { authorTypeOf } from '../lib/authorType'
 
 // The set of company names/aliases we track now comes from the `competitors`
 // table (source of truth), not a hardcoded list. Anything else in the source
@@ -40,31 +41,13 @@ export function useSOVData(competitorsArg) {
     // (2.8k+ and growing daily), so a single query silently returned only the
     // newest ~6 days of LinkedIn history — starving rankings, sentiment, and
     // charts of everything older. Paginate with .range() until a short page.
-    const safeQuery = async (table, orderCol) => {
-      const PAGE = 1000
-      const MAX_PAGES = 20 // 20k rows/table — far above current sizes, bounds memory
-      const all = []
-      try {
-        for (let i = 0; i < MAX_PAGES; i++) {
-          const res = await supabase
-            .from(table)
-            .select('*')
-            .order(orderCol, { ascending: false })
-            .range(i * PAGE, (i + 1) * PAGE - 1)
-          if (res.error) {
-            console.warn(`[SOV] ${table} query error:`, res.error.message)
-            break
-          }
-          const rows = res.data || []
-          all.push(...rows)
-          if (rows.length < PAGE) break
-        }
-        return all
-      } catch (err) {
-        console.warn(`[SOV] ${table} threw:`, err)
-        return all
-      }
-    }
+    // Soft-fail pagination (shared fetchAllRows): 20k-row/table cap, returns
+    // whatever paged in on error so the firehose never throws (it races a 15s
+    // timeout below).
+    const safeQuery = (table, orderCol) => fetchAllRows(
+      () => supabase.from(table).select('*').order(orderCol, { ascending: false }),
+      { maxPages: 20, onError: 'partial', label: table }
+    )
 
     // Generous: pagination means up to a few sequential round-trips per table.
     const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 15000))
@@ -145,28 +128,12 @@ export function useSOVData(competitorsArg) {
       .filter(r => r.verdict === 'employee' && r.profile_id && r.competitor)
       .map(r => `${String(r.competitor).trim().toLowerCase()}|${String(r.profile_id)}`)
   )
-  // Author tier — mirrors the n8n post_weight model. On LinkedIn it's ternary
-  // (company page < employee < external): company = author.profile_id is the
-  // tracked competitor's own URN; employee = classifier cache hit or the company
-  // name appears in the author's headline; else external. On X it's binary,
-  // keyed off the `authorWeight` tier marker the pipeline stamps (1 = the
-  // company's own account, 5 = external voice). News/Reddit are always external.
-  const authorTypeOf = (p) => {
-    if (p.platform === 'X') return (Number(p.authorWeight) || 5) <= 1 ? 'company' : 'external'
-    if (p.platform !== 'LinkedIn') return 'external'
-    const a = p.author && typeof p.author === 'object' ? p.author : {}
-    const prof = String(a.profile_id || '')
-    if (prof && urnSet.has(prof)) return 'company'
-    const head = String(a.headline || '').toLowerCase()
-    const cn = String(p.companyName || '').toLowerCase()
-    if (prof && cn && empKeys.has(`${cn}|${prof}`)) return 'employee'  // classifier-confirmed employee
-    if (cn && head.includes(cn)) return 'employee'
-    return 'external'
-  }
+  // Author tier ('company'|'employee'|'external') — the shared classifier in
+  // lib/authorType.js, given this hook's tracked-URN set + employee cache.
   const totalPosts = rawPosts.length || 1
   const allPosts = rawPosts.map(p => {
     const w = postWeightOf(p)
-    const authorType = authorTypeOf(p)
+    const authorType = authorTypeOf(p, { urnSet, empKeys })
     return {
       ...p,
       rawWeightedSOV: p.post_weight ?? p.weightedSOV ?? 0,

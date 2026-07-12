@@ -5,8 +5,9 @@
 // then by competitor, with an auto-detected content TYPE (guide / webinar / ad
 // / event / …) so a reader can scan what each competitor is pushing.
 
-import { ymdUTC } from './dates'
+import { ymdUTC, fmtDateRange } from './dates'
 import { linkedinActivityUrl } from './postUrl'
+import { extractEngagement } from './engagement'
 
 // ---- Content-type taxonomy --------------------------------------------------
 // The canonical set (see sov-tooling/POI_GENERATOR_SPEC.md) is the 22 types the
@@ -117,12 +118,10 @@ function periodRangeLabel(startKey, windowDays = 7) {
   const start = new Date(startKey + 'T00:00:00Z')
   if (isNaN(start.getTime())) return startKey
   const end = new Date(start.getTime() + (windowDays - 1) * DAY)
-  const sM = start.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' })
-  const eM = end.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' })
-  const sD = start.getUTCDate(), eD = end.getUTCDate()
   // "Week of Jul 2 – 8" (same month) or "Week of Jul 30 – Aug 5". The "Week of"
-  // prefix marks the Thursday OKR week; drop it for non-weekly windows.
-  const range = sM === eM ? `${sM} ${sD} – ${eD}` : `${sM} ${sD} – ${eM} ${eD}`
+  // prefix marks the Thursday OKR week; drop it for non-weekly windows. UTC to
+  // match the UTC period bucketing above.
+  const range = fmtDateRange(start, end, { utc: true })
   return windowDays === 7 ? `Week of ${range}` : range
 }
 
@@ -170,10 +169,11 @@ export function buildEngagementIndex(allPosts) {
     if (p.platform !== 'LinkedIn') continue
     const id = String(p.activity_id || '')
     if (!id) continue
+    const e = extractEngagement(p)
     idx.set(id, {
-      reactions: Number(p.totalReactions) || 0,
-      comments: Number(p.comments) || 0,
-      reshares: Number(p.reshares) || 0,
+      reactions: Number(e.reactions) || 0,
+      comments: Number(e.comments) || 0,
+      reshares: Number(e.reshares) || 0,
     })
   }
   return idx

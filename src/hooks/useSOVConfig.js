@@ -5,13 +5,10 @@ import { supabase } from '../lib/supabase'
 // single jsonb row in `sov_config` (id = 1).
 //
 // sov_config is anon-readable (grant applied 2026-07-06), so the live row wins;
-// these defaults are the offline fallback and must stay in sync with it.
-// Kept in lockstep as of 2026-07-07: platform weights rebalanced (News raised —
-// trade press is the security-buyer credibility layer; Reddit cut — lowest-volume
-// channel) and sentimentClamp collapsed to 1.0 — sentiment is DECOUPLED from the
-// SOV weight and is display-only. Weight changes are versioned in the live row's
-// weightsChangelog. The values the frontend actually USES for SOV math are
-// platformWeights + minPlatformVolume (post_weight itself is precomputed by n8n).
+// these defaults are the offline fallback and must stay in sync with it. Under
+// the mindshare-pool model (2026-07-08) the value the frontend actually USES for
+// SOV math is platformMultipliers (post_weight itself is precomputed by n8n);
+// sentimentClamp is collapsed to 1.0 — sentiment is DECOUPLED and display-only.
 export const DEFAULT_SOV_CONFIG = {
   // Mindshare-pool multipliers (2026-07-08): convert each platform's per-post
   // impact onto one common "considered-attention" scale, then pool. Trust ratios
@@ -19,9 +16,6 @@ export const DEFAULT_SOV_CONFIG = {
   // press (News) ≈ tunable > vendor social (LinkedIn/X) = 1. News is the dial the
   // team sets; the rest are ~locked. SOV = share of the pooled total.
   platformMultipliers: { LinkedIn: 1, 'Google News': 30, Reddit: 3, X: 1 },
-  // Legacy within-platform-share weights — retained for reference/rollback only;
-  // the live math now uses platformMultipliers above.
-  platformWeights: { LinkedIn: 0.40, 'Google News': 0.35, Reddit: 0.10, X: 0.15 },
   halfLifeDays: { LinkedIn: 14, 'Google News': 30, Reddit: 10, X: 7 },
   engagementWeights: {
     LinkedIn: { reaction: 1, comment: 3, reshare: 10, image: 1.5 },
@@ -34,7 +28,6 @@ export const DEFAULT_SOV_CONFIG = {
   enabledPlatforms: ['LinkedIn', 'Google News', 'Reddit', 'X'],
   sentimentClamp: { min: 1.0, max: 1.0 }, // decoupled 2026-07-07 — tone never moves the ranking
   perPostCapPct: 0.10,
-  minPlatformVolume: 3,
 }
 
 export function useSOVConfig() {

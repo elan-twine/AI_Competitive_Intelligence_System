@@ -15,6 +15,7 @@ import { PostsOfInterest } from '../components/PostsOfInterest'
 import { PlatformWeightsExplainer } from '../components/PlatformWeightsExplainer'
 import { AIVisibility } from '../components/AIVisibility'
 import { downloadCSV } from '../lib/csv'
+import { fmtDateRange } from '../lib/dates'
 import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
 import { PLATFORM_COLORS, registerCompanyColors, isTwine } from '../lib/colors'
 import Briefings from './Briefings'
@@ -45,9 +46,7 @@ function windowMeta(days) {
 function windowRangeLabel(days) {
   const end = new Date()
   const start = new Date(); start.setDate(start.getDate() - (days - 1))
-  const sM = start.toLocaleDateString(undefined, { month: 'short' })
-  const eM = end.toLocaleDateString(undefined, { month: 'short' })
-  const range = sM === eM ? `${sM} ${start.getDate()} – ${end.getDate()}` : `${sM} ${start.getDate()} – ${eM} ${end.getDate()}`
+  const range = fmtDateRange(start, end)
   return days === 7 ? `Week of ${range}` : range
 }
 
