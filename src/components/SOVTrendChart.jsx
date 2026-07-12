@@ -26,7 +26,7 @@ function TrendTooltip({ active, payload, label, isDaily, isSentiment }) {
   return (
     <div className="chart-tooltip">
       <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>
-        {isDaily ? label : `Week of ${label}`}
+        {label === 'Now' ? 'Now (live)' : isDaily ? label : `Week of ${label}`}
       </div>
       {rows.map(p => (
         <div
@@ -52,7 +52,7 @@ function TrendTooltip({ active, payload, label, isDaily, isSentiment }) {
 // sov_daily; null/other => YTD weekly board from sov_weekly). When `live` is set
 // (a platform filter is active) sov_daily can't be sliced by platform, so we
 // fall back to a weekly series computed live from the passed posts.
-export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %', posts = null, live = false, config = undefined, windowDays = null }) {
+export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %', posts = null, live = false, config = undefined, windowDays = null, nowValues = null }) {
   // Daily whenever the window is 7d/30d — whether from the precomputed sov_daily
   // board (all-platform) or, under a platform filter, a live rolling series.
   const isDaily = (windowDays === 7 || windowDays === 30)
@@ -65,7 +65,6 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const { series: dailySeries } = useDailySOV(windowDays === 30 ? 30 : 7, metric)
   const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
   const [active, setActive] = useState(null)              // legend-hovered company (spotlight)
-  const [scope, setScope] = useState('direct')             // 'all' | 'direct' — which competitor lines to draw (default: direct)
   // Weekly (YTD) SOV has TWO valid readings and the chart offers both:
   //   'total'  — cumulative standing: the frozen weekly board (sov_weekly),
   //              i.e. everyone's overall SOV as of that week, decayed carryover
@@ -126,33 +125,49 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const data = useMemo(() => {
     const n = isDaily ? MAX_DAILY_POINTS : MAX_WEEKLY_POINTS
     const sliced = series.length > n ? series.slice(series.length - n) : series
-    if (!isSentiment) return sliced
-    // Convert the 0..100 sentiment index to the −3..+3 scale for display.
-    return sliced.map(row => {
-      const out = { week: row.week }
-      for (const k of Object.keys(row)) if (k !== 'week') out[k] = toDisplay(row[k])
-      return out
-    })
-  }, [series, isDaily, isSentiment])
+    let rows = sliced
+    if (isSentiment) {
+      // Convert the 0..100 sentiment index to the −3..+3 scale for display.
+      rows = sliced.map(row => {
+        const out = { week: row.week }
+        for (const k of Object.keys(row)) if (k !== 'week') out[k] = toDisplay(row[k])
+        return out
+      })
+    }
+    // Append a live "Now" point = the current standing (the same numbers as the
+    // ranking table), so the chart's tip lines up with the table instead of
+    // ending at the last frozen snapshot. SOV only; skip in isolated
+    // week-by-week mode (its points are single-week slices, not a running total).
+    if (metric === 'overall' && effMode !== 'weekly' && nowValues) {
+      const nowRow = { week: 'Now' }
+      let any = false
+      for (const k of Object.keys(nowValues)) {
+        const v = nowValues[k]
+        if (v != null && !isNaN(v)) { nowRow[k] = v; any = true }
+      }
+      if (any) rows = [...rows, nowRow]
+    }
+    return rows
+  }, [series, isDaily, isSentiment, metric, effMode, nowValues])
 
   // Lines to draw: active competitors present in the windowed data (Twine first).
+  // We only track public mentions of DIRECT competitors, so the chart is always
+  // direct-only (+ Twine) — no All/indirect view.
   const lines = useMemo(() => {
     const present = new Set()
     for (const row of data) for (const k of Object.keys(row)) if (k !== 'week') present.add(k)
     const activeNames = (competitors || []).filter(c => c && c.active !== false).map(c => c.name)
     let names = activeNames.length ? activeNames.filter(n => present.has(n)) : [...present]
-    if (scope === 'direct') {
-      const directNames = new Set(
-        (competitors || []).filter(c => c && c.active !== false && (c.type || 'direct') !== 'indirect').map(c => c.name)
-      )
-      names = names.filter(n => directNames.has(n) || isTwine(n))
-    }
+    const directNames = new Set(
+      (competitors || []).filter(c => c && c.active !== false && (c.type || 'direct') !== 'indirect').map(c => c.name)
+    )
+    names = names.filter(n => directNames.has(n) || isTwine(n))
     return names.sort((a, b) => {
       if (isTwine(a) && !isTwine(b)) return -1
       if (isTwine(b) && !isTwine(a)) return 1
       return a.localeCompare(b)
     })
-  }, [data, competitors, scope])
+  }, [data, competitors])
 
   // Zoom the Y-axis to the visible band so tightly-packed lines spread out
   // (only across lines that are currently shown). Sentiment zooms too — no
@@ -184,6 +199,8 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   }, [data, lines, hidden, isSentiment])
   // The dashed neutral (0) guide only makes sense while 0 is inside the zoomed band.
   const neutralVisible = isSentiment && yDomain[0] <= 0 && yDomain[1] >= 0
+  // Whether the live "Now" tip is present (SOV cumulative/rolling views).
+  const nowShown = data.length > 0 && data[data.length - 1].week === 'Now'
   // Clean half-step ticks across the zoomed sentiment band (domain endpoints are
   // already snapped to 0.5). undefined for SOV → recharts picks its own.
   const sentimentTicks = useMemo(() => {
@@ -236,19 +253,8 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
               ● Filtered
             </span>
           )}
-          {[['direct', 'Direct'], ['all', 'All']].map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setScope(key)}
-              style={{ ...pill, ...(scope === key ? activePill : null) }}
-              title={key === 'direct' ? 'Direct competitors only' : 'All tracked companies (incl. indirect)'}
-            >
-              {label}
-            </button>
-          ))}
           {modeApplies && (
             <>
-              <span aria-hidden style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 2px' }} />
               <button
                 onClick={() => !live && setMode('total')}
                 disabled={live}
@@ -317,6 +323,10 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
           {neutralVisible && (
             <ReferenceLine y={0} stroke="var(--text-secondary)" strokeOpacity={0.5} strokeDasharray="4 4"
               label={{ value: 'neutral', position: 'insideBottomRight', fill: 'var(--text-secondary)', fontSize: 10 }} />
+          )}
+          {nowShown && (
+            <ReferenceLine x="Now" stroke="var(--accent)" strokeOpacity={0.5} strokeDasharray="3 3"
+              label={{ value: 'live', position: 'top', fill: 'var(--accent)', fontSize: 10 }} />
           )}
           <Tooltip content={<TrendTooltip isDaily={isDaily} isSentiment={isSentiment} />} />
           <Legend
