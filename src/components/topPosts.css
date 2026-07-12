@@ -90,3 +90,5 @@ a.twp-row:hover {
 
 /* Posted date on each top-items row */
 .twp-date { font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; margin-left: auto; }
+
+.twp-actions { margin-top: 8px; display: flex; justify-content: flex-end; }

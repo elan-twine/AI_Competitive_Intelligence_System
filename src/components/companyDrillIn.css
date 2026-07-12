@@ -456,3 +456,6 @@ a.cdi-chip:hover {
 
 /* Posted date on every drill-in item (standout chips + weekly rows) */
 .cdi-date { font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Misattribute action row on standout chips */
+.cdi-chip-actions { margin-top: 8px; display: flex; justify-content: flex-end; }

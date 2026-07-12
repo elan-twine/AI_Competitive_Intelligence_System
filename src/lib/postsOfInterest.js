@@ -154,6 +154,9 @@ function toItem(row, engagementIndex) {
   const collapsed = Math.max(1, Number(row.collapsed_count) || 1)
   return {
     id: row.id ?? row.url ?? summary,
+    // Identity for the misattribute action: the underlying post's key + platform.
+    platform: row.platform || 'LinkedIn',
+    sourceId: actId,
     company: row.author || 'Unknown',
     date: row.date || row.created_at,
     summary,

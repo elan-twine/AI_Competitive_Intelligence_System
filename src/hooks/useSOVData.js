@@ -1,7 +1,8 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useCompetitors } from './useCompetitors'
 import { useCachedFetch } from './useCachedFetch'
+import { isLocallyFlagged, subscribeFlagged, postIdentity } from '../lib/misattribution'
 
 // The set of company names/aliases we track now comes from the `competitors`
 // table (source of truth), not a hardcoded list. Anything else in the source
@@ -87,6 +88,12 @@ export function useSOVData(competitorsArg) {
   }, [])
 
   const { data, loading, error, refetch } = useCachedFetch('sov-raw', fetcher, { idb: true })
+
+  // Re-render when a mention is flagged misattributed from any item card, so it
+  // drops out of the calculations below immediately (no refetch/loader).
+  const [, setFlagTick] = useState(0)
+  useEffect(() => subscribeFlagged(() => setFlagTick(t => t + 1)), [])
+
   const tweets = data?.tweets || []
   const redditPosts = data?.redditPosts || []
   const googleNews = data?.googleNews || []
@@ -110,6 +117,11 @@ export function useSOVData(competitorsArg) {
     ...linkedinPosts.map(l => ({ ...l, platform: 'LinkedIn', ts: l.posted_at })),
   ]
     .filter(p => isTracked(p.companyName))
+    // Exclude items flagged misattributed — soft-removed, the row is kept in the
+    // DB. `misattributed` = the persisted DB flag (present after a fresh load);
+    // isLocallyFlagged = this session's optimistic removals (instant, pre-reload).
+    .filter(p => p.misattributed !== true)
+    .filter(p => { const { platform, key } = postIdentity(p); return !isLocallyFlagged(platform, key) })
     // Normalize aliases onto the canonical competitor name.
     .map(p => ({ ...p, companyName: canonicalOf(p.companyName) }))
 
