@@ -6,7 +6,7 @@ import { GoogleSignInButton } from '../components/GoogleSignInButton'
 import { signIn } from '../lib/auth'
 import './landing.css'
 
-export default function Landing({ onNavigate, onLoginSuccess }) {
+export default function Landing({ onLoginSuccess }) {
   const [loginOpen, setLoginOpen] = useState(false)
 
   return (

@@ -98,7 +98,6 @@ export function colorForCompany(name) {
 //   - PLATFORM_COLORS: literal hex, for inline styles / SVG fills.
 //   - PLATFORM_COLOR_VAR: theme CSS custom properties, for components that
 //     want light/dark-aware colors via var().
-// Use colorForPlatform(name) to resolve a hex color with a sensible fallback.
 // ---------------------------------------------------------------------------
 export const PLATFORM_COLORS = {
   'X': '#8B5CF6',        // violet — distinct from LinkedIn blue on both themes (X's own black/white would vanish in one theme)
@@ -112,8 +111,4 @@ export const PLATFORM_COLOR_VAR = {
   'Reddit': 'var(--reddit-color)',
   'Google News': 'var(--news-color)',
   'LinkedIn': 'var(--linkedin-color)',
-}
-
-export function colorForPlatform(platform, fallback = '#888') {
-  return PLATFORM_COLORS[platform] || fallback
 }

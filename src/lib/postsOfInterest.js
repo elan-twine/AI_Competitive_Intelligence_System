@@ -5,6 +5,9 @@
 // then by competitor, with an auto-detected content TYPE (guide / webinar / ad
 // / event / …) so a reader can scan what each competitor is pushing.
 
+import { ymdUTC } from './dates'
+import { linkedinActivityUrl } from './postUrl'
+
 // ---- Content-type taxonomy --------------------------------------------------
 // The canonical set (see sov-tooling/POI_GENERATOR_SPEC.md) is the 22 types the
 // manual reviewers used. The weekly generator writes one of these into
@@ -62,7 +65,7 @@ export const TYPE_COLORS = {
   'Post': '#94A3B8',
 }
 
-export function detectPostType(...texts) {
+function detectPostType(...texts) {
   const s = texts.filter(Boolean).join(' ')
   for (const [label, re] of TYPE_RULES) if (re.test(s)) return label
   return 'Post'
@@ -72,13 +75,9 @@ export function detectPostType(...texts) {
 // posts_of_interest.url is a share URL like
 //   .../posts/<slug>-activity-7440027450610298881-96e?...
 // linkedin_posts stores the bare numeric activity_id. Extract to join engagement.
-export function activityIdFromUrl(url) {
+function activityIdFromUrl(url) {
   const m = String(url || '').match(/activity[-:](\d{6,})/i)
   return m ? m[1] : null
-}
-
-export function linkedinUrlForActivity(id) {
-  return id ? `https://www.linkedin.com/feed/update/urn:li:activity:${id}/` : ''
 }
 
 // ---- Period bucketing -------------------------------------------------------
@@ -89,14 +88,6 @@ export function linkedinUrlForActivity(id) {
 // Deterministic (no dependence on "today"); legacy rows fall into their week.
 const PERIOD_ANCHOR = Date.UTC(2026, 0, 1) // 2026-01-01, a Thursday
 const DAY = 86400000
-
-function ymd(t) {
-  const d = new Date(t)
-  const y = d.getUTCFullYear()
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const dd = String(d.getUTCDate()).padStart(2, '0')
-  return `${y}-${m}-${dd}`
-}
 
 // Parse a DB timestamp to epoch ms as UTC. posts_of_interest.date is stored
 // zoneless ("2026-03-18 14:32:53"), which `new Date()` would read in the
@@ -112,15 +103,15 @@ function toUtcMs(date) {
   return new Date(s).getTime()
 }
 
-export function periodStartFor(date, windowDays = 7) {
+function periodStartFor(date, windowDays = 7) {
   const t = toUtcMs(date)
   if (isNaN(t)) return null
   const span = windowDays * DAY
   const idx = Math.floor((t - PERIOD_ANCHOR) / span)
-  return ymd(PERIOD_ANCHOR + idx * span)
+  return ymdUTC(new Date(PERIOD_ANCHOR + idx * span))
 }
 
-export function periodRangeLabel(startKey, windowDays = 7) {
+function periodRangeLabel(startKey, windowDays = 7) {
   if (startKey === 'all') return 'All periods'
   if (!startKey) return '—'
   const start = new Date(startKey + 'T00:00:00Z')
@@ -144,7 +135,7 @@ function toItem(row, engagementIndex) {
   const reason = (row.summary && row.relevance_reason && row.relevance_reason !== row.summary)
     ? row.relevance_reason : ''
   const actId = row.source_id || activityIdFromUrl(row.url)
-  const url = row.url || linkedinUrlForActivity(actId)
+  const url = row.url || linkedinActivityUrl(actId)
   // Stored engagement snapshot wins; fall back to a live join against the loaded
   // LinkedIn posts (older rows have no snapshot).
   const stored = (row.reactions != null || row.comments != null || row.reshares != null)
