@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
+import { useCachedFetch } from './useCachedFetch'
 
 // Briefing flows are triggered through a SAME-ORIGIN Cloudflare Worker proxy
 // (worker/index.js) that verifies the caller's Supabase session before
@@ -81,14 +82,10 @@ function keyFor(name) {
 }
 
 export function useBriefingsData() {
-  const [briefings, setBriefings] = useState({})
-  const [urns, setUrns] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  // Briefings are generated manually (rare), so the read is cached (localStorage);
+  // reloads read from cache. refetch() forces a fresh fetch — the briefing UI
+  // calls it after triggering a new/updated brief so the fresh row shows.
+  const fetcher = useCallback(async () => {
     const safe = async (fn) => {
       try { const r = await fn(); if (r.error) { console.warn('[briefings]', r.error.message); return [] } return r.data || [] }
       catch (e) { console.warn('[briefings] threw:', e); return [] }
@@ -97,22 +94,25 @@ export function useBriefingsData() {
       safe(() => supabase.from('competitor_briefings').select('*').order('created_at', { ascending: false })),
       safe(() => supabase.from('linkedin_URNs').select('*').order('company', { ascending: true })),
     ])
-    // Newest briefing wins per company (rows are desc by created_at).
+    return { bRows, uRows }
+  }, [])
+
+  const { data, loading, error, refetch } = useCachedFetch('briefings', fetcher, {})
+
+  // Newest briefing wins per company (rows are desc by created_at).
+  const briefings = useMemo(() => {
     const map = {}
-    for (const r of bRows) {
+    for (const r of (data?.bRows || [])) {
       const b = normalizeBriefing(r)
       if (!b?.name) continue
       const k = keyFor(b.name)
       if (!map[k]) map[k] = b
     }
-    setBriefings(map)
-    setUrns(uRows)
-    setLoading(false)
-  }, [])
+    return map
+  }, [data])
+  const urns = data?.uRows || []
 
-  useEffect(() => { fetchAll() }, [fetchAll])
-
-  return { briefings, urns, loading, error, refetch: fetchAll }
+  return { briefings, urns, loading, error, refetch }
 }
 
 export { keyFor }
