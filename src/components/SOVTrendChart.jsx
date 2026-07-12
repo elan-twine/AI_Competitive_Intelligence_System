@@ -397,7 +397,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
           )}
           {nowShown && nowTs != null && (
             <ReferenceLine x={nowTs} stroke="var(--accent)" strokeOpacity={0.5} strokeDasharray="3 3"
-              label={{ value: 'live', position: 'top', fill: 'var(--accent)', fontSize: 10 }} />
+              label={{ value: 'live', position: 'insideTop', fill: 'var(--accent)', fontSize: 10, dx: -11, dy: 2 }} />
           )}
           <Tooltip content={<TrendTooltip isDaily={isDaily} isSentiment={isSentiment} />} />
           <Legend
