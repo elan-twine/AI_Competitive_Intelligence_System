@@ -66,11 +66,6 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const toDisplay = (v) => (v == null || isNaN(v)) ? v : (isSentiment ? Math.round(((v / 100) * 6 - 3) * 100) / 100 : v)
   const { series: frozenSeries } = useWeeklySOV(metric)
   const { series: dailySeries } = useDailySOV(windowDays === 30 ? 30 : 7, metric)
-  // Daily CUMULATIVE standings (sov_daily window_days=0), written end-of-day by
-  // the Snapshot from 2026-07-12 on. Same metric as the weekly board, so the
-  // weekly Standings line can flow THROUGH these daily points (invisible — only
-  // weekly snapshots get dots). Empty for older history; grows one point/day.
-  const { series: cumDailySeries } = useDailySOV(0, metric)
   const [hidden, setHidden] = useState(() => new Set())   // companies toggled off via legend
   const [active, setActive] = useState(null)              // legend-hovered company (spotlight)
   // Weekly (YTD) SOV has TWO valid readings and the chart offers both:
@@ -128,18 +123,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       ? rollingDailySentimentSeries(posts, { windowDays })
       : rollingDailySOVSeries(posts, config, { windowDays, fillZeroFor: fillNames })
   }, [isDaily, live, posts, dailySeries.length, metric, config, windowDays, fillNames])
-  // Weekly Standings line, flowing through the daily-cumulative points where they
-  // exist: weekly snapshots are the marked points (`__weekly`), daily-cumulative
-  // days are on-the-line-only (`__fill`, no dot). Merged by date; a weekly point
-  // wins over a same-date daily one. Only for the unfiltered weekly SOV view.
-  const weeklyMerged = useMemo(() => {
-    if (isDaily || live || effMode === 'weekly' || metric !== 'overall') return frozenSeries
-    const byDate = new Map()
-    for (const row of frozenSeries) byDate.set(row.week, { ...row, __weekly: true })
-    for (const row of cumDailySeries) if (!byDate.has(row.week)) byDate.set(row.week, { ...row, __fill: true })
-    return [...byDate.values()].sort((a, b) => (a.week < b.week ? -1 : a.week > b.week ? 1 : 0))
-  }, [isDaily, live, effMode, metric, frozenSeries, cumDailySeries])
-  const series = liveSeries || isolatedSeries || dailyFallback || (isDaily ? dailySeries : weeklyMerged)
+  const series = liveSeries || isolatedSeries || dailyFallback || (isDaily ? dailySeries : frozenSeries)
 
   const data = useMemo(() => {
     const n = isDaily ? MAX_DAILY_POINTS : MAX_WEEKLY_POINTS
@@ -176,7 +160,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   // We only track public mentions of DIRECT competitors, so the chart is always
   // direct-only (+ Twine) — no All/indirect view.
   const lines = useMemo(() => {
-    const META = new Set(['week', 't', '__weekly', '__fill'])
+    const META = new Set(['week', 't'])
     const present = new Set()
     for (const row of data) for (const k of Object.keys(row)) if (!META.has(k)) present.add(k)
     const activeNames = (competitors || []).filter(c => c && c.active !== false).map(c => c.name)
@@ -226,8 +210,6 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   // its timestamp (for the reference line on the numeric time axis).
   const nowShown = data.length > 0 && data[data.length - 1].week === 'Now'
   const nowTs = nowShown ? data[data.length - 1].t : null
-  // Count of "real" points (excludes invisible daily-fill) → drives the dot rule.
-  const realCount = data.filter(r => !r.__fill).length
   // Date formatter for the time x-axis ticks.
   const fmtTick = (t) => {
     const d = new Date(t)
@@ -393,14 +375,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
                 strokeWidth={active === name ? (twine ? 4.5 : 3) : (twine ? 3.25 : 1.75)}
                 strokeOpacity={dim ? 0.16 : 1}
                 hide={hidden.has(name)}
-                dot={(props) => {
-                  const { cx, cy, payload, index } = props
-                  if (cx == null || cy == null || !payload) return null
-                  if (payload.__fill) return null // daily-cumulative fill: on the line, no marker
-                  const real = payload.__weekly || payload.week === 'Now'
-                  if (!real && realCount > 16) return null // keep dense views clean
-                  return <circle key={`${name}-${index}`} cx={cx} cy={cy} r={twine ? 3 : 2} fill={color} />
-                }}
+                dot={data.length <= 16 ? { r: twine ? 3 : 2, strokeWidth: 0, fill: color } : false}
                 activeDot={{ r: twine ? 6 : 4 }}
                 connectNulls
                 isAnimationActive={false}
