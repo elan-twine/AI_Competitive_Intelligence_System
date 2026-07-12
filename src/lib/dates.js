@@ -27,3 +27,21 @@ export function ymdUTC(date) {
   const dd = String(date.getUTCDate()).padStart(2, '0')
   return `${y}-${m}-${dd}`
 }
+
+// Human day-range label from two Dates: "Jul 2 – 8" (same month collapsed) or
+// "Jul 30 – Aug 5". Options:
+//   utc               — read UTC parts (for UTC-bucketed data like POI)
+//   withYear          — append the end year ("Jun 16 – Jun 22, 2026")
+//   collapseSameMonth — drop the repeated month when both dates share it (default
+//                       true; pass false to always show both months)
+// Callers add any leading "Week of " prefix themselves.
+export function fmtDateRange(start, end, { utc = false, withYear = false, collapseSameMonth = true } = {}) {
+  const mOpts = utc ? { month: 'short', timeZone: 'UTC' } : { month: 'short' }
+  const sM = start.toLocaleDateString(undefined, mOpts)
+  const eM = end.toLocaleDateString(undefined, mOpts)
+  const sD = utc ? start.getUTCDate() : start.getDate()
+  const eD = utc ? end.getUTCDate() : end.getDate()
+  const range = (collapseSameMonth && sM === eM) ? `${sM} ${sD} – ${eD}` : `${sM} ${sD} – ${eM} ${eD}`
+  if (withYear) return `${range}, ${utc ? end.getUTCFullYear() : end.getFullYear()}`
+  return range
+}

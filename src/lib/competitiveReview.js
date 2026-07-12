@@ -1,5 +1,6 @@
 import { WEEK_ANCHOR_DAY } from './metrics'
-import { ymd } from './dates'
+import { ymd, fmtDateRange } from './dates'
+import { extractEngagement } from './engagement'
 
 // Competitive Review data model: weekly, per-competitor view of posts the
 // competitors themselves published (their company page + employees), with
@@ -28,40 +29,25 @@ export function weekRangeLabel(label) {
   const start = new Date(label + 'T00:00:00')
   if (isNaN(start.getTime())) return label
   const end = new Date(start); end.setDate(end.getDate() + 6)
-  const opts = { month: 'short', day: 'numeric' }
-  const s = start.toLocaleDateString(undefined, opts)
-  const e = end.toLocaleDateString(undefined, { ...opts, year: 'numeric' })
-  return `${s} – ${e}`
-}
-
-// Is this post authored BY the competitor (its company page or an employee)?
-// Only meaningful for LinkedIn (we have the author object there).
-function isCompanyAuthored(post, urnByName) {
-  if (post.platform !== 'LinkedIn') return false
-  const a = post.author && typeof post.author === 'object' ? post.author : {}
-  const cn = String(post.companyName || '')
-  if (!cn) return false
-  const urn = urnByName[cn]
-  if (urn && String(a.profile_id || '') === String(urn)) return true       // company page
-  const head = String(a.headline || '').toLowerCase()
-  if (head && head.includes(cn.toLowerCase())) return true                  // employee
-  return false
+  return fmtDateRange(start, end, { withYear: true, collapseSameMonth: false })
 }
 
 function linkedinEngagement(p) {
+  const e = extractEngagement(p)
   return {
-    reactions: Number(p.totalReactions) || 0,
-    comments: Number(p.comments) || 0,
-    reshares: Number(p.reshares) || 0,
+    reactions: Number(e.reactions) || 0,
+    comments: Number(e.comments) || 0,
+    reshares: Number(e.reshares) || 0,
   }
 }
 
 // Per-platform attributed counts + a coarse engagement number, for the
 // "all platforms" toggle. LinkedIn is handled separately (authored-only).
 function platformActivity(p) {
+  const e = extractEngagement(p)
   switch (p.platform) {
-    case 'X': return (Number(p.likeCount) || 0) + (Number(p.replyCount) || 0) + (Number(p.retweetCount) || 0) + (Number(p.quoteCount) || 0)
-    case 'Reddit': return (Number(p.score) || 0) + (Number(p.numComments) || 0)
+    case 'X': return (Number(e.likes) || 0) + (Number(e.replies) || 0) + (Number(e.reposts) || 0) + (Number(e.quotes) || 0)
+    case 'Reddit': return (Number(e.upvotes) || 0) + (Number(e.comments) || 0)
     default: return 0
   }
 }
@@ -72,7 +58,7 @@ function platformActivity(p) {
 //     linkedin: { count, reactions, comments, reshares, posts:[...] },
 //     other: { 'Google News': {count, engagement}, Reddit: {...}, X: {...} }
 //   }
-export function buildWeekly(posts, urnByName) {
+export function buildWeekly(posts) {
   const byWeek = {}
   const ensure = (wk, name) => {
     if (!byWeek[wk]) byWeek[wk] = { companies: {} }
@@ -90,7 +76,10 @@ export function buildWeekly(posts, urnByName) {
     if (!wk) continue
 
     if (p.platform === 'LinkedIn') {
-      if (!isCompanyAuthored(p, urnByName)) continue
+      // Competitor-authored = the shared authorType (stamped by useSOVData) is
+      // the company page or a confirmed employee. External LinkedIn chatter is
+      // excluded here (Social Briefs is about what competitors themselves post).
+      if (p.authorType !== 'company' && p.authorType !== 'employee') continue
       const c = ensure(wk, name)
       const e = linkedinEngagement(p)
       c.linkedin.count++
