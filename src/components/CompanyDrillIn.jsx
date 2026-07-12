@@ -27,8 +27,11 @@ function weekLabel(key) {
 }
 
 // --- Cross-platform field normalization. The hook surfaces every DB column
-//     via select('*'), but the names differ per platform — unify them here. ---
-export function normalizePost(p) {
+//     via select('*'), but the names differ per platform — unify them here.
+//     `mult` is the post's platform multiplier (sov_config.platformMultipliers,
+//     e.g. News x30/Reddit x3) so the displayed "impact" matches what the post
+//     actually contributes to the pooled SOV, not just its raw per-post weight. ---
+export function normalizePost(p, mult = 1) {
   const plat = p.platform
   let author = ''
   let text = ''
@@ -93,7 +96,7 @@ export function normalizePost(p) {
     sentiment: p.sentiment,
     external: p.external,
     authorType: p.authorType,
-    weight: postWeightOf(p),
+    weight: postWeightOf(p) * mult,
     ts: p.ts,
     raw: p,
   }
@@ -142,9 +145,11 @@ function deriveWhy(allDirectPosts, company, config) {
   const ext = mine.filter(p => p.external !== false).length
   const own = mine.length - ext
 
-  const topPost = [...mine].sort((a, b) => postWeightOf(b) - postWeightOf(a))[0] || null
+  const impactOf = (p) => (mult[p.platform] != null ? mult[p.platform] : 1) * postWeightOf(p)
+  const topPost = [...mine].sort((a, b) => impactOf(b) - impactOf(a))[0] || null
+  const topPostImpact = topPost ? impactOf(topPost) : 0
 
-  return { sov, topPlatform, topPlatformPctOfScore, ext, own, total: mine.length, topPost }
+  return { sov, topPlatform, topPlatformPctOfScore, ext, own, total: mine.length, topPost, topPostImpact }
 }
 
 function whyString(f) {
@@ -158,7 +163,7 @@ function whyString(f) {
     ? `Driven mostly by ${f.topPlatform} (${f.topPlatformPctOfScore}% of its weighted score)`
     : `Spread across platforms`
   const fuel = f.ext >= f.own ? 'earned third-party items' : 'its own items'
-  const topW = f.topPost ? `; top item carries ~${Math.round(postWeightOf(f.topPost))} weight` : ''
+  const topW = f.topPost ? `; top item carries ~${Math.round(f.topPostImpact)} weight` : ''
   return `${driver}, fueled mainly by ${fuel}${topW}.`
 }
 
@@ -241,12 +246,13 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
   // and sort within each week by impact (post_weight) desc.
   const weeks = useMemo(() => {
     const mine = posts.filter(p => p.companyName === company)
+    const multMap = config?.platformMultipliers || {}
     const buckets = new Map() // weekKey -> normalized posts[]
     for (const p of mine) {
       const t = p.ts ? new Date(p.ts) : null
       const key = t && !isNaN(t.getTime()) ? weekKey(t) : 'undated'
       if (!buckets.has(key)) buckets.set(key, [])
-      buckets.get(key).push(normalizePost(p))
+      buckets.get(key).push(normalizePost(p, multMap[p.platform] ?? 1))
     }
     const keys = [...buckets.keys()].sort((a, b) => {
       if (a === 'undated') return 1
@@ -258,7 +264,7 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
       label: k === 'undated' ? 'Undated' : weekLabel(k),
       posts: buckets.get(k).sort((a, b) => b.weight - a.weight),
     }))
-  }, [posts, company])
+  }, [posts, company, config])
 
   const totalPosts = weeks.reduce((s, w) => s + w.posts.length, 0)
 
@@ -314,7 +320,7 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
                     { key: p => p.ts ? new Date(p.ts).toISOString().slice(0, 10) : '', label: 'date' },
                     { key: p => p.title || (p.text || '').slice(0, 300), label: 'text' },
                     { key: p => p.authorType || (p.external ? 'external' : 'company'), label: 'author_type' },
-                    { key: p => (typeof p.weight === 'number' ? p.weight.toFixed(4) : ''), label: 'post_weight' },
+                    { key: p => (typeof p.weight === 'number' ? p.weight.toFixed(4) : ''), label: 'impact_score' },
                     { key: p => p.sentiment ?? '', label: 'sentiment' },
                     { key: 'url', label: 'url' },
                   ]
@@ -459,7 +465,7 @@ function PostRow({ post }) {
           )}
           <span
             className="cdi-weight"
-            title="This item's impact — how much it adds to the company's Share of Voice (engagement, reach, sentiment, recency, and who posted it). Not a percentage — a raw weight."
+            title="This item's impact — how much it adds to the company's Share of Voice (engagement, reach, recency, and who posted it, scaled by the platform's trust multiplier). Not a percentage."
           >
             <span className="cdi-weight-val">⚡ {Math.round(post.weight * 100) / 100}</span>
             <span className="cdi-weight-label">impact</span>

@@ -403,7 +403,7 @@ function Dashboard({ onLogout, onNavigate }) {
           </GlassCard>
 
           {/* Top items — the wild outliers driving the board (above the sentiment graph). */}
-          <TopPostsWeek posts={directPosts} />
+          <TopPostsWeek posts={directPosts} config={sovConfig} />
 
           {/* Sentiment — its own weekly trend. Reflects the platform filter (live)
               when one is selected. */}

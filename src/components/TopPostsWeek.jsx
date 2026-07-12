@@ -12,7 +12,7 @@ import './topPosts.css'
    when they're well above the window's typical post (mean + 1σ). Trailing window
    instead of a Thursday-anchored bucket — the bucket was near-empty right after
    the morning scrape; a rolling 7-day window is always full. */
-function deriveWeekTop(posts, max = 6) {
+function deriveWeekTop(posts, config, max = 6) {
   const dated = posts.filter(p => p.ts && !isNaN(new Date(p.ts).getTime()))
   if (!dated.length) return { items: [], label: null, hasOutliers: false }
 
@@ -20,7 +20,8 @@ function deriveWeekTop(posts, max = 6) {
   for (const p of dated) { const t = new Date(p.ts).getTime(); if (t > maxT) maxT = t }
   const cutoff = maxT - 7 * 86400000
   const wk = dated.filter(p => new Date(p.ts).getTime() > cutoff)
-  const norm = wk.map(p => ({ ...normalizePost(p), company: p.companyName }))
+  const multMap = config?.platformMultipliers || {}
+  const norm = wk.map(p => ({ ...normalizePost(p, multMap[p.platform] ?? 1), company: p.companyName }))
 
   const weights = norm.map(p => p.weight)
   const n = weights.length
@@ -65,8 +66,8 @@ function TopPostRow({ post }) {
 
 // `posts` — the current filtered, direct-competitor working set. The section
 // self-scopes to the trailing 7 days (anchored to the freshest post present).
-export function TopPostsWeek({ posts = [] }) {
-  const { items, label, hasOutliers } = useMemo(() => deriveWeekTop(posts), [posts])
+export function TopPostsWeek({ posts = [], config }) {
+  const { items, label, hasOutliers } = useMemo(() => deriveWeekTop(posts, config), [posts, config])
   if (!items.length) return null
   return (
     <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
