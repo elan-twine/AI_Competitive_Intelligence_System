@@ -27,8 +27,11 @@ function TrendTooltip({ active, payload, isDaily, isSentiment }) {
     ? `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}`   // −3..+3 sentiment scale
     : Number(v).toFixed(1)                            // 0..100 SOV %
   // x-axis is now numeric time; read the row's original label off the payload.
-  const wk = payload[0]?.payload?.week
-  const header = wk === 'Now' ? 'Now (live)' : isDaily ? wk : `Week of ${wk}`
+  const pl0 = payload[0]?.payload
+  const wk = pl0?.week
+  // Isolated week-by-week points carry a pre-built range label ("Jul 9 – Jul 15
+  // (in progress)"); everything else falls back to the week-start / day label.
+  const header = pl0?.__label ? pl0.__label : wk === 'Now' ? 'Now (live)' : isDaily ? wk : `Week of ${wk}`
   return (
     <div className="chart-tooltip">
       <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>
@@ -89,6 +92,13 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const [mode, setMode] = useState('total')
   const modeApplies = !isDaily && metric === 'overall' && !!posts
   const effMode = !modeApplies ? null : (live ? 'weekly' : mode)
+  // Isolated-week series (client-computed "Week by week", or any filtered/live
+  // weekly view): each point is one calendar week's items in isolation, labeled
+  // by week-START. We re-anchor its marker to the week's END (below) so it stops
+  // reading as the endpoint of the segment leading into its start date. The
+  // frozen YTD Standings series is NOT isolated (week-start = cumulative-as-of),
+  // so it is deliberately excluded.
+  const isIsolatedWeekly = !isDaily && (live || effMode === 'weekly')
   // Tracked roster for zero-filling client-computed SOV series: in an isolated
   // week/window, a tracked company with no items is legitimately at 0% — its
   // line should touch 0, not gap out (or worse, get bridged by connectNulls at
@@ -169,11 +179,24 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       }
       if (any) rows = [...rows, nowRow]
     }
-    // Attach a numeric timestamp for the TIME-BASED x-axis: points sit at their
-    // real date, so uneven gaps show honestly and the live "Now" point lands at
-    // today's true position — the last segment grows ~1/7 per day through the week.
-    return rows.map(r => (r.t != null ? r : { ...r, t: Date.parse(`${r.week}T00:00:00`) }))
-  }, [series, isDaily, isSentiment, metric, effMode, nowValues])
+    // Attach a numeric timestamp for the TIME-BASED x-axis. Standings/daily points
+    // sit at their labeled date. Isolated week-by-week points instead anchor at the
+    // week's END (start + 6d), so the marker reads as "the week that ended here",
+    // not the endpoint of the segment into its start date. The current, still-open
+    // week is clamped to Now — it sits at today and slides right as the week fills.
+    const DAY = 86400000
+    const now = Date.now()
+    const fmtMD = (ts) => new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    return rows.map(r => {
+      if (r.t != null) return r
+      const startTs = Date.parse(`${r.week}T00:00:00`)
+      if (!isIsolatedWeekly) return { ...r, t: startTs }
+      const endTs = startTs + 6 * DAY
+      const inProgress = now < startTs + 7 * DAY
+      const label = `${fmtMD(startTs)} – ${fmtMD(endTs)}${inProgress ? ' (in progress)' : ''}`
+      return { ...r, t: Math.min(endTs, now), __isoWeek: true, __inProgress: inProgress, __label: label }
+    })
+  }, [series, isDaily, isSentiment, metric, effMode, nowValues, isIsolatedWeekly])
 
   // Lines to draw: active competitors present in the windowed data (Twine first).
   // We only track public mentions of DIRECT competitors, so the chart is always
@@ -227,8 +250,11 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
   const neutralVisible = isSentiment && yDomain[0] <= 0 && yDomain[1] >= 0
   // Whether the live "Now" tip is present (SOV cumulative/rolling views), and
   // its timestamp (for the reference line on the numeric time axis).
-  const nowShown = data.length > 0 && data[data.length - 1].week === 'Now'
-  const nowTs = nowShown ? data[data.length - 1].t : null
+  // The live tip is either the appended "Now" point (Standings/rolling views) or
+  // the current in-progress week (week-by-week) — both sit at today.
+  const lastRow = data.length ? data[data.length - 1] : null
+  const nowShown = !!lastRow && (lastRow.week === 'Now' || lastRow.__inProgress)
+  const nowTs = nowShown ? lastRow.t : null
   // When the line flows through hidden daily-fill points (YTD), pin the x-axis
   // ticks to the weekly snapshots + Now only — so no daily dates are labelled.
   // Other views (daily/isolated/sentiment) have no fill → let recharts auto-tick.
@@ -406,7 +432,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
                   const { cx, cy, payload, index } = props
                   if (cx == null || cy == null || !payload) return null
                   if (payload.__fill) return null // daily-cumulative value: on the line, not drawn
-                  const real = payload.__weekly || payload.week === 'Now'
+                  const real = payload.__weekly || payload.week === 'Now' || payload.__inProgress
                   if (!real && data.length > 16) return null // dense daily/rolling views stay clean
                   return <circle key={`${name}-${index}`} cx={cx} cy={cy} r={twine ? 3 : 2} fill={color} />
                 }}
