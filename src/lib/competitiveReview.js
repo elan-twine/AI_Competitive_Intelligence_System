@@ -76,10 +76,12 @@ export function buildWeekly(posts) {
     if (!wk) continue
 
     if (p.platform === 'LinkedIn') {
-      // Competitor-authored = the shared authorType (stamped by useSOVData) is
-      // the company page or a confirmed employee. External LinkedIn chatter is
-      // excluded here (Social Briefs is about what competitors themselves post).
-      if (p.authorType !== 'company' && p.authorType !== 'employee') continue
+      // Social Briefs = what the competitor puts out on its OWN account. Only
+      // company-account posts (authorType 'company' — author.profile_id is the
+      // company's URN). That INCLUDES a repost the company account made of an
+      // employee's post (the reposter is the company page). Standalone employee
+      // posts and external chatter are excluded.
+      if (p.authorType !== 'company') continue
       const c = ensure(wk, name)
       const e = linkedinEngagement(p)
       c.linkedin.count++
