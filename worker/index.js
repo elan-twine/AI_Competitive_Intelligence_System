@@ -57,10 +57,76 @@ async function handleBriefing(request, env, url) {
   return new Response(text || '{}', { status: resp.status, headers: JSON_HEADERS })
 }
 
+// ---- Dashboard assistant ----------------------------------------------------
+// A session-gated Q&A endpoint. The browser sends the question + a compact
+// snapshot of what's currently on screen (board, recent movement, top recent
+// posts); the Worker adds the static app map + methodology below and calls
+// OpenAI. The OpenAI key lives in a Worker secret (OPENAI_API_KEY), never the
+// client bundle — same principle as the briefing webhooks above.
+const ASSISTANT_SYSTEM = `You are the assistant built into the Twine "Share of Voice" (SOV) competitive-intelligence dashboard. You help the logged-in user understand what they're seeing and why the numbers move. Be concise, concrete, and grounded ONLY in the DATA CONTEXT provided — never invent posts, numbers, or companies. If the data doesn't contain the answer, say so and suggest where they might look.
+
+HOW SOV IS CALCULATED (use this to explain "why"):
+- Every post (LinkedIn, X, Reddit, Google News) gets a post_weight from its engagement, who posted it, and how old it is.
+- Engagement → reach = engagement^(49/50). Author tier sets a baseline+multiplier: a company's own account counts least, a confirmed employee more, an unaffiliated "external" voice most (an outsider talking about you is worth ~5×). Older posts decay (LinkedIn half-life 14d, News 30d, Reddit 10d, X 7d), flat for the first 7 days.
+- Each post's weight is multiplied by a per-platform trust multiplier (currently LinkedIn 1, X 1, Reddit 1.5, Google News 15) and pooled into ONE cross-platform total. A company's SOV% = its share of that pool. Only DIRECT competitors are in the denominator (they sum to 100%); indirect competitors are shown but excluded from the 100%.
+- News articles have no engagement, so they score by outlet tier × decay. Sentiment is measured and displayed but currently does NOT move the ranking.
+- So a "spike" almost always traces to one or a few recent high-impact posts — usually an external mention, a viral/high-engagement post, or (for News) a tier-1 article. The DATA CONTEXT's "movement" (last 7d vs prior 7d) and "recentTopPosts" are where to look; cite the specific post(s) by company/platform/date/snippet when explaining a move.
+
+WHERE THINGS ARE IN THE APP (use this for "where do I find…" questions):
+- Top nav: "SOV Dashboard", "Social Briefs" (weekly review of competitors' own LinkedIn posts with 👍/👎), "Comp Briefs" (AI-written per-competitor briefing docs).
+- Inside SOV Dashboard, five tabs (all share the Platform filter + 7d/30d/YTD time window at the top):
+  • Overview — the ranking table + the Share-of-Voice trend chart. Click any company row to drill in to "why is X at Y%?" (week-by-week, platform-by-platform, down to individual posts).
+  • Posts of Interest — a curated weekly digest of each competitor's most notable posts.
+  • AI Visibility — how often each company is named in AI-answer engines (share of model).
+  • Compare — two companies side by side (SOV, sentiment, platform split).
+  • Weights — an explainer of the platform trust multipliers.
+- Header icons: About (what the score measures), Methodology (the full math), Manage competitors, light/dark toggle, log out.
+- To remove a wrong mention: every post card has a small flag/remove control — it soft-excludes that mention from all calculations without deleting the data.
+
+STYLE: 2–5 sentences typically. Lead with the direct answer. For "why" questions, name the specific driver(s) from the data and the number. For "where" questions, name the exact tab/section and how to get there. Never output raw JSON.`
+
+async function handleAsk(request, env) {
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
+  const user = await verifyUser(request, env)
+  if (!user) return json(401, { error: 'unauthorized' })
+  if (!env.OPENAI_API_KEY) return json(503, { error: 'assistant not configured' })
+
+  let payload
+  try { payload = await request.json() } catch { return json(400, { error: 'bad request' }) }
+  const question = String((payload && payload.question) || '').trim().slice(0, 2000)
+  if (!question) return json(400, { error: 'empty question' })
+  const context = (payload && payload.context) || {}
+  const history = Array.isArray(payload && payload.history) ? payload.history.slice(-6) : []
+
+  const messages = [
+    { role: 'system', content: ASSISTANT_SYSTEM + '\n\nDATA CONTEXT (JSON — what the user is currently looking at):\n' + JSON.stringify(context).slice(0, 24000) },
+    ...history
+      .filter(m => m && m.content)
+      .map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.content).slice(0, 4000) })),
+    { role: 'user', content: question },
+  ]
+
+  let resp
+  try {
+    resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
+      body: JSON.stringify({ model: 'gpt-4.1', messages, temperature: 0.2, max_tokens: 600 }),
+    })
+  } catch {
+    return json(502, { error: 'assistant upstream failed' })
+  }
+  const j = await resp.json().catch(() => null)
+  if (!resp.ok) return json(502, { error: (j && j.error && j.error.message) || 'assistant error' })
+  const answer = (j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || ''
+  return json(200, { answer })
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api/briefing/')) return handleBriefing(request, env, url)
+    if (url.pathname === '/api/ask') return handleAsk(request, env)
     // Non-API path → static assets / SPA fallback.
     return env.ASSETS.fetch(request)
   },

@@ -14,6 +14,7 @@ import { TopPostsWeek } from '../components/TopPostsWeek'
 import { PostsOfInterest } from '../components/PostsOfInterest'
 import { PlatformWeightsExplainer } from '../components/PlatformWeightsExplainer'
 import { AIVisibility } from '../components/AIVisibility'
+import { AssistantChat } from '../components/AssistantChat'
 import { downloadCSV } from '../lib/csv'
 import { fmtDateRange } from '../lib/dates'
 import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
@@ -545,6 +546,15 @@ function CompareColumn({ company, row, winners, posts }) {
           )
         })}
       </div>
+
+      <AssistantChat
+        allPosts={allPosts}
+        ranked={ranked}
+        competitors={competitors}
+        config={sovConfig}
+        platform={selectedPlatforms.length ? selectedPlatforms.join(' + ') : 'All'}
+        windowLabel={days === 7 ? '7d' : days === 30 ? '30d' : 'YTD'}
+      />
     </div>
   )
 }
