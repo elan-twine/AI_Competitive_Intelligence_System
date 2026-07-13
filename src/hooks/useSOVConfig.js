@@ -12,10 +12,11 @@ import { supabase } from '../lib/supabase'
 export const DEFAULT_SOV_CONFIG = {
   // Mindshare-pool multipliers (2026-07-08): convert each platform's per-post
   // impact onto one common "considered-attention" scale, then pool. Trust ratios
-  // grounded in B2B buyer research — peer/community (Reddit) 3× and editorial
+  // grounded in B2B buyer research — peer/community (Reddit) and editorial
   // press (News) ≈ tunable > vendor social (LinkedIn/X) = 1. News is the dial the
   // team sets; the rest are ~locked. SOV = share of the pooled total.
-  platformMultipliers: { LinkedIn: 1, 'Google News': 30, Reddit: 3, X: 1 },
+  // Rebalanced 2026-07-13: News 30→15, Reddit 3→1.5 (matches live sov_config).
+  platformMultipliers: { LinkedIn: 1, 'Google News': 15, Reddit: 1.5, X: 1 },
   halfLifeDays: { LinkedIn: 14, 'Google News': 30, Reddit: 10, X: 7 },
   engagementWeights: {
     LinkedIn: { reaction: 1, comment: 3, reshare: 10, image: 1.5 },
