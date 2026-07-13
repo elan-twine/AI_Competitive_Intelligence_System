@@ -14,6 +14,7 @@ import { TopPostsWeek } from '../components/TopPostsWeek'
 import { PostsOfInterest } from '../components/PostsOfInterest'
 import { PlatformWeightsExplainer } from '../components/PlatformWeightsExplainer'
 import { AIVisibility } from '../components/AIVisibility'
+import { AssistantChat } from '../components/AssistantChat'
 import { downloadCSV } from '../lib/csv'
 import { fmtDateRange } from '../lib/dates'
 import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
@@ -132,6 +133,13 @@ function Dashboard({ onLogout, onNavigate }) {
     [allPosts, selectedPlatforms, directNames]
   )
   const ranked = useMemo(() => rankings(directPosts, sovConfig), [directPosts, sovConfig])
+  // Platform-filtered but NOT time-filtered — the assistant needs full history for
+  // its 7d-vs-prior-7d movement, but must honor the active platform filter so its
+  // "why did X move" data matches the board the user is actually looking at.
+  const assistantPosts = useMemo(
+    () => applyFilters(allPosts, { platforms: selectedPlatforms }),
+    [allPosts, selectedPlatforms]
+  )
   // Current live standing (same numbers as the ranking table) → fed to the trend
   // chart as its "Now" tip so the graph ends where the table says.
   const nowValues = useMemo(
@@ -480,6 +488,15 @@ function Dashboard({ onLogout, onNavigate }) {
       )}
       </>
       )}
+
+      <AssistantChat
+        allPosts={assistantPosts}
+        ranked={ranked}
+        competitors={competitors}
+        config={sovConfig}
+        platform={selectedPlatforms.length ? selectedPlatforms.join(' + ') : 'All'}
+        windowLabel={days === 7 ? '7d' : days === 30 ? '30d' : 'YTD'}
+      />
     </div>
   )
 }
