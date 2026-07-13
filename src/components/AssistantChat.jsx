@@ -132,7 +132,7 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
               </div>
             )}
             {messages.map((m, i) => (
-              <div key={i} className={`asst-msg asst-msg-${m.role}`}>
+              <div key={i} className={`asst-msg asst-msg-${m.role}`} dir="auto">
                 {m.content
                   ? (m.role === 'assistant'
                       ? <div className="asst-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.content}</ReactMarkdown></div>
@@ -148,6 +148,7 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
             <textarea
               ref={inputRef}
               className="asst-input"
+              dir="auto"
               rows={1}
               value={input}
               onChange={e => setInput(e.target.value)}
