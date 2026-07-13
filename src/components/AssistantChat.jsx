@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, X, ArrowUp } from 'lucide-react'
+import { Sparkles, X, ArrowUp, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAssistantContext } from '../lib/assistantContext'
@@ -86,6 +86,10 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
+  // Clear the whole conversation. There's no server-side session — history lives
+  // only in this state and is re-sent each turn — so this fully resets context.
+  const reset = () => { setMessages([]); setInput(''); if (inputRef.current) inputRef.current.focus() }
+
   return (
     <>
       <button
@@ -104,9 +108,16 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
               <Sparkles size={15} className="asst-head-spark" />
               <span>Ask about this data</span>
             </div>
-            <button className="asst-icon-btn" onClick={() => setOpen(false)} aria-label="Close">
-              <X size={16} />
-            </button>
+            <div className="asst-head-actions">
+              {messages.length > 0 && (
+                <button className="asst-icon-btn" onClick={reset} aria-label="Reset chat" title="Reset chat">
+                  <RotateCcw size={15} />
+                </button>
+              )}
+              <button className="asst-icon-btn" onClick={() => setOpen(false)} aria-label="Close">
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           <div className="asst-msgs" ref={scrollRef}>

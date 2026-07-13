@@ -53,6 +53,7 @@
   flex-shrink: 0;
 }
 .asst-head-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.asst-head-actions { display: flex; align-items: center; gap: 2px; }
 .asst-head-spark { color: var(--accent); }
 .asst-icon-btn { display: flex; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 6px; }
 .asst-icon-btn:hover { color: var(--text-primary); background: var(--inner-bg); }
