@@ -1,8 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Sparkles, X, ArrowUp } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { buildAssistantContext } from '../lib/assistantContext'
 import { askAssistant } from '../lib/assistant'
 import './assistantChat.css'
+
+// Markdown renderers: open links in a new tab (safely), and never render raw HTML
+// (react-markdown's default — LLM output is untrusted).
+const MD_COMPONENTS = {
+  a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+}
 
 // Floating "ask about this data" assistant. Lives on the dashboard; answers both
 // specific questions ("why did Orchid spike?") and navigational ones ("where do
@@ -115,7 +123,9 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
             {messages.map((m, i) => (
               <div key={i} className={`asst-msg asst-msg-${m.role}`}>
                 {m.content
-                  ? m.content
+                  ? (m.role === 'assistant'
+                      ? <div className="asst-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.content}</ReactMarkdown></div>
+                      : m.content)
                   : (m.role === 'assistant'
                       ? <span className="asst-typing" aria-label="Thinking"><span></span><span></span><span></span></span>
                       : '')}
