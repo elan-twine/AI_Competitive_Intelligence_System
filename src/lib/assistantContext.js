@@ -1,4 +1,5 @@
 import { postWeightOf } from './metrics'
+import { DEFAULT_SOV_CONFIG } from '../hooks/useSOVConfig'
 
 // Builds the compact, model-friendly snapshot the dashboard assistant reasons
 // over. Everything here is derived from data the dashboard ALREADY has in
@@ -23,7 +24,7 @@ function snippetOf(p) {
 }
 
 export function buildAssistantContext({ allPosts = [], ranked = [], competitors = [], config = {}, filters = {} } = {}) {
-  const mult = config.platformMultipliers || { LinkedIn: 1, 'Google News': 1, Reddit: 1, X: 1 }
+  const mult = config.platformMultipliers || DEFAULT_SOV_CONFIG.platformMultipliers
   const impactOf = (p) => (mult[p.platform] != null ? mult[p.platform] : 0) * postWeightOf(p)
   const now = Date.now()
   const tsOf = (p) => { const t = p.ts ? new Date(p.ts).getTime() : NaN; return isNaN(t) ? 0 : t }
@@ -31,7 +32,9 @@ export function buildAssistantContext({ allPosts = [], ranked = [], competitors 
   const typeByName = {}
   for (const c of competitors || []) typeByName[c.name] = (c.type || 'direct')
 
-  // The board exactly as ranked on screen (direct competitors, by SOV).
+  // The board exactly as ranked on screen (direct competitors, in the table's
+  // display order — sorted by the composite overall score, which currently
+  // equals weighted SOV). sovPct is each company's weighted SOV.
   const board = (ranked || []).map((r, i) => ({
     rank: i + 1,
     company: r.company,
@@ -49,7 +52,9 @@ export function buildAssistantContext({ allPosts = [], ranked = [], competitors 
   }, 0)
   const names = board.map(b => b.company)
   const movement = names.map(name => {
-    const last7 = windowImpact(now - 7 * DAY, now + DAY, name)
+    // Both windows are exactly 7 days wide so a steady poster reads as ~0% change
+    // (not a phantom spike from an off-by-one-day window).
+    const last7 = windowImpact(now - 7 * DAY, now, name)
     const prev7 = windowImpact(now - 14 * DAY, now - 7 * DAY, name)
     const changePct = prev7 > 0 ? round1(((last7 - prev7) / prev7) * 100) : (last7 > 0 ? null : 0)
     return { company: name, last7Impact: round1(last7), prev7Impact: round1(prev7), changePct }

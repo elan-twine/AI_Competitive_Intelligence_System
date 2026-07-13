@@ -91,6 +91,10 @@ async function handleAsk(request, env) {
   if (!user) return json(401, { error: 'unauthorized' })
   if (!env.OPENAI_API_KEY) return json(503, { error: 'assistant not configured' })
 
+  // Cap the body before parsing so a huge context can't burn CPU/memory.
+  const clen = Number(request.headers.get('content-length') || 0)
+  if (clen > 200000) return json(413, { error: 'request too large' })
+
   let payload
   try { payload = await request.json() } catch { return json(400, { error: 'bad request' }) }
   const question = String((payload && payload.question) || '').trim().slice(0, 2000)
@@ -106,18 +110,25 @@ async function handleAsk(request, env) {
     { role: 'user', content: question },
   ]
 
+  // Don't let a stalled OpenAI response hang the request — abort after 25s.
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), 25000)
   let resp
   try {
     resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
       body: JSON.stringify({ model: 'gpt-4.1', messages, temperature: 0.2, max_tokens: 600 }),
+      signal: ctl.signal,
     })
   } catch {
     return json(502, { error: 'assistant upstream failed' })
+  } finally {
+    clearTimeout(timer)
   }
   const j = await resp.json().catch(() => null)
-  if (!resp.ok) return json(502, { error: (j && j.error && j.error.message) || 'assistant error' })
+  // Don't forward OpenAI's raw error text (quota/billing wording) to the client.
+  if (!resp.ok) return json(502, { error: 'assistant error' })
   const answer = (j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || ''
   return json(200, { answer })
 }
