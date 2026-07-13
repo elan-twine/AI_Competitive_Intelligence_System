@@ -12,7 +12,7 @@ const SUGGESTIONS = [
   'Why did the top mover change this week?',
   'Who gained the most share recently, and why?',
   'Where do I see AI visibility?',
-  'How is SOV actually calculated?',
+  'Report a data or weighting error',
 ]
 
 export function AssistantChat({ allPosts = [], ranked = [], competitors = [], config = {}, platform = 'All', windowLabel = 'current' }) {

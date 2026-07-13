@@ -83,7 +83,55 @@ WHERE THINGS ARE IN THE APP (use this for "where do I find…" questions):
 - Header icons: About (what the score measures), Methodology (the full math), Manage competitors, light/dark toggle, log out.
 - To remove a wrong mention: every post card has a small flag/remove control — it soft-excludes that mention from all calculations without deleting the data.
 
+FILING FEEDBACK: You can file a GitHub issue via the create_github_issue tool. Call it when the user reports something that should change — a mis-weighted article (e.g. "this should be tier 1, not tier 2"), a wrong attribution or sentiment, a bug, or a feature request. Give it a clear title and a body capturing the specifics they referenced (company, platform, article title/URL, current vs expected value, and any reasoning they gave). Only file for genuine actionable feedback about the system — never for ordinary questions. The system posts the confirmation with the issue link automatically, so once you call the tool you don't need to add anything else.
+
 STYLE: 2–5 sentences typically. Lead with the direct answer. For "why" questions, name the specific driver(s) from the data and the number. For "where" questions, name the exact tab/section and how to get there. Never output raw JSON.`
+
+// Tool the model can call to turn actionable feedback into a tracked GitHub issue.
+const ASSISTANT_TOOLS = [{
+  type: 'function',
+  function: {
+    name: 'create_github_issue',
+    description: 'File a GitHub issue in the dashboard repo when the user reports an actionable problem or request — a mis-weighted article, wrong attribution/sentiment, a bug, or a feature idea. Do NOT call this for ordinary questions.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Concise, specific issue title (e.g. "Article X mis-weighted tier 2, should be tier 1").' },
+        body: { type: 'string', description: 'Details: the specific data referenced (company, platform, article title/URL, current vs expected value) and the user\'s reasoning.' },
+        category: { type: 'string', enum: ['data-correction', 'bug', 'feature-request', 'other'], description: 'Type of feedback.' },
+      },
+      required: ['title', 'body'],
+    },
+  },
+}]
+
+// Create a GitHub issue from the model's tool call. Token stays a Worker secret.
+async function createGithubIssue(env, repo, args) {
+  if (!env.GITHUB_TOKEN) return { message: "I couldn't file that — issue tracking isn't configured yet (missing GitHub token). Please pass this to an admin." }
+  const title = (String(args && args.title || '').trim().slice(0, 240)) || 'Dashboard assistant feedback'
+  const cat = args && args.category ? `\n\n_Category: ${args.category}_` : ''
+  const body = (String(args && args.body || '').trim().slice(0, 6000)) + cat + '\n\n— filed via the dashboard assistant'
+  let r
+  try {
+    r = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + env.GITHUB_TOKEN,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'twine-sov-assistant',
+      },
+      body: JSON.stringify({ title, body }),
+    })
+  } catch {
+    return { message: "I couldn't reach GitHub to file that — please try again in a moment." }
+  }
+  if (!r.ok) return { message: `I couldn't file that (GitHub returned ${r.status}). Please try again, or file it manually.` }
+  const j = await r.json().catch(() => null)
+  const num = j && j.number
+  const url = j && j.html_url
+  return { message: `✓ Thanks — I've filed your feedback as issue #${num}: ${url}\n\nThe team will review it.` }
+}
 
 async function handleAsk(request, env) {
   if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
@@ -119,7 +167,7 @@ async function handleAsk(request, env) {
     resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
-      body: JSON.stringify({ model: 'gpt-4.1', messages, temperature: 0.2, max_tokens: 600, stream: true }),
+      body: JSON.stringify({ model: 'gpt-4.1', messages, temperature: 0.2, max_tokens: 600, stream: true, tools: ASSISTANT_TOOLS, tool_choice: 'auto' }),
       signal: ctl.signal,
     })
   } catch {
@@ -131,8 +179,11 @@ async function handleAsk(request, env) {
   // (don't forward its raw quota/billing wording to the client).
   if (!resp.ok || !resp.body) return json(502, { error: 'assistant error' })
 
-  // Transform OpenAI's SSE into a plain-text stream of just the content deltas,
-  // so the browser can append tokens directly as they arrive.
+  // Transform OpenAI's SSE into a plain-text stream of content deltas so the
+  // browser can append tokens live. If the model calls create_github_issue
+  // instead of answering, accumulate the call, run it, and stream the
+  // confirmation text in its place.
+  const GH_REPO = env.GITHUB_REPO || 'elan-twine/AI_Competitive_Intelligence_System'
   const { readable, writable } = new TransformStream()
   ;(async () => {
     const reader = resp.body.getReader()
@@ -140,6 +191,8 @@ async function handleAsk(request, env) {
     const enc = new TextEncoder()
     const writer = writable.getWriter()
     let buf = ''
+    let toolName = ''
+    let toolArgs = ''
     try {
       for (;;) {
         const { done, value } = await reader.read()
@@ -154,10 +207,22 @@ async function handleAsk(request, env) {
           if (!data || data === '[DONE]') continue
           try {
             const piece = JSON.parse(data)
-            const delta = piece.choices && piece.choices[0] && piece.choices[0].delta && piece.choices[0].delta.content
-            if (delta) await writer.write(enc.encode(delta))
+            const delta = piece.choices && piece.choices[0] && piece.choices[0].delta
+            if (!delta) continue
+            if (delta.content) await writer.write(enc.encode(delta.content))
+            const tc = delta.tool_calls && delta.tool_calls[0] && delta.tool_calls[0].function
+            if (tc) {
+              if (tc.name) toolName = tc.name
+              if (tc.arguments) toolArgs += tc.arguments
+            }
           } catch { /* keep-alive or partial JSON — skip */ }
         }
+      }
+      if (toolName === 'create_github_issue') {
+        let args = {}
+        try { args = JSON.parse(toolArgs || '{}') } catch { /* leave empty → defaulted title */ }
+        const res = await createGithubIssue(env, GH_REPO, args)
+        await writer.write(enc.encode(res.message))
       }
     } catch { /* upstream aborted/failed mid-stream — just close */ } finally {
       try { await writer.close() } catch { /* already closed */ }
