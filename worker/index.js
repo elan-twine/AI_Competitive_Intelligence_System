@@ -83,6 +83,8 @@ WHERE THINGS ARE IN THE APP (use this for "where do I find…" questions):
 - Header icons: About (what the score measures), Methodology (the full math), Manage competitors, light/dark toggle, log out.
 - To remove a wrong mention: every post card has a small flag/remove control — it soft-excludes that mention from all calculations without deleting the data.
 
+DATA ACCESS: The DATA CONTEXT below is only a snapshot of the current screen. For anything beyond it — specific posts, a date range, "most negative", a single company's history, SOV by week/day — call the query_data tool, then answer ONLY from the rows it returns (cite specifics and link posts). Never invent rows you didn't fetch; if the query comes back empty, say so.
+
 FILING FEEDBACK: You can file a GitHub issue via the create_github_issue tool. Call it when the user reports something that should change — a mis-weighted article (e.g. "this should be tier 1, not tier 2"), a wrong attribution or sentiment, a bug, or a feature request. Give it a clear title and a body capturing the specifics they referenced (company, platform, article title/URL, current vs expected value, and any reasoning they gave). Only file for genuine actionable feedback about the system — never for ordinary questions. The system posts the confirmation with the issue link automatically, so once you call the tool you don't need to add anything else.
 
 LANGUAGE: Always reply in the same language the user's question is written in — if they write in Hebrew, answer in Hebrew (and write any GitHub issue you file in that language too). All the formatting rules below apply in every language.
@@ -103,6 +105,26 @@ const ASSISTANT_TOOLS = [{
         category: { type: 'string', enum: ['data-correction', 'bug', 'feature-request', 'other'], description: 'Type of feedback.' },
       },
       required: ['title', 'body'],
+    },
+  },
+}, {
+  type: 'function',
+  function: {
+    name: 'query_data',
+    description: 'Look up posts or SOV history from the database when the answer is NOT in the on-screen DATA CONTEXT — e.g. "all Cerby news articles in June", "most negative posts about Twine", "Twine\'s SOV by week". Returns rows scoped to what this user is allowed to see. Answer only from the returned rows.',
+    parameters: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', enum: ['posts', 'weekly_board', 'daily_board'], description: 'posts = individual mentions across LinkedIn/X/Reddit/News; weekly_board/daily_board = frozen SOV% history.' },
+        company: { type: 'string', description: 'Filter to one tracked competitor by name.' },
+        platform: { type: 'string', enum: ['LinkedIn', 'X', 'Reddit', 'Google News'], description: 'posts only: limit to one platform; omit for all.' },
+        since: { type: 'string', description: 'Start date YYYY-MM-DD (inclusive).' },
+        until: { type: 'string', description: 'End date YYYY-MM-DD (inclusive).' },
+        sort: { type: 'string', enum: ['newest', 'top_weight', 'top_engagement', 'most_negative', 'most_positive'], description: 'posts ordering; default newest.' },
+        window_days: { type: 'integer', enum: [7, 30, 0], description: 'daily_board only: 7d / 30d / 0 = all-time cumulative.' },
+        limit: { type: 'integer', description: 'Max rows, default 25, capped at 100.' },
+      },
+      required: ['source'],
     },
   },
 }]
@@ -135,11 +157,144 @@ async function createGithubIssue(env, repo, args) {
   return { message: `✓ Thanks — I've filed your feedback as issue #${num}: ${url}\n\nThe team will review it.` }
 }
 
+// Run a bounded, parameterized read against Supabase AS THE USER (their access
+// token → their RLS permissions; the bot can't see anything they couldn't).
+// Returns a compact JSON string for the model to answer from. No free-form SQL.
+async function runDataQuery(env, authToken, args) {
+  if (!authToken || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return JSON.stringify({ error: 'data access unavailable' })
+  const H = { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + authToken }
+  const BASE = env.SUPABASE_URL + '/rest/v1'
+  const enc = encodeURIComponent
+  const limit = Math.min(Math.max(Number(args && args.limit) || 25, 1), 100)
+  const source = (args && args.source) || 'posts'
+  const company = args && args.company ? String(args.company).trim() : ''
+  const since = /^\d{4}-\d{2}-\d{2}/.test(String((args && args.since) || '')) ? args.since.slice(0, 10) : ''
+  const until = /^\d{4}-\d{2}-\d{2}/.test(String((args && args.until) || '')) ? args.until.slice(0, 10) : ''
+  const q = (parts) => parts.filter(Boolean).join('&')
+  const get = async (path) => {
+    try { const r = await fetch(BASE + path, { headers: H }); if (!r.ok) return null; return await r.json() } catch { return null }
+  }
+
+  if (source === 'weekly_board' || source === 'daily_board') {
+    const isWeekly = source === 'weekly_board'
+    const table = isWeekly ? 'sov_weekly' : 'sov_daily'
+    const dateCol = isWeekly ? 'week_start' : 'snapshot_date'
+    const sel = isWeekly
+      ? 'company,week_start,weighted_pct,sentiment_pct,posts_count'
+      : 'company,snapshot_date,window_days,weighted_pct,sentiment_pct,posts_count'
+    const wd = [7, 30, 0].includes(Number(args && args.window_days)) ? Number(args.window_days) : 7
+    const rows = await get('/' + table + '?' + q([
+      'select=' + sel,
+      company ? `company=ilike.*${enc(company)}*` : '',
+      since ? `${dateCol}=gte.${since}` : '',
+      until ? `${dateCol}=lte.${until}` : '',
+      !isWeekly ? `window_days=eq.${wd}` : '',
+      `order=${dateCol}.desc`,
+      `limit=${limit}`,
+    ]))
+    if (rows == null) return JSON.stringify({ error: 'query failed' })
+    return JSON.stringify({ source, count: rows.length, rows })
+  }
+
+  // posts (one platform, or all four merged)
+  const PLAT = {
+    LinkedIn: { table: 'linkedin_posts', date: 'posted_at', sel: 'companyName,posted_at,totalReactions,comments,reshares,post_weight,sentiment,text,title,post_url' },
+    X: { table: 'tweets', date: 'createdAt', sel: 'companyName,createdAt,likeCount,retweetCount,replyCount,quoteCount,post_weight,sentiment,text,twitterUrl,url' },
+    Reddit: { table: 'reddit_posts', date: 'createdAt', sel: 'companyName,createdAt,score,numComments,post_weight,sentiment,title,selfText,url,permalink' },
+    'Google News': { table: 'googlenews', date: 'publishedAt', sel: 'companyName,publishedAt,post_weight,sentiment,title,source,url' },
+  }
+  const sort = (args && args.sort) || 'newest'
+  const platforms = (args && args.platform && PLAT[args.platform]) ? [args.platform] : Object.keys(PLAT)
+  const orderFor = (p) => {
+    if (sort === 'top_weight' || sort === 'top_engagement') return 'post_weight.desc'
+    if (sort === 'most_negative') return 'sentiment.asc'
+    if (sort === 'most_positive') return 'sentiment.desc'
+    return PLAT[p].date + '.desc'
+  }
+  const out = []
+  await Promise.all(platforms.map(async (p) => {
+    const d = PLAT[p]
+    const rows = await get('/' + d.table + '?' + q([
+      'select=' + d.sel,
+      'companyName=not.is.null', 'companyName=neq.NONE',
+      company ? `companyName=ilike.*${enc(company)}*` : '',
+      since ? `${d.date}=gte.${since}` : '',
+      until ? `${d.date}=lte.${until}` : '',
+      'misattributed=not.is.true', // keep false+null (unflagged), exclude only flagged-true
+      `order=${orderFor(p)}`,
+      `limit=${limit}`,
+    ]))
+    for (const row of (rows || [])) {
+      const eng = p === 'LinkedIn' ? { reactions: row.totalReactions, comments: row.comments, reshares: row.reshares }
+        : p === 'X' ? { likes: row.likeCount, reposts: row.retweetCount, replies: row.replyCount, quotes: row.quoteCount }
+        : p === 'Reddit' ? { upvotes: row.score, comments: row.numComments } : {}
+      out.push({
+        platform: p,
+        company: row.companyName,
+        date: String(row[d.date] || '').slice(0, 10),
+        post_weight: row.post_weight,
+        sentiment: row.sentiment,
+        engagement: eng,
+        snippet: String(row.text || row.title || row.selfText || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+        url: row.post_url || row.twitterUrl || row.url || row.permalink || null,
+      })
+    }
+  }))
+  out.sort((a, b) => {
+    if (sort === 'top_weight' || sort === 'top_engagement') return (b.post_weight || 0) - (a.post_weight || 0)
+    if (sort === 'most_negative') return (a.sentiment ?? 0) - (b.sentiment ?? 0)
+    if (sort === 'most_positive') return (b.sentiment ?? 0) - (a.sentiment ?? 0)
+    return a.date < b.date ? 1 : a.date > b.date ? -1 : 0
+  })
+  return JSON.stringify({ source: 'posts', sort, count: Math.min(out.length, limit), rows: out.slice(0, limit) })
+}
+
+// Second-pass completion after a tool result: stream the answer text, no tools.
+async function streamAnswer(env, messages, writer, enc) {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), 25000)
+  let resp
+  try {
+    resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
+      body: JSON.stringify({ model: 'gpt-4.1', messages, temperature: 0.2, max_tokens: 600, stream: true }),
+      signal: ctl.signal,
+    })
+  } catch { clearTimeout(timer); return false }
+  clearTimeout(timer)
+  if (!resp.ok || !resp.body) return false
+  const reader = resp.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    const lines = buf.split('\n')
+    buf = lines.pop() || ''
+    for (const line of lines) {
+      const t = line.trim()
+      if (!t.startsWith('data:')) continue
+      const data = t.slice(5).trim()
+      if (!data || data === '[DONE]') continue
+      try {
+        const p = JSON.parse(data)
+        const c = p.choices && p.choices[0] && p.choices[0].delta && p.choices[0].delta.content
+        if (c) await writer.write(enc.encode(c))
+      } catch { /* skip */ }
+    }
+  }
+  return true
+}
+
 async function handleAsk(request, env) {
   if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
   const user = await verifyUser(request, env)
   if (!user) return json(401, { error: 'unauthorized' })
   if (!env.OPENAI_API_KEY) return json(503, { error: 'assistant not configured' })
+  // The caller's Supabase token — reused so query_data reads AS this user (RLS).
+  const authToken = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
 
   // Cap the body before parsing so a huge context can't burn CPU/memory.
   const clen = Number(request.headers.get('content-length') || 0)
@@ -195,6 +350,7 @@ async function handleAsk(request, env) {
     let buf = ''
     let toolName = ''
     let toolArgs = ''
+    let toolId = ''
     try {
       for (;;) {
         const { done, value } = await reader.read()
@@ -212,10 +368,11 @@ async function handleAsk(request, env) {
             const delta = piece.choices && piece.choices[0] && piece.choices[0].delta
             if (!delta) continue
             if (delta.content) await writer.write(enc.encode(delta.content))
-            const tc = delta.tool_calls && delta.tool_calls[0] && delta.tool_calls[0].function
-            if (tc) {
-              if (tc.name) toolName = tc.name
-              if (tc.arguments) toolArgs += tc.arguments
+            const call = delta.tool_calls && delta.tool_calls[0]
+            if (call) {
+              if (call.id) toolId = call.id
+              if (call.function && call.function.name) toolName = call.function.name
+              if (call.function && call.function.arguments) toolArgs += call.function.arguments
             }
           } catch { /* keep-alive or partial JSON — skip */ }
         }
@@ -225,6 +382,18 @@ async function handleAsk(request, env) {
         try { args = JSON.parse(toolArgs || '{}') } catch { /* leave empty → defaulted title */ }
         const res = await createGithubIssue(env, GH_REPO, args)
         await writer.write(enc.encode(res.message))
+      } else if (toolName === 'query_data') {
+        let args = {}
+        try { args = JSON.parse(toolArgs || '{}') } catch { /* defaulted below */ }
+        const result = await runDataQuery(env, authToken, args)
+        // Feed the rows back and stream a natural-language answer grounded in them.
+        const messages2 = [
+          ...messages,
+          { role: 'assistant', content: null, tool_calls: [{ id: toolId || 'call_1', type: 'function', function: { name: 'query_data', arguments: toolArgs || '{}' } }] },
+          { role: 'tool', tool_call_id: toolId || 'call_1', content: result },
+        ]
+        const ok = await streamAnswer(env, messages2, writer, enc)
+        if (!ok) await writer.write(enc.encode('I fetched the data but hit an error summarizing it — please try again.'))
       }
     } catch { /* upstream aborted/failed mid-stream — just close */ } finally {
       try { await writer.close() } catch { /* already closed */ }
