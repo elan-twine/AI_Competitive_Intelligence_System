@@ -249,8 +249,50 @@ async function runDataQuery(env, authToken, args) {
   return JSON.stringify({ source: 'posts', sort, count: Math.min(out.length, limit), rows: out.slice(0, limit) })
 }
 
+// Model tiers: gpt-4.1-mini by default (5× cheaper), gpt-4.1 for complex
+// questions. A tiny gpt-4.1-nano classifier routes each question; on any error
+// or timeout a keyword heuristic decides instead, so routing never hangs.
+const MODEL_FULL = 'gpt-4.1'
+const MODEL_MINI = 'gpt-4.1-mini'
+
+function heuristicComplex(question) {
+  const q = String(question || '')
+  if (q.length > 180) return true
+  return /\b(compare|versus|vs\.?|why|trend|across|explain|recommend|strateg|driver|between|most |top \d|how many|list |all )\b/i.test(q)
+}
+
+async function pickModel(env, question) {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), 6000)
+  try {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
+      body: JSON.stringify({
+        model: 'gpt-4.1-nano',
+        temperature: 0,
+        max_tokens: 2,
+        messages: [
+          { role: 'system', content: "Route a dashboard question to a model tier. Reply with ONE word: 'complex' if a good answer needs multi-step reasoning, comparing or synthesizing several data points, nuanced analysis, or precise database-query parameters (a company + a date range + filters); otherwise 'simple' (a lookup, navigation, a definition, or filing feedback). Reply only 'simple' or 'complex'." },
+          { role: 'user', content: String(question || '').slice(0, 1000) },
+        ],
+      }),
+      signal: ctl.signal,
+    })
+    if (r.ok) {
+      const j = await r.json().catch(() => null)
+      const out = String((j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').toLowerCase()
+      if (out.includes('complex')) return MODEL_FULL
+      if (out.includes('simple')) return MODEL_MINI
+    }
+  } catch { /* nano failed/timed out — fall through to heuristic */ } finally {
+    clearTimeout(timer)
+  }
+  return heuristicComplex(question) ? MODEL_FULL : MODEL_MINI
+}
+
 // Second-pass completion after a tool result: stream the answer text, no tools.
-async function streamAnswer(env, messages, writer, enc) {
+async function streamAnswer(env, messages, writer, enc, model) {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 25000)
   let resp
@@ -258,7 +300,7 @@ async function streamAnswer(env, messages, writer, enc) {
     resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
-      body: JSON.stringify({ model: 'gpt-4.1', messages, temperature: 0.2, max_tokens: 600, stream: true }),
+      body: JSON.stringify({ model: model || MODEL_FULL, messages, temperature: 0.2, max_tokens: 600, stream: true }),
       signal: ctl.signal,
     })
   } catch { clearTimeout(timer); return false }
@@ -315,6 +357,9 @@ async function handleAsk(request, env) {
     { role: 'user', content: question },
   ]
 
+  // Pick the model tier for this question (mini default, gpt-4.1 when complex).
+  const model = await pickModel(env, question)
+
   // Timeout guards only the initial connect (headers). Once the stream starts we
   // let it flow to completion so a long answer isn't truncated mid-token.
   const ctl = new AbortController()
@@ -324,7 +369,7 @@ async function handleAsk(request, env) {
     resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
-      body: JSON.stringify({ model: 'gpt-4.1', messages, temperature: 0.2, max_tokens: 600, stream: true, tools: ASSISTANT_TOOLS, tool_choice: 'auto' }),
+      body: JSON.stringify({ model, messages, temperature: 0.2, max_tokens: 600, stream: true, tools: ASSISTANT_TOOLS, tool_choice: 'auto' }),
       signal: ctl.signal,
     })
   } catch {
@@ -392,7 +437,7 @@ async function handleAsk(request, env) {
           { role: 'assistant', content: null, tool_calls: [{ id: toolId || 'call_1', type: 'function', function: { name: 'query_data', arguments: toolArgs || '{}' } }] },
           { role: 'tool', tool_call_id: toolId || 'call_1', content: result },
         ]
-        const ok = await streamAnswer(env, messages2, writer, enc)
+        const ok = await streamAnswer(env, messages2, writer, enc, model)
         if (!ok) await writer.write(enc.encode('I fetched the data but hit an error summarizing it — please try again.'))
       }
     } catch { /* upstream aborted/failed mid-stream — just close */ } finally {
@@ -401,7 +446,7 @@ async function handleAsk(request, env) {
   })()
 
   return new Response(readable, {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Assistant-Model': model },
   })
 }
 
