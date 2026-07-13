@@ -110,7 +110,8 @@ async function handleAsk(request, env) {
     { role: 'user', content: question },
   ]
 
-  // Don't let a stalled OpenAI response hang the request — abort after 25s.
+  // Timeout guards only the initial connect (headers). Once the stream starts we
+  // let it flow to completion so a long answer isn't truncated mid-token.
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), 25000)
   let resp
@@ -118,19 +119,54 @@ async function handleAsk(request, env) {
     resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
-      body: JSON.stringify({ model: 'gpt-4.1', messages, temperature: 0.2, max_tokens: 600 }),
+      body: JSON.stringify({ model: 'gpt-4.1', messages, temperature: 0.2, max_tokens: 600, stream: true }),
       signal: ctl.signal,
     })
   } catch {
-    return json(502, { error: 'assistant upstream failed' })
-  } finally {
     clearTimeout(timer)
+    return json(502, { error: 'assistant upstream failed' })
   }
-  const j = await resp.json().catch(() => null)
-  // Don't forward OpenAI's raw error text (quota/billing wording) to the client.
-  if (!resp.ok) return json(502, { error: 'assistant error' })
-  const answer = (j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || ''
-  return json(200, { answer })
+  clearTimeout(timer)
+  // On error OpenAI sends a JSON body, not a stream — surface a generic error
+  // (don't forward its raw quota/billing wording to the client).
+  if (!resp.ok || !resp.body) return json(502, { error: 'assistant error' })
+
+  // Transform OpenAI's SSE into a plain-text stream of just the content deltas,
+  // so the browser can append tokens directly as they arrive.
+  const { readable, writable } = new TransformStream()
+  ;(async () => {
+    const reader = resp.body.getReader()
+    const dec = new TextDecoder()
+    const enc = new TextEncoder()
+    const writer = writable.getWriter()
+    let buf = ''
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() || '' // keep the trailing partial line for next chunk
+        for (const line of lines) {
+          const t = line.trim()
+          if (!t.startsWith('data:')) continue
+          const data = t.slice(5).trim()
+          if (!data || data === '[DONE]') continue
+          try {
+            const piece = JSON.parse(data)
+            const delta = piece.choices && piece.choices[0] && piece.choices[0].delta && piece.choices[0].delta.content
+            if (delta) await writer.write(enc.encode(delta))
+          } catch { /* keep-alive or partial JSON — skip */ }
+        }
+      }
+    } catch { /* upstream aborted/failed mid-stream — just close */ } finally {
+      try { await writer.close() } catch { /* already closed */ }
+    }
+  })()
+
+  return new Response(readable, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+  })
 }
 
 export default {

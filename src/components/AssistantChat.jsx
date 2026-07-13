@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, X, ArrowUp, Loader2 } from 'lucide-react'
+import { Sparkles, X, ArrowUp } from 'lucide-react'
 import { buildAssistantContext } from '../lib/assistantContext'
 import { askAssistant } from '../lib/assistant'
 import './assistantChat.css'
@@ -43,14 +43,32 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
     if (!question || busy) return
     setInput('')
     const history = messages.filter(m => m.role !== 'error').map(m => ({ role: m.role, content: m.content }))
-    setMessages(m => [...m, { role: 'user', content: question }])
+    // Add the question + an empty assistant bubble the stream fills in place.
+    setMessages(m => [...m, { role: 'user', content: question }, { role: 'assistant', content: '' }])
     setBusy(true)
     try {
       const context = buildAssistantContext({ allPosts, ranked, competitors, config, filters: { platform, window: windowLabel } })
-      const answer = await askAssistant({ question, context, history })
-      setMessages(m => [...m, { role: 'assistant', content: answer || "I couldn't find an answer for that." }])
+      await askAssistant({
+        question, context, history,
+        onToken: (_chunk, full) => setMessages(m => {
+          const c = [...m]
+          for (let i = c.length - 1; i >= 0; i--) { if (c[i].role === 'assistant') { c[i] = { ...c[i], content: full }; break } }
+          return c
+        }),
+      })
+      // Nothing streamed back → show a fallback in the placeholder bubble.
+      setMessages(m => {
+        const c = [...m], last = c[c.length - 1]
+        if (last && last.role === 'assistant' && !last.content) c[c.length - 1] = { ...last, content: "I couldn't find an answer for that." }
+        return c
+      })
     } catch (err) {
-      setMessages(m => [...m, { role: 'error', content: err?.message || 'Something went wrong.' }])
+      // Drop the empty placeholder, surface the error.
+      setMessages(m => {
+        const c = [...m]
+        if (c.length && c[c.length - 1].role === 'assistant' && !c[c.length - 1].content) c.pop()
+        return [...c, { role: 'error', content: err?.message || 'Something went wrong.' }]
+      })
     } finally {
       setBusy(false)
     }
@@ -96,14 +114,13 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
             )}
             {messages.map((m, i) => (
               <div key={i} className={`asst-msg asst-msg-${m.role}`}>
-                {m.content}
+                {m.content
+                  ? m.content
+                  : (m.role === 'assistant'
+                      ? <span className="asst-typing" aria-label="Thinking"><span></span><span></span><span></span></span>
+                      : '')}
               </div>
             ))}
-            {busy && (
-              <div className="asst-msg asst-msg-assistant asst-thinking">
-                <Loader2 size={14} className="asst-spin" /> Thinking…
-              </div>
-            )}
           </div>
 
           <div className="asst-input-row">
