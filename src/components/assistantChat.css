@@ -79,6 +79,18 @@
 .asst-suggest:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .asst-suggest:disabled { opacity: 0.5; cursor: default; }
 
+/* Each message + its hover actions (copy / edit), stacked and side-aligned. */
+.asst-row { display: flex; flex-direction: column; gap: 3px; max-width: 100%; }
+.asst-row-user { align-items: flex-end; }
+.asst-row-assistant, .asst-row-error { align-items: flex-start; }
+.asst-actions { display: flex; gap: 1px; opacity: 0; transition: opacity 0.12s ease; }
+.asst-row:hover .asst-actions, .asst-actions:focus-within { opacity: 1; }
+.asst-act-btn { display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 3px; border-radius: 6px; }
+.asst-act-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--inner-bg); }
+.asst-act-btn:disabled { opacity: 0.4; cursor: default; }
+.asst-act-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (hover: none) { .asst-actions { opacity: 1; } } /* touch: no hover, so always show */
+
 .asst-msg { font-size: 13.5px; line-height: 1.5; padding: 9px 12px; border-radius: 12px; max-width: 88%; white-space: pre-wrap; word-wrap: break-word; }
 .asst-msg-user { align-self: flex-end; background: var(--accent); color: #0B0D00; border-bottom-right-radius: 4px; }
 [data-theme="light"] .asst-msg-user { background: var(--accent); color: #12161A; }
