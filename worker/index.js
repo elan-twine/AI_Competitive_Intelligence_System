@@ -85,7 +85,7 @@ WHERE THINGS ARE IN THE APP (use this for "where do I find…" questions):
 
 DATA ACCESS: The DATA CONTEXT below is only a snapshot of the current screen. For anything beyond it — specific posts, a date range, "most negative", a single company's history, SOV by week/day — call the query_data tool, then answer ONLY from the rows it returns (cite specifics and link posts). Never invent rows you didn't fetch; if the query comes back empty, say so.
 
-FILING FEEDBACK: You can file a GitHub issue via the create_github_issue tool. Call it when the user reports something that should change — a mis-weighted article (e.g. "this should be tier 1, not tier 2"), a wrong attribution or sentiment, a bug, or a feature request. Give it a clear title and a body capturing the specifics they referenced (company, platform, article title/URL, current vs expected value, and any reasoning they gave). Only file for genuine actionable feedback about the system — never for ordinary questions. The system posts the confirmation with the issue link automatically, so once you call the tool you don't need to add anything else.
+FILING FEEDBACK: When the user reports something actionable that should change — a mis-weighted article (e.g. "this should be tier 1, not tier 2"), a wrong attribution or sentiment, a bug, or a feature request — call the create_github_issue tool. This does NOT file immediately: it creates a DRAFT the user reviews and confirms before anything is filed, so draft faithfully. Rules: (1) capture ONLY what the user actually said — never invent a cause, fix, or solution they did not state; (2) if they raised multiple distinct points, list each as its own item and label it a bug or an enhancement; (3) prefer their own wording over paraphrase — their exact message is attached to the issue automatically as a verbatim quote, so you don't need to reproduce it. Give a concise, specific title and a body with the concrete details they referenced (company, platform, article title/URL, current vs expected value, reasoning). Only file for genuine actionable feedback about the system — never for ordinary questions.
 
 LANGUAGE: Always reply in the same language the user's question is written in — if they write in Hebrew, answer in Hebrew (and write any GitHub issue you file in that language too). All the formatting rules below apply in every language.
 
@@ -101,7 +101,7 @@ const ASSISTANT_TOOLS = [{
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Concise, specific issue title (e.g. "Article X mis-weighted tier 2, should be tier 1").' },
-        body: { type: 'string', description: 'Details: the specific data referenced (company, platform, article title/URL, current vs expected value) and the user\'s reasoning.' },
+        body: { type: 'string', description: 'Faithful details of ONLY what the user reported — the specific data referenced (company, platform, article title/URL, current vs expected value) and their reasoning. If they raised multiple distinct points, list each as its own item labeled (bug) or (enhancement). Do NOT invent fixes, causes, or solutions they did not state.' },
         category: { type: 'string', enum: ['data-correction', 'bug', 'feature-request', 'other'], description: 'Type of feedback.' },
       },
       required: ['title', 'body'],
@@ -129,12 +129,16 @@ const ASSISTANT_TOOLS = [{
   },
 }]
 
-// Create a GitHub issue from the model's tool call. Token stays a Worker secret.
+// Create a GitHub issue from a confirmed draft. Token stays a Worker secret.
+// The user's verbatim message is appended as a quote so the record preserves
+// their exact intent even if the model's summary drifted.
 async function createGithubIssue(env, repo, args) {
-  if (!env.GITHUB_TOKEN) return { message: "I couldn't file that — issue tracking isn't configured yet (missing GitHub token). Please pass this to an admin." }
+  if (!env.GITHUB_TOKEN) return { ok: false, message: "I couldn't file that — issue tracking isn't configured yet (missing GitHub token). Please pass this to an admin." }
   const title = (String(args && args.title || '').trim().slice(0, 240)) || 'Dashboard assistant feedback'
   const cat = args && args.category ? `\n\n_Category: ${args.category}_` : ''
-  const body = (String(args && args.body || '').trim().slice(0, 6000)) + cat + '\n\n— filed via the dashboard assistant'
+  const verbatim = String(args && args.verbatim || '').trim().slice(0, 4000)
+  const quote = verbatim ? "\n\n> **Reporter's words (verbatim):**\n" + verbatim.split('\n').map(l => '> ' + l).join('\n') : ''
+  const body = (String(args && args.body || '').trim().slice(0, 6000)) + cat + quote + '\n\n— filed via the dashboard assistant'
   let r
   try {
     r = await fetch(`https://api.github.com/repos/${repo}/issues`, {
@@ -148,13 +152,13 @@ async function createGithubIssue(env, repo, args) {
       body: JSON.stringify({ title, body }),
     })
   } catch {
-    return { message: "I couldn't reach GitHub to file that — please try again in a moment." }
+    return { ok: false, message: "I couldn't reach GitHub to file that — please try again in a moment." }
   }
-  if (!r.ok) return { message: `I couldn't file that (GitHub returned ${r.status}). Please try again, or file it manually.` }
+  if (!r.ok) return { ok: false, message: `I couldn't file that (GitHub returned ${r.status}). Please try again, or file it manually.` }
   const j = await r.json().catch(() => null)
   const num = j && j.number
   const url = j && j.html_url
-  return { message: `✓ Thanks — I've filed your feedback as issue #${num}: ${url}\n\nThe team will review it.` }
+  return { ok: true, number: num, url, message: `✓ Filed as issue #${num}: ${url}` }
 }
 
 // Run a bounded, parameterized read against Supabase AS THE USER (their access
@@ -425,8 +429,19 @@ async function handleAsk(request, env) {
       if (toolName === 'create_github_issue') {
         let args = {}
         try { args = JSON.parse(toolArgs || '{}') } catch { /* leave empty → defaulted title */ }
-        const res = await createGithubIssue(env, GH_REPO, args)
-        await writer.write(enc.encode(res.message))
+        // Don't file yet — emit a DRAFT for the user to review & confirm (the client
+        // renders a preview + "File it"). The user's verbatim message is attached so
+        // the final issue keeps their exact words regardless of the model's summary.
+        // Leading \x1e (a control char that never appears in answer text) signals the
+        // client this frame is a draft envelope, not answer tokens.
+        const draft = {
+          _kind: 'issue_draft',
+          title: String(args.title || '').slice(0, 240),
+          body: String(args.body || '').slice(0, 6000),
+          category: args.category || null,
+          verbatim: question,
+        }
+        await writer.write(enc.encode('\x1e' + JSON.stringify(draft)))
       } else if (toolName === 'query_data') {
         let args = {}
         try { args = JSON.parse(toolArgs || '{}') } catch { /* defaulted below */ }
@@ -450,11 +465,31 @@ async function handleAsk(request, env) {
   })
 }
 
+// Confirm-and-file: the client posts the (possibly user-edited) draft here after
+// the user taps "File it" in the preview. Session-gated like /api/ask.
+async function handleFileIssue(request, env) {
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
+  const user = await verifyUser(request, env)
+  if (!user) return json(401, { error: 'unauthorized' })
+  let payload
+  try { payload = await request.json() } catch { return json(400, { error: 'bad request' }) }
+  const GH_REPO = env.GITHUB_REPO || 'elan-twine/AI_Competitive_Intelligence_System'
+  const res = await createGithubIssue(env, GH_REPO, {
+    title: payload && payload.title,
+    body: payload && payload.body,
+    category: payload && payload.category,
+    verbatim: payload && payload.verbatim,
+  })
+  if (!res.ok) return json(502, { error: res.message })
+  return json(200, { message: res.message, number: res.number, url: res.url })
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api/briefing/')) return handleBriefing(request, env, url)
     if (url.pathname === '/api/ask') return handleAsk(request, env)
+    if (url.pathname === '/api/file-issue') return handleFileIssue(request, env)
     // Non-API path → static assets / SPA fallback.
     return env.ASSETS.fetch(request)
   },
