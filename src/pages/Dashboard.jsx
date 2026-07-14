@@ -285,9 +285,11 @@ function Dashboard({ onLogout, onNavigate }) {
                 ? lastUpdated.platforms.map(p => `${p.platform}: ${p.ago}`).join('  ·  ')
                 : `Board last computed ${lastUpdated.latest.toISOString().slice(0, 10)}`}
             >
+              {/* Just the freshness — the platform that ran last (always Google News)
+                  is redundant here; the per-platform breakdown stays in the tooltip. */}
               {lastUpdated.source === 'scrape_runs' && lastUpdated.platforms[0]
-                ? `${lastUpdated.platforms[0].platform} · ${lastUpdated.platforms[0].ago}`
-                : `board · ${lastUpdated.latest.toISOString().slice(0, 10)}`}
+                ? lastUpdated.platforms[0].ago
+                : lastUpdated.latest.toISOString().slice(0, 10)}
             </span>
           </div>
         )}
