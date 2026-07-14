@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, X, ArrowUp, RotateCcw } from 'lucide-react'
+import { Sparkles, X, ArrowUp, RotateCcw, FileText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAssistantContext } from '../lib/assistantContext'
-import { askAssistant } from '../lib/assistant'
+import { askAssistant, fileIssue } from '../lib/assistant'
 import './assistantChat.css'
 
 // Markdown renderers: open links in a new tab (safely), and never render raw HTML
@@ -63,18 +63,26 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
     // Add the question + an empty assistant bubble the stream fills in place.
     setMessages(m => [...m, { role: 'user', content: question }, { role: 'assistant', content: '' }])
     setBusy(true)
+    let gotDraft = false
     try {
       const context = buildAssistantContext({ allPosts, ranked, competitors, config, filters: { platform, window: windowLabel } })
       await askAssistant({
         question, context, history,
-        onToken: (_chunk, full) => setMessages(m => {
+        onToken: (_chunk, full) => { if (gotDraft) return; setMessages(m => {
           const c = [...m]
           for (let i = c.length - 1; i >= 0; i--) { if (c[i].role === 'assistant') { c[i] = { ...c[i], content: full }; break } }
           return c
-        }),
+        }) },
+        // Model wants to file feedback → replace the placeholder with a review card.
+        // Nothing is filed until the user taps "File it".
+        onDraft: (draft) => { gotDraft = true; setMessages(m => {
+          const c = [...m]
+          for (let i = c.length - 1; i >= 0; i--) { if (c[i].role === 'assistant') { c[i] = { role: 'assistant', kind: 'draft', draft, content: '' }; break } }
+          return c
+        }) },
       })
       // Nothing streamed back → show a fallback in the placeholder bubble.
-      setMessages(m => {
+      if (!gotDraft) setMessages(m => {
         const c = [...m], last = c[c.length - 1]
         if (last && last.role === 'assistant' && !last.content) c[c.length - 1] = { ...last, content: "I couldn't find an answer for that." }
         return c
@@ -98,6 +106,22 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
   // Clear the whole conversation. There's no server-side session — history lives
   // only in this state and is re-sent each turn — so this fully resets context.
   const reset = () => { setMessages([]); setInput(''); if (inputRef.current) inputRef.current.focus() }
+
+  // Confirm a draft → actually file the issue, then swap the card for the result.
+  const fileDraft = useCallback(async (idx, draft) => {
+    setMessages(m => { const c = [...m]; if (c[idx]?.kind === 'draft') c[idx] = { ...c[idx], filing: true, error: null }; return c })
+    try {
+      const res = await fileIssue(draft)
+      setMessages(m => { const c = [...m]; c[idx] = { role: 'assistant', content: `✓ ${res.message || 'Filed.'}\n\nThe team will review it.` }; return c })
+    } catch (err) {
+      setMessages(m => { const c = [...m]; if (c[idx]?.kind === 'draft') c[idx] = { ...c[idx], filing: false, error: err?.message || 'Could not file that.' }; return c })
+    }
+  }, [])
+
+  // Discard a draft without filing.
+  const cancelDraft = useCallback((idx) => {
+    setMessages(m => { const c = [...m]; c[idx] = { role: 'assistant', content: '_Draft discarded — nothing was filed._' }; return c })
+  }, [])
 
   return (
     <>
@@ -141,15 +165,41 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
               </div>
             )}
             {messages.map((m, i) => (
-              <div key={i} className={`asst-msg asst-msg-${m.role}`} dir="auto">
-                {m.content
-                  ? (m.role === 'assistant'
-                      ? <div className="asst-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.content}</ReactMarkdown></div>
-                      : m.content)
-                  : (m.role === 'assistant'
-                      ? <span className="asst-typing" aria-label="Thinking"><span></span><span></span><span></span></span>
-                      : '')}
-              </div>
+              m.kind === 'draft' ? (
+                <div key={i} className="asst-draft" dir="auto">
+                  <div className="asst-draft-head"><FileText size={13} /> Draft issue — review before filing</div>
+                  {m.draft?.title && <div className="asst-draft-title">{m.draft.title}</div>}
+                  {m.draft?.body && (
+                    <div className="asst-md asst-draft-body">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.draft.body}</ReactMarkdown>
+                    </div>
+                  )}
+                  {m.draft?.verbatim && (
+                    <div className="asst-draft-verbatim">
+                      <span className="asst-draft-verbatim-label">Your words (attached verbatim)</span>
+                      {m.draft.verbatim}
+                    </div>
+                  )}
+                  {m.draft?.category && <div className="asst-draft-cat">{m.draft.category}</div>}
+                  {m.error && <div className="asst-draft-err">{m.error}</div>}
+                  <div className="asst-draft-actions">
+                    <button className="asst-draft-file" onClick={() => fileDraft(i, m.draft)} disabled={m.filing}>
+                      {m.filing ? 'Filing…' : 'File it'}
+                    </button>
+                    <button className="asst-draft-cancel" onClick={() => cancelDraft(i)} disabled={m.filing}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div key={i} className={`asst-msg asst-msg-${m.role}`} dir="auto">
+                  {m.content
+                    ? (m.role === 'assistant'
+                        ? <div className="asst-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.content}</ReactMarkdown></div>
+                        : m.content)
+                    : (m.role === 'assistant'
+                        ? <span className="asst-typing" aria-label="Thinking"><span></span><span></span><span></span></span>
+                        : '')}
+                </div>
+              )
             ))}
           </div>
 
