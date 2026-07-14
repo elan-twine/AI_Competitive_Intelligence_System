@@ -126,6 +126,7 @@
   border-radius: 10px;
   padding: 9px 11px;
   outline: none;
+  overflow-y: auto; /* scroll once content grows past max-height (JS auto-sizes up to it) */
 }
 .asst-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim, rgba(219,254,2,0.15)); }
 .asst-input:disabled { opacity: 0.6; }
