@@ -171,13 +171,31 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
     // ending at the last frozen snapshot. SOV only; skip in isolated
     // week-by-week mode (its points are single-week slices, not a running total).
     if (metric === 'overall' && effMode !== 'weekly' && nowValues) {
-      const nowRow = { week: 'Now', t: Date.now() }
+      // Daily views (7d/30d) step one calendar day at a time and we don't scrape
+      // intraday, so the live "Now" point must land on TODAY's evenly-spaced grid
+      // slot — not at the fractional current time, which would push it past the
+      // last daily date and open an oversized gap before it. Weekly/YTD keep the
+      // true timestamp (that line intentionally slides right through the open week).
+      const nowTsBase = Date.now()
+      const todayMid = new Date(nowTsBase); todayMid.setHours(0, 0, 0, 0)
+      const todayTs = todayMid.getTime()
+      const nowRow = { week: 'Now', t: isDaily ? todayTs : nowTsBase }
       let any = false
       for (const k of Object.keys(nowValues)) {
         const v = nowValues[k]
         if (v != null && !isNaN(v)) { nowRow[k] = v; any = true }
       }
-      if (any) rows = [...rows, nowRow]
+      if (any) {
+        // On the daily grid, drop a frozen point already sitting on today's date so
+        // the live "Now" supersedes it (one point per day, no duplicate at today's x).
+        if (isDaily) {
+          rows = rows.filter(r => {
+            const ts = Date.parse(`${r.week}T00:00:00`)
+            return isNaN(ts) || ts < todayTs
+          })
+        }
+        rows = [...rows, nowRow]
+      }
     }
     // Attach a numeric timestamp for the TIME-BASED x-axis. Standings/daily points
     // sit at their labeled date. Isolated week-by-week points instead anchor at the

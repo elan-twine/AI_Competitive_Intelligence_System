@@ -39,6 +39,15 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages, busy])
 
+  // Auto-size the input to its content (up to the CSS max-height), and shrink it
+  // back down as text is deleted or after a send clears it.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+  }, [input, open])
+
   useEffect(() => {
     if (!open) return
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
