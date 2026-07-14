@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, X, ArrowUp, RotateCcw, FileText } from 'lucide-react'
+import { Sparkles, X, ArrowUp, RotateCcw, FileText, Copy, Check, Pencil } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAssistantContext } from '../lib/assistantContext'
@@ -28,6 +28,7 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
   const [messages, setMessages] = useState([]) // { role:'user'|'assistant'|'error', content }
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [copiedIdx, setCopiedIdx] = useState(null)
   const inputRef = useRef(null)
   const scrollRef = useRef(null)
 
@@ -123,6 +124,27 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
     setMessages(m => { const c = [...m]; c[idx] = { role: 'assistant', content: '_Draft discarded — nothing was filed._' }; return c })
   }, [])
 
+  // Copy a message's text to the clipboard; flash a check for a moment.
+  const copyMessage = useCallback(async (idx, text) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedIdx(idx)
+      setTimeout(() => setCopiedIdx(c => (c === idx ? null : c)), 1200)
+    } catch { /* clipboard blocked — ignore */ }
+  }, [])
+
+  // Edit an earlier question: pull it back into the input and drop that turn and
+  // everything after it, so the next send restarts the conversation from here
+  // (same as editing a prior message in Claude).
+  const editMessage = useCallback((idx) => {
+    if (busy) return
+    const msg = messages[idx]
+    if (!msg || msg.role !== 'user') return
+    setInput(msg.content)
+    setMessages(prev => prev.slice(0, idx))
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [busy, messages])
+
   return (
     <>
       <button
@@ -190,14 +212,28 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
                   </div>
                 </div>
               ) : (
-                <div key={i} className={`asst-msg asst-msg-${m.role}`} dir="auto">
-                  {m.content
-                    ? (m.role === 'assistant'
-                        ? <div className="asst-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.content}</ReactMarkdown></div>
-                        : m.content)
-                    : (m.role === 'assistant'
-                        ? <span className="asst-typing" aria-label="Thinking"><span></span><span></span><span></span></span>
-                        : '')}
+                <div key={i} className={`asst-row asst-row-${m.role}`}>
+                  <div className={`asst-msg asst-msg-${m.role}`} dir="auto">
+                    {m.content
+                      ? (m.role === 'assistant'
+                          ? <div className="asst-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.content}</ReactMarkdown></div>
+                          : m.content)
+                      : (m.role === 'assistant'
+                          ? <span className="asst-typing" aria-label="Thinking"><span></span><span></span><span></span></span>
+                          : '')}
+                  </div>
+                  {m.content && m.role !== 'error' && (
+                    <div className="asst-actions">
+                      <button className="asst-act-btn" onClick={() => copyMessage(i, m.content)} title="Copy" aria-label="Copy message">
+                        {copiedIdx === i ? <Check size={13} /> : <Copy size={13} />}
+                      </button>
+                      {m.role === 'user' && (
+                        <button className="asst-act-btn" onClick={() => editMessage(i)} disabled={busy} title="Edit & resend" aria-label="Edit message">
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             ))}
