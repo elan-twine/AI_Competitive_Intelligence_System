@@ -16,9 +16,6 @@ const MAX_WEEKLY_POINTS = 52   // ~1 year of weekly snapshots
 
 function TrendTooltip({ active, payload, isDaily, isSentiment }) {
   if (!active || !payload?.length) return null
-  // Daily-cumulative fill points are on the line but not individually viewable —
-  // only weekly snapshots + the Now point get a popup.
-  if (payload[0]?.payload?.__fill) return null
   const rows = [...payload]
     .filter(p => p.value != null && p.strokeOpacity !== 0)
     .sort((a, b) => (b.value || 0) - (a.value || 0))
@@ -29,9 +26,19 @@ function TrendTooltip({ active, payload, isDaily, isSentiment }) {
   // x-axis is now numeric time; read the row's original label off the payload.
   const pl0 = payload[0]?.payload
   const wk = pl0?.week
-  // Isolated week-by-week points carry a pre-built range label ("Jul 9 – Jul 15
-  // (in progress)"); everything else falls back to the week-start / day label.
-  const header = pl0?.__label ? pl0.__label : wk === 'Now' ? 'Now (live)' : isDaily ? wk : `Week of ${wk}`
+  const fmtDay = (s) => { const d = new Date(`${s}T00:00:00`); return isNaN(d.getTime()) ? s : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) }
+  // Header by point type: isolated week-by-week points carry a pre-built range
+  // label; "Now" is the live tip; YTD daily-cumulative fill points show the day
+  // (standings as of that date); weekly snapshots show the week.
+  const header = pl0?.__label
+    ? pl0.__label
+    : wk === 'Now'
+      ? 'Now (live)'
+      : isDaily
+        ? wk
+        : pl0?.__fill
+          ? fmtDay(wk)
+          : `Week of ${wk}`
   return (
     <div className="chart-tooltip">
       <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>
