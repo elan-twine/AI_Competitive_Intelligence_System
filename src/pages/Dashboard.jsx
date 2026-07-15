@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Filter, Info, Download } from 'lucide-react'
+import { Filter, Info, Download, RefreshCw } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
@@ -15,6 +15,7 @@ import { PostsOfInterest } from '../components/PostsOfInterest'
 import { PlatformWeightsExplainer } from '../components/PlatformWeightsExplainer'
 import { AIVisibility } from '../components/AIVisibility'
 import { AssistantChat } from '../components/AssistantChat'
+import { clearCache } from '../lib/cache'
 import { downloadCSV } from '../lib/csv'
 import { fmtDateRange } from '../lib/dates'
 import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
@@ -69,6 +70,17 @@ function fmtSent(s) {
 
 function Dashboard({ onLogout, onNavigate }) {
   const { allPosts, companies, competitors, loading, error, refetch } = useSOVData()
+  const [refreshing, setRefreshing] = useState(false)
+  // Force the freshest data. The dashboard caches datasets in localStorage/
+  // IndexedDB for 6h, and a browser hard-refresh does NOT clear those — so a
+  // just-processed post won't appear until the cache goes stale. This wipes the
+  // app cache and reloads, so every hook refetches from the network.
+  const handleRefresh = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try { await clearCache() } catch { /* ignore — reload refetches anyway */ }
+    window.location.reload()
+  }
   const { config: sovConfig } = useSOVConfig()
   const lastUpdated = useLastUpdated()
 
@@ -276,23 +288,40 @@ function Dashboard({ onLogout, onNavigate }) {
             ))}
           </div>
         </div>
-        {lastUpdated.ready && lastUpdated.latest && (
-          <div className="filter-group" style={{ marginLeft: 'auto' }}>
-            <span className="filter-label">Updated</span>
-            <span
-              style={{ fontSize: 12, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}
-              title={lastUpdated.source === 'scrape_runs'
-                ? lastUpdated.platforms.map(p => `${p.platform}: ${p.ago}`).join('  ·  ')
-                : `Board last computed ${lastUpdated.latest.toISOString().slice(0, 10)}`}
-            >
-              {/* Just the freshness — the platform that ran last (always Google News)
-                  is redundant here; the per-platform breakdown stays in the tooltip. */}
-              {lastUpdated.source === 'scrape_runs' && lastUpdated.platforms[0]
-                ? lastUpdated.platforms[0].ago
-                : lastUpdated.latest.toISOString().slice(0, 10)}
-            </span>
-          </div>
-        )}
+        <div className="filter-group" style={{ marginLeft: 'auto', gap: 10 }}>
+          {lastUpdated.ready && lastUpdated.latest && (
+            <>
+              <span className="filter-label">Updated</span>
+              <span
+                style={{ fontSize: 12, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}
+                title={lastUpdated.source === 'scrape_runs'
+                  ? lastUpdated.platforms.map(p => `${p.platform}: ${p.ago}`).join('  ·  ')
+                  : `Board last computed ${lastUpdated.latest.toISOString().slice(0, 10)}`}
+              >
+                {/* Just the freshness — the platform that ran last (always Google News)
+                    is redundant here; the per-platform breakdown stays in the tooltip. */}
+                {lastUpdated.source === 'scrape_runs' && lastUpdated.platforms[0]
+                  ? lastUpdated.platforms[0].ago
+                  : lastUpdated.latest.toISOString().slice(0, 10)}
+              </span>
+            </>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh data — clears the local cache and reloads so newly processed posts show immediately"
+            aria-label="Refresh data"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12,
+              color: 'var(--text-secondary)', background: 'transparent',
+              border: '1px solid var(--border)', borderRadius: 8, padding: '4px 9px',
+              cursor: refreshing ? 'default' : 'pointer', opacity: refreshing ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw size={13} style={refreshing ? { animation: 'spin 0.8s linear infinite' } : undefined} />
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </GlassCard>
       )}
 
