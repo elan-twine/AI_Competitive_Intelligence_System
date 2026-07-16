@@ -68,6 +68,8 @@ a.twp-row:hover {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* all-time view: the current (decayed) contribution next to the peak score */
+.twp-weight-now { color: var(--text-muted); font-weight: 500; }
 .twp-ext { color: var(--text-muted); flex-shrink: 0; }
 .twp-text {
   font-size: 0.82rem;

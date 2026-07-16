@@ -174,10 +174,12 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       })
     }
     // Append a live "Now" point = the current standing (the same numbers as the
-    // ranking table), so the chart's tip lines up with the table instead of
-    // ending at the last frozen snapshot. SOV only; skip in isolated
-    // week-by-week mode (its points are single-week slices, not a running total).
-    if (metric === 'overall' && effMode !== 'weekly' && nowValues) {
+    // stat cards / ranking table), so the chart's tip lines up with them instead
+    // of ending at the last frozen snapshot. Applies to SOV and sentiment (whose
+    // nowValues arrive already on the −3..+3 display scale — the frozen rows were
+    // converted above, so no double conversion). Skip in isolated week-by-week
+    // mode (its points are single-week slices, not a running total).
+    if ((metric === 'overall' || isSentiment) && effMode !== 'weekly' && nowValues) {
       // Daily views (7d/30d) step one calendar day at a time and we don't scrape
       // intraday, so the live "Now" point must land on TODAY's evenly-spaced grid
       // slot — not at the fractional current time, which would push it past the
