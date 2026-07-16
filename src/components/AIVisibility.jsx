@@ -249,7 +249,7 @@ export function AIVisibility() {
 
   if (loading) {
     return (
-      <GlassCard className="card" intensity={3}>
+      <GlassCard className="card" intensity={3} interactive>
         <div className="empty-state"><p>Loading AI visibility…</p></div>
       </GlassCard>
     )
