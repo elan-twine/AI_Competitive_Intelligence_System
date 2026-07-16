@@ -157,6 +157,13 @@ function Dashboard({ onLogout, onNavigate }) {
     () => Object.fromEntries((ranked || []).map(r => [r.company, r.weightedPct])),
     [ranked]
   )
+  // Same idea for the sentiment chart: its "Now" tip = the stat card's number
+  // (avg external sentiment over the selected window, already on −3..+3), so the
+  // chart ends exactly where the card says instead of at the last weekly bucket.
+  const sentimentNow = useMemo(
+    () => Object.fromEntries((ranked || []).filter(r => r.sentimentCount).map(r => [r.company, r.avgSentiment])),
+    [ranked]
+  )
   // When the platform filter is narrowed, the weekly trend charts switch from the
   // frozen (cross-platform) board to a live series computed off the filtered posts,
   // so they reflect the selected platform(s). "All" = frozen board, full history.
@@ -448,7 +455,7 @@ function Dashboard({ onLogout, onNavigate }) {
           </GlassCard>
 
           {/* Top items — the wild outliers driving the board (above the sentiment graph). */}
-          <TopPostsWeek posts={directPosts} config={sovConfig} />
+          <TopPostsWeek posts={directPosts} allTimePosts={chartPosts} config={sovConfig} />
 
           {/* Sentiment — its own weekly trend. Reflects the platform filter (live)
               when one is selected. */}
@@ -469,6 +476,7 @@ function Dashboard({ onLogout, onNavigate }) {
               live={platformFiltered}
               config={sovConfig}
               windowDays={windowDays}
+              nowValues={sentimentNow}
             />
           </GlassCard>
 
