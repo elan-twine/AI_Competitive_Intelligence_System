@@ -396,7 +396,7 @@ function StatCard({ label, value, valueColor, accent }) {
 // before the finished row lands. Replaced by the real card once it arrives.
 function PendingBriefCard({ name }) {
   return (
-    <GlassCard className="bf-card bf-generating" intensity={4}>
+    <GlassCard className="bf-card bf-generating" intensity={4} interactive>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.3px', color: 'var(--text-primary)' }}>{name}</div>
         <span className="bf-spin" />
@@ -410,8 +410,8 @@ function PendingBriefCard({ name }) {
 
 function CompareAll({ data, loading }) {
   const comps = Object.values(data)
-  if (loading) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div></GlassCard>
-  if (comps.length === 0) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>No briefings yet.</div></GlassCard>
+  if (loading) return <GlassCard className="bf-card" intensity={3} interactive><div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div></GlassCard>
+  if (comps.length === 0) return <GlassCard className="bf-card" intensity={3} interactive><div style={{ padding: 16, color: 'var(--text-muted)' }}>No briefings yet.</div></GlassCard>
   const rows = [
     ['Threat', c => <ThreatPill threat={c.threat} />],
     ['Category', c => c.category],
@@ -446,9 +446,9 @@ function CompareAll({ data, loading }) {
 }
 
 function BriefList({ data, loading, openBrief }) {
-  if (loading) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div></GlassCard>
+  if (loading) return <GlassCard className="bf-card" intensity={3} interactive><div style={{ padding: 16, color: 'var(--text-muted)' }}>Loading…</div></GlassCard>
   const keys = Object.keys(data)
-  if (keys.length === 0) return <GlassCard className="bf-card" intensity={3}><div style={{ padding: 16, color: 'var(--text-muted)' }}>No briefings yet — generate one to get started.</div></GlassCard>
+  if (keys.length === 0) return <GlassCard className="bf-card" intensity={3} interactive><div style={{ padding: 16, color: 'var(--text-muted)' }}>No briefings yet — generate one to get started.</div></GlassCard>
   return (
     <div>
       {keys.map(k => {

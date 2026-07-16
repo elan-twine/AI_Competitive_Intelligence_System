@@ -61,7 +61,7 @@ export function PlatformWeightsExplainer({ posts = [], config }) {
   const reset = () => setMults(base)
 
   return (
-    <GlassCard className="card pw-card" intensity={4}>
+    <GlassCard className="card pw-card" intensity={4} interactive>
       <div className="card-header">
         <span className="card-title">Platform weights — the trust dial</span>
         {dirty && (
