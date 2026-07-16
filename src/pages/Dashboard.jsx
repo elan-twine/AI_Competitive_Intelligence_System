@@ -12,7 +12,6 @@ import { SocialBriefs } from '../components/SocialBriefs'
 import { CompanyDrillIn } from '../components/CompanyDrillIn'
 import { TopPostsWeek } from '../components/TopPostsWeek'
 import { PostsOfInterest } from '../components/PostsOfInterest'
-import { PlatformWeightsExplainer } from '../components/PlatformWeightsExplainer'
 import { AIVisibility } from '../components/AIVisibility'
 import { AssistantChat } from '../components/AssistantChat'
 import { clearCache } from '../lib/cache'
@@ -226,15 +225,7 @@ function Dashboard({ onLogout, onNavigate }) {
         <button className={`tab ${tab === 'posts' ? 'active' : ''}`} onClick={() => setTab('posts')}>Posts of Interest</button>
         <button className={`tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>AI Visibility</button>
         <button className={`tab ${tab === 'compare' ? 'active' : ''}`} onClick={() => setTab('compare')}>Compare</button>
-        <button className={`tab ${tab === 'weights' ? 'active' : ''}`} onClick={() => setTab('weights')}>Weights</button>
       </div>
-
-      {/* Weights — interactive trust-dial explainer for tuning the platform
-          multipliers (esp. News). Runs on the direct-competitor set; the global
-          platform/time filter bar doesn't apply (it's a methodology sandbox). */}
-      {tab === 'weights' && (
-        <PlatformWeightsExplainer posts={directPosts} config={sovConfig} />
-      )}
 
       {/* Posts of Interest has its own period control, so the global platform/time
           filter bar is hidden there (it doesn't apply to the curated digest). */}
