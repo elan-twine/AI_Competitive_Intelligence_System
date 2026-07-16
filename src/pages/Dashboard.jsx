@@ -512,6 +512,7 @@ function Dashboard({ onLogout, onNavigate }) {
           company={drilledCompany}
           posts={directPosts}
           allDirectPosts={directPosts}
+          allTimePosts={chartPosts}
           config={sovConfig}
           onClose={() => setDrilledCompany(null)}
         />

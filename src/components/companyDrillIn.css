@@ -364,9 +364,23 @@
   color: var(--text-primary);
 }
 .cdi-standouts-sub {
+  display: block;
   font-size: 0.74rem;
   color: var(--text-muted);
+  margin: -4px 0 12px;
 }
+/* week / all-time toggle in the standouts header (pushed to the right) */
+.cdi-standouts-toggle { display: flex; gap: 6px; margin-left: auto; }
+.cdi-toggle-btn {
+  font-family: inherit; font-size: 0.72rem; font-weight: 600;
+  padding: 3px 10px; border-radius: 999px; cursor: pointer;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid var(--border); transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.cdi-toggle-btn:hover { color: var(--text-primary); }
+.cdi-toggle-btn.active { color: var(--accent); border-color: var(--accent); }
+/* all-time view: current (decayed) contribution beside the peak score */
+.cdi-chip-weight-now { color: var(--text-muted); font-weight: 500; }
 .cdi-standouts-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

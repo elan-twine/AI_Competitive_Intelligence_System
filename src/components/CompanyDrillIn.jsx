@@ -229,7 +229,45 @@ function deriveStandouts(weeks, max = 5) {
   return { items, hasOutliers: items.some(i => i.isOutlier) }
 }
 
-export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose }) {
+// Peak impact of a normalized post: the score it carried at full freshness,
+// recovered by dividing its current (decayed) weight back by its decay factor
+// (flat first 7 days, then 2^(-age/halfLife)). Same math the trend/Top-items use.
+function peakOf(np, config, now) {
+  const hl = (config?.halfLifeDays && config.halfLifeDays[np.platform]) || 14
+  const t = np.ts ? new Date(np.ts).getTime() : NaN
+  if (isNaN(t)) return np.weight
+  const age = Math.max(0, (now - t) / 86400000)
+  const decay = age <= 7 ? 1 : Math.pow(2, -age / hl)
+  return decay > 0 ? np.weight / decay : np.weight
+}
+
+// All-time standouts: the company's best items EVER (ignores the window), ranked
+// by PEAK impact. `src` is the full-history post set for this company.
+function derivePeakStandouts(src, config, max = 5) {
+  const multMap = config?.platformMultipliers || {}
+  const now = Date.now()
+  const all = src.map(p => {
+    const np = normalizePost(p, multMap[p.platform] ?? 1)
+    np.peak = peakOf(np, config, now)
+    return np
+  })
+  if (!all.length) return { items: [], hasOutliers: false }
+  if (all.length < 4) {
+    return {
+      items: [...all].sort((a, b) => b.peak - a.peak).slice(0, Math.min(3, all.length)).map(p => ({ ...p, isOutlier: false })),
+      hasOutliers: false,
+    }
+  }
+  const peaks = all.map(p => p.peak)
+  const mean = peaks.reduce((s, v) => s + v, 0) / peaks.length
+  const std = Math.sqrt(peaks.reduce((s, v) => s + (v - mean) ** 2, 0) / peaks.length)
+  const threshold = mean + std
+  const ranked = [...all].sort((a, b) => b.peak - a.peak)
+  const items = ranked.slice(0, max).map(p => ({ ...p, isOutlier: p.peak > threshold && p.peak > mean }))
+  return { items, hasOutliers: items.some(i => i.isOutlier) }
+}
+
+export function CompanyDrillIn({ company, posts, allDirectPosts, allTimePosts, config, onClose }) {
   // Esc to close.
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -271,6 +309,17 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
   // Top posts & outliers (highest-impact + statistical standouts vs this
   // company's own typical post). Computed off the same normalized weeks.
   const standouts = useMemo(() => deriveStandouts(weeks), [weeks])
+
+  // Top-items view: 'view' = highest-impact items in the current window (default);
+  // 'peak' = the company's all-time best, ranked by peak impact (ignores the
+  // window, uses full history). Mirrors the Top items card on the Overview tab.
+  const [topMode, setTopMode] = useState('view')
+  const peakStandouts = useMemo(() => {
+    if (topMode !== 'peak') return null
+    const src = (allTimePosts || posts).filter(p => p.companyName === company)
+    return derivePeakStandouts(src, config)
+  }, [topMode, allTimePosts, posts, company, config])
+  const activeStandouts = topMode === 'peak' && peakStandouts ? peakStandouts : standouts
 
   // Collapsible week sections: only the most recent (first) week is open on mount;
   // every other week starts collapsed. Toggling is per-week via the header.
@@ -337,19 +386,41 @@ export function CompanyDrillIn({ company, posts, allDirectPosts, config, onClose
             <div className="empty-state"><p>No items for this company in the current filter.</p></div>
           ) : (
             <>
-              {standouts.items.length > 0 && (
+              {(activeStandouts.items.length > 0 || topMode === 'peak') && (
                 <div className="cdi-standouts">
                   <div className="cdi-standouts-head">
                     <span className="cdi-standouts-title">
-                      {standouts.hasOutliers ? 'Top items & outliers' : 'Top items'}
+                      {activeStandouts.hasOutliers ? 'Top items & outliers' : 'Top items'}
                     </span>
-                    <span className="cdi-standouts-sub">the standouts driving its score</span>
+                    <div className="cdi-standouts-toggle">
+                      <button
+                        className={`cdi-toggle-btn${topMode === 'view' ? ' active' : ''}`}
+                        onClick={() => setTopMode('view')}
+                        title="Highest-impact items in the current time window, by what they contribute now.">
+                        Current view
+                      </button>
+                      <button
+                        className={`cdi-toggle-btn${topMode === 'peak' ? ' active' : ''}`}
+                        onClick={() => setTopMode('peak')}
+                        title="This company's best items ever, ranked by peak impact — the score at full freshness, before time decay. Ignores the window.">
+                        All-time best
+                      </button>
+                    </div>
                   </div>
-                  <div className="cdi-standouts-list">
-                    {standouts.items.map((p, i) => (
-                      <StandoutChip post={p} company={company} key={i} />
-                    ))}
-                  </div>
+                  <span className="cdi-standouts-sub">
+                    {topMode === 'peak'
+                      ? 'its best items ever — by peak impact (score at full freshness); “now” = what each still contributes today'
+                      : 'the standouts driving its score'}
+                  </span>
+                  {activeStandouts.items.length > 0 ? (
+                    <div className="cdi-standouts-list">
+                      {activeStandouts.items.map((p, i) => (
+                        <StandoutChip post={p} company={company} key={i} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state" style={{ padding: '16px 0' }}><p>No items on record for this company.</p></div>
+                  )}
                 </div>
               )}
 
@@ -422,9 +493,15 @@ function StandoutChip({ post, company }) {
             </span>
           )}
           <AuthorTypeBadge authorType={post.authorType} platform={post.platform} />
-          <span className="cdi-chip-weight" title="This item's impact on the company's Share of Voice">
-            ⚡ {Math.round(post.weight * 100) / 100}
-          </span>
+          {post.peak != null ? (
+            <span className="cdi-chip-weight" title="Peak = this item's impact at full freshness (its all-time high, before time decay). “now” = what it still contributes today.">
+              ⚡ peak {Math.round(post.peak * 100) / 100} <span className="cdi-chip-weight-now">· now {Math.round(post.weight * 100) / 100}</span>
+            </span>
+          ) : (
+            <span className="cdi-chip-weight" title="This item's impact on the company's Share of Voice">
+              ⚡ {Math.round(post.weight * 100) / 100}
+            </span>
+          )}
         </div>
       </div>
       <div className="cdi-chip-text">{short}</div>
