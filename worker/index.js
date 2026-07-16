@@ -83,7 +83,12 @@ WHERE THINGS ARE IN THE APP (use this for "where do I find…" questions):
 - Header icons: About (what the score measures), Methodology (the full math), Manage competitors, light/dark toggle, log out.
 - To remove a wrong mention: every post card has a small flag/remove control — it soft-excludes that mention from all calculations without deleting the data.
 
-DATA ACCESS: The DATA CONTEXT below is only a snapshot of the current screen. For anything beyond it — specific posts, a date range, "most negative", a single company's history, SOV by week/day — call the query_data tool, then answer ONLY from the rows it returns (cite specifics and link posts). Never invent rows you didn't fetch; if the query comes back empty, say so.
+HOW DATA FLOWS (so you can reason about freshness and what's "in" the numbers): posts are scraped daily per platform → LinkedIn posts land in a raw staging queue and are then LLM-attributed to a competitor (or NONE) and scored; X/Reddit/News are attributed inline as they're scraped → attributed posts feed the SOV board (recomputed daily). So a very recent post can be scraped but not yet processed/attributed, which is a queue question, not a "missing data" one.
+
+DATA ACCESS: The DATA CONTEXT below is only a snapshot of the current screen. You have two read tools — use them instead of telling the user to look elsewhere:
+- query_data — for rows beyond the snapshot: specific posts, a date range, "most negative", a single company's history, SOV by week/day, and AI-answer visibility ("share of model", how often an engine names a company). Answer ONLY from the rows it returns; never invent rows; if empty, say so.
+- system_status — for OPERATIONAL questions: "is anything waiting to be processed/attributed?" (the LinkedIn queue), "is the pipeline running / when did we last scrape X?" (per-platform freshness), and "what are the current weights / multipliers / half-lives?" (live scoring config — trust this over any numbers in this prompt).
+Cite specifics and link posts where relevant.
 
 FILING FEEDBACK: When the user reports something actionable that should change — a mis-weighted article (e.g. "this should be tier 1, not tier 2"), a wrong attribution or sentiment, a bug, or a feature request — call the create_github_issue tool. This does NOT file immediately: it creates a DRAFT the user reviews and confirms before anything is filed, so draft faithfully. Rules: (1) capture ONLY what the user actually said — never invent a cause, fix, or solution they did not state; (2) if they raised multiple distinct points, list each as its own item and label it a bug or an enhancement; (3) prefer their own wording over paraphrase — their exact message is attached to the issue automatically as a verbatim quote, so you don't need to reproduce it. Give a concise, specific title and a body with the concrete details they referenced (company, platform, article title/URL, current vs expected value, reasoning). Only file for genuine actionable feedback about the system — never for ordinary questions.
 
@@ -111,11 +116,11 @@ const ASSISTANT_TOOLS = [{
   type: 'function',
   function: {
     name: 'query_data',
-    description: 'Look up posts or SOV history from the database when the answer is NOT in the on-screen DATA CONTEXT — e.g. "all Cerby news articles in June", "most negative posts about Twine", "Twine\'s SOV by week". Returns rows scoped to what this user is allowed to see. Answer only from the returned rows.',
+    description: 'Look up rows from the database when the answer is NOT in the on-screen DATA CONTEXT — individual posts, SOV history, or AI-answer visibility. E.g. "all Cerby news articles in June", "most negative posts about Twine", "Twine\'s SOV by week", "how often does ChatGPT name us?". Returns rows scoped to what this user is allowed to see. Answer only from the returned rows.',
     parameters: {
       type: 'object',
       properties: {
-        source: { type: 'string', enum: ['posts', 'weekly_board', 'daily_board'], description: 'posts = individual mentions across LinkedIn/X/Reddit/News; weekly_board/daily_board = frozen SOV% history.' },
+        source: { type: 'string', enum: ['posts', 'weekly_board', 'daily_board', 'ai_visibility'], description: 'posts = individual mentions across LinkedIn/X/Reddit/News; weekly_board/daily_board = frozen SOV% history; ai_visibility = "share of model" — how often each company is named in AI-answer engines (per engine, per week).' },
         company: { type: 'string', description: 'Filter to one tracked competitor by name.' },
         platform: { type: 'string', enum: ['LinkedIn', 'X', 'Reddit', 'Google News'], description: 'posts only: limit to one platform; omit for all.' },
         since: { type: 'string', description: 'Start date YYYY-MM-DD (inclusive).' },
@@ -126,6 +131,13 @@ const ASSISTANT_TOOLS = [{
       },
       required: ['source'],
     },
+  },
+}, {
+  type: 'function',
+  function: {
+    name: 'system_status',
+    description: 'Operational/pipeline status (NOT the SOV numbers). Use for: "is anything waiting to be processed/attributed?" (the LinkedIn ingestion queue — pending vs done, oldest-pending age); "is the pipeline running / when did we last scrape X?" (per-platform last successful scrape); and "what are the current weights / the News multiplier / half-lives?" (the live scoring config). Returns a small status object; answer only from it.',
+    parameters: { type: 'object', properties: {}, required: [] },
   },
 }]
 
@@ -177,6 +189,21 @@ async function runDataQuery(env, authToken, args) {
   const q = (parts) => parts.filter(Boolean).join('&')
   const get = async (path) => {
     try { const r = await fetch(BASE + path, { headers: H }); if (!r.ok) return null; return await r.json() } catch { return null }
+  }
+
+  if (source === 'ai_visibility') {
+    // "Share of model" — llm_sov: per engine, per week, how often each company is
+    // named in AI answers. Newest week first.
+    const rows = await get('/llm_sov?' + q([
+      'select=company,week_start,engine,mention_rate,share_of_model,avg_first_pos,n_prompts,n_samples',
+      company ? `company=ilike.*${enc(company)}*` : '',
+      since ? `week_start=gte.${since}` : '',
+      until ? `week_start=lte.${until}` : '',
+      'order=week_start.desc,share_of_model.desc',
+      `limit=${limit}`,
+    ]))
+    if (rows == null) return JSON.stringify({ error: 'query failed' })
+    return JSON.stringify({ source, count: rows.length, rows })
   }
 
   if (source === 'weekly_board' || source === 'daily_board') {
@@ -251,6 +278,23 @@ async function runDataQuery(env, authToken, args) {
     return a.date < b.date ? 1 : a.date > b.date ? -1 : 0
   })
   return JSON.stringify({ source: 'posts', sort, count: Math.min(out.length, limit), rows: out.slice(0, limit) })
+}
+
+// Operational status: LinkedIn ingestion queue, per-platform scrape freshness,
+// and the live scoring config. Backed by a SECURITY DEFINER RPC that returns only
+// aggregate counts + config (no raw staging rows), so it's safe under the caller's
+// token regardless of table RLS. Compact payload.
+async function runSystemStatus(env, authToken) {
+  if (!authToken || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return JSON.stringify({ error: 'status unavailable' })
+  try {
+    const r = await fetch(env.SUPABASE_URL + '/rest/v1/rpc/assistant_system_status', {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + authToken, 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    if (!r.ok) return JSON.stringify({ error: `status query failed (${r.status})` })
+    return JSON.stringify(await r.json())
+  } catch { return JSON.stringify({ error: 'status query failed' }) }
 }
 
 // Model tiers: gpt-4.1-mini by default (5× cheaper), gpt-4.1 for complex
@@ -442,14 +486,16 @@ async function handleAsk(request, env) {
           verbatim: question,
         }
         await writer.write(enc.encode('\x1e' + JSON.stringify(draft)))
-      } else if (toolName === 'query_data') {
+      } else if (toolName === 'query_data' || toolName === 'system_status') {
         let args = {}
         try { args = JSON.parse(toolArgs || '{}') } catch { /* defaulted below */ }
-        const result = await runDataQuery(env, authToken, args)
-        // Feed the rows back and stream a natural-language answer grounded in them.
+        const result = toolName === 'system_status'
+          ? await runSystemStatus(env, authToken)
+          : await runDataQuery(env, authToken, args)
+        // Feed the result back and stream a natural-language answer grounded in it.
         const messages2 = [
           ...messages,
-          { role: 'assistant', content: null, tool_calls: [{ id: toolId || 'call_1', type: 'function', function: { name: 'query_data', arguments: toolArgs || '{}' } }] },
+          { role: 'assistant', content: null, tool_calls: [{ id: toolId || 'call_1', type: 'function', function: { name: toolName, arguments: toolArgs || '{}' } }] },
           { role: 'tool', tool_call_id: toolId || 'call_1', content: result },
         ]
         const ok = await streamAnswer(env, messages2, writer, enc, model)
