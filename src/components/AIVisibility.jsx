@@ -3,7 +3,7 @@ import { Bot, Download, Info, Search } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import { GlassCard } from './GlassCard'
 import { useGeoVisibility } from '../hooks/useGeoVisibility'
-import { colorForCompany, isTwine } from '../lib/colors'
+import { colorForCompany } from '../lib/colors'
 import { downloadCSV } from '../lib/csv'
 import './aiVisibility.css'
 
@@ -13,7 +13,9 @@ import './aiVisibility.css'
 // surface: where 51% of B2B software buyers now start their research. Reads the
 // versioned prompt panel in `geo_prompts` and the weekly answers in
 // `geo_results` (see useGeoVisibility). All aggregation is client-side over the
-// latest week, per selected engine.
+// latest week, per selected engine. A "focus company" (default Twine) subjects
+// the summary, per-topic line, and win/miss list — switch it to inspect any
+// competitor's visibility the same way.
 
 const TWINE = 'Twine Security'
 
@@ -68,6 +70,8 @@ function aggregate(answeredRows) {
   return list
 }
 
+const zeroRow = company => ({ company, count: 0, visibility: 0, avgPosition: null })
+
 function LeaderTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
@@ -101,17 +105,17 @@ function barLabel({ x, y, width, height, value, index, data }) {
   )
 }
 
-function MiniBar({ company, visibility }) {
+function MiniBar({ company, visibility, highlight }) {
   return (
     <div className="geo-minirow">
-      <span className={`geo-minirow-name${isTwine(company) ? ' twine' : ''}`} title={company}>{company}</span>
+      <span className={`geo-minirow-name${highlight ? ' twine' : ''}`} title={company}>{company}</span>
       <span className="geo-minibar-track">
         <span
           className="geo-minibar-fill"
           style={{
             width: `${Math.max(2, visibility)}%`,
             background: colorForCompany(company),
-            opacity: isTwine(company) ? 1 : 0.8,
+            opacity: highlight ? 1 : 0.8,
           }}
         />
       </span>
@@ -123,6 +127,9 @@ function MiniBar({ company, visibility }) {
 export function AIVisibility() {
   const { prompts, results, weekStart, engines, loading } = useGeoVisibility()
   const [engineSel, setEngineSel] = useState(null)
+  // Which company the summary / per-topic line / win-miss list are ABOUT.
+  // Default us (Twine); switch to any competitor to inspect their visibility.
+  const [focus, setFocus] = useState(TWINE)
 
   // Default to the engine with the most answered prompts (Anthropic lags OpenAI
   // until its credential header is fixed, so OpenAI wins early on).
@@ -134,18 +141,18 @@ export function AIVisibility() {
   }, [engines, results])
   const engine = engines.includes(engineSel) ? engineSel : defaultEngine
 
-  // Everything for the selected engine, latest week.
+  // Everything for the selected engine + focus company, latest week.
   const model = useMemo(() => {
     if (!engine) return null
     const engineRows = results.filter(r => r.engine === engine)
     const byPrompt = latestByPrompt(engineRows) // prompt_id → answered row
     const answered = [...byPrompt.values()]
     const companies = aggregate(answered)
-    // Twine always present in the leaderboard, even at zero.
-    if (!companies.some(c => isTwine(c.company))) {
-      companies.push({ company: TWINE, count: 0, visibility: 0, avgPosition: null })
+    // Us + the focused company are always present in the leaderboard, even at 0.
+    for (const nm of new Set([TWINE, focus])) {
+      if (!companies.some(c => c.company === nm)) companies.push(zeroRow(nm))
     }
-    const twine = companies.find(c => isTwine(c.company))
+    const focusRow = companies.find(c => c.company === focus) || zeroRow(focus)
 
     // Topics from the active prompt panel (stable 9), each scoped to its prompts.
     const byTopic = new Map()
@@ -158,17 +165,17 @@ export function AIVisibility() {
         const ids = new Set(topicPrompts.map(p => p.id))
         const answeredHere = answered.filter(r => ids.has(r.prompt_id))
         const comps = aggregate(answeredHere)
-        const tw = comps.find(c => isTwine(c.company))
+        const fc = comps.find(c => c.company === focus) || zeroRow(focus)
         const promptRows = topicPrompts.map(p => {
           const row = byPrompt.get(p.id)
           const mentions = (row?.mentions || []).slice().sort(
             (a, b) => (a.position ?? 99) - (b.position ?? 99))
-          const tm = mentions.find(m => isTwine(m.company))
+          const fm = mentions.find(m => m.company === focus)
           return {
             id: p.id,
             prompt: p.prompt,
             answered: !!row,
-            twinePos: tm ? tm.position : null,
+            focusPos: fm ? fm.position : null,
             mentions,
           }
         })
@@ -176,8 +183,8 @@ export function AIVisibility() {
           topic,
           promptCount: topicPrompts.length,
           answeredCount: answeredHere.length,
-          twine: tw || { company: TWINE, count: 0, visibility: 0, avgPosition: null },
-          companies: comps.filter(c => !isTwine(c.company)).slice(0, 4),
+          focusStat: fc,
+          companies: comps.filter(c => c.company !== focus).slice(0, 4),
           prompts: promptRows,
         }
       })
@@ -188,16 +195,22 @@ export function AIVisibility() {
       answeredCount: answered.length,
       totalPrompts: prompts.length,
       companies,
-      twine,
+      focusRow,
       topics,
     }
-  }, [engine, results, prompts])
+  }, [engine, results, prompts, focus])
+
+  // Companies you can focus on: everyone named this engine + us, sorted by
+  // visibility (so the dropdown reads like the leaderboard).
+  const focusOptions = useMemo(() => {
+    if (!model) return [TWINE]
+    return model.companies.map(c => c.company)
+  }, [model])
 
   // CSV: one row per mention across ALL engines this week (latest run per
   // prompt×engine). Columns: week_start, engine, topic, prompt, company, position.
   const csvRows = useMemo(() => {
     const promptText = new Map(prompts.map(p => [p.id, p.prompt]))
-    // Dedupe to latest run per (engine, prompt_id).
     const latest = new Map()
     for (const r of results) {
       const key = `${r.engine}::${r.prompt_id}`
@@ -262,7 +275,8 @@ export function AIVisibility() {
     )
   }
 
-  const twineVis = model.twine?.visibility ?? 0
+  const focusVis = model.focusRow?.visibility ?? 0
+  const isUs = focus === TWINE
 
   return (
     <GlassCard className="card" intensity={3} interactive>
@@ -282,6 +296,14 @@ export function AIVisibility() {
             ))}
           </div>
         )}
+        <label className="geo-focus-select" title="Whose visibility the summary, per-topic line and prompt list are about. Default: Twine.">
+          <span className="geo-focus-label">Focus</span>
+          <select value={focus} onChange={e => setFocus(e.target.value)}>
+            {focusOptions.map(name => (
+              <option key={name} value={name}>{name === TWINE ? 'Twine Security (us)' : name}</option>
+            ))}
+          </select>
+        </label>
         <button className="csv-btn" style={{ marginLeft: 'auto' }} onClick={exportCSV} disabled={exporting} title="Download this week's mentions as CSV (one row per mention)">
           <Download size={13} /> CSV
         </button>
@@ -295,22 +317,22 @@ export function AIVisibility() {
         {engines.length === 1 && ' (Anthropic data appears once its credential header is fixed.)'}
       </p>
 
-      {/* 1 — Twine summary hero */}
+      {/* 1 — Focus-company summary hero */}
       <div className="geo-summary">
         <div className="geo-summary-metric">
-          <span className="geo-summary-value">{twineVis.toFixed(0)}%</span>
-          <span className="geo-summary-label">Twine visibility</span>
+          <span className="geo-summary-value">{focusVis.toFixed(0)}%</span>
+          <span className="geo-summary-label">{isUs ? 'Twine visibility' : `${focus} visibility`}</span>
         </div>
         <div className="geo-summary-metric">
-          <span className="geo-summary-value muted">{fmtPos(model.twine?.avgPosition)}</span>
+          <span className="geo-summary-value muted">{fmtPos(model.focusRow?.avgPosition)}</span>
           <span className="geo-summary-label">Avg rank when named</span>
         </div>
         <span className="geo-summary-note">
-          Twine Security named in <strong>{model.twine?.count || 0}</strong> of <strong>{model.answeredCount}</strong> answered prompts
+          <strong>{focus}</strong> named in <strong>{model.focusRow?.count || 0}</strong> of <strong>{model.answeredCount}</strong> answered prompts
         </span>
       </div>
 
-      {/* 4 — Leaderboard */}
+      {/* 4 — Leaderboard (all companies; focus highlighted) */}
       <div className="geo-section-title">Leaderboard — visibility across all questions</div>
       <ResponsiveContainer width="100%" height={Math.max(150, model.companies.length * 30)}>
         <BarChart data={model.companies} layout="vertical" margin={{ left: 8, right: 96, top: 4, bottom: 4 }}>
@@ -319,7 +341,7 @@ export function AIVisibility() {
           <Tooltip content={<LeaderTooltip />} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
           <Bar dataKey="visibility" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
             {model.companies.map(c => (
-              <Cell key={c.company} fill={colorForCompany(c.company)} opacity={isTwine(c.company) ? 1 : 0.72} />
+              <Cell key={c.company} fill={colorForCompany(c.company)} opacity={c.company === focus ? 1 : 0.72} />
             ))}
             <LabelList dataKey="visibility" content={props => barLabel({ ...props, data: model.companies })} />
           </Bar>
@@ -327,7 +349,7 @@ export function AIVisibility() {
       </ResponsiveContainer>
 
       {/* 5 — By topic */}
-      <div className="geo-section-title">By topic — Twine's visibility &amp; who else is named</div>
+      <div className="geo-section-title">By topic — {isUs ? "Twine's" : `${focus}'s`} visibility &amp; who else is named</div>
       <div className="geo-topic-grid">
         {model.topics.map(t => (
           <div className="geo-topic-card" key={t.topic}>
@@ -336,21 +358,21 @@ export function AIVisibility() {
               <span className="geo-topic-meta">{t.answeredCount}/{t.promptCount} answered</span>
             </div>
             <div className="geo-topic-twine">
-              Twine: <strong>{t.twine.visibility.toFixed(0)}%</strong> · {fmtPos(t.twine.avgPosition)}
+              {focus}: <strong>{t.focusStat.visibility.toFixed(0)}%</strong> · {fmtPos(t.focusStat.avgPosition)}
             </div>
-            {t.twine.count > 0 && <MiniBar company={TWINE} visibility={t.twine.visibility} />}
-            {t.companies.length === 0 && t.twine.count === 0 && (
+            {t.focusStat.count > 0 && <MiniBar company={focus} visibility={t.focusStat.visibility} highlight />}
+            {t.companies.length === 0 && t.focusStat.count === 0 && (
               <div className="geo-minirow-val" style={{ flex: 'none' }}>No companies named</div>
             )}
             {t.companies.map(c => (
-              <MiniBar key={c.company} company={c.company} visibility={c.visibility} />
+              <MiniBar key={c.company} company={c.company} visibility={c.visibility} highlight={false} />
             ))}
           </div>
         ))}
       </div>
 
-      {/* 6 — Prompt-level win / miss */}
-      <div className="geo-section-title">Every prompt — where Twine wins &amp; where it's missing</div>
+      {/* 6 — Prompt-level win / miss for the focus company */}
+      <div className="geo-section-title">Every prompt — where {isUs ? 'Twine' : focus} wins &amp; where it's missing</div>
       <div className="geo-prompts">
         {model.topics.map(t => (
           <div key={t.topic}>
@@ -359,7 +381,7 @@ export function AIVisibility() {
               <span className="geo-topic-meta">{t.answeredCount}/{t.promptCount} answered</span>
             </div>
             {t.prompts.map(p => {
-              const hit = p.answered && p.twinePos != null
+              const hit = p.answered && p.focusPos != null
               return (
                 <div key={p.id} className={`geo-prompt-row${p.answered && !hit ? ' miss' : ''}`}>
                   <span className={`geo-prompt-status ${hit ? 'hit' : 'miss'}`}>
@@ -370,14 +392,14 @@ export function AIVisibility() {
                     {!p.answered ? (
                       <div className="geo-prompt-twine-pos miss" style={{ color: 'var(--text-secondary)' }}>Not yet answered</div>
                     ) : hit ? (
-                      <div className="geo-prompt-twine-pos">Twine named at #{p.twinePos}</div>
+                      <div className="geo-prompt-twine-pos">{focus} named at #{p.focusPos}</div>
                     ) : (
-                      <div className="geo-prompt-twine-pos miss">Twine not named</div>
+                      <div className="geo-prompt-twine-pos miss">{focus} not named</div>
                     )}
                     {p.mentions.length > 0 && (
                       <div className="geo-prompt-others">
                         {p.mentions.map((m, i) => (
-                          <span key={`${m.company}-${i}`} className={`geo-chip${isTwine(m.company) ? ' twine' : ''}`}>
+                          <span key={`${m.company}-${i}`} className={`geo-chip${m.company === focus ? ' twine' : ''}`}>
                             {m.company}
                             {m.position != null && <span className="geo-chip-pos">#{m.position}</span>}
                           </span>
@@ -396,8 +418,9 @@ export function AIVisibility() {
         <Info size={13} style={{ flex: '0 0 auto', marginTop: 2 }} />
         <span>
           Visibility = share of answered prompts where a company is named; avg rank = mean
-          1-based position across those answers. Web search is on, so answers reflect the live
-          web, not just training knowledge. Measured against the versioned prompt panel in{' '}
+          1-based position across those answers. The <strong>Focus</strong> selector re-subjects the
+          summary, per-topic line and prompt list to any company (default Twine). Web search is on,
+          so answers reflect the live web. Measured against the versioned prompt panel in{' '}
           <code>geo_prompts</code> ({model.totalPrompts} active questions across {model.topics.length} topics).
         </span>
       </div>
