@@ -1,10 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { AppHeader } from '../components/AppHeader'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, ReferenceArea, ReferenceDot,
 } from 'recharts'
 import { GlassCard } from '../components/GlassCard'
+import { PlatformWeightsExplainer } from '../components/PlatformWeightsExplainer'
+import { useSOVData } from '../hooks/useSOVData'
+import { useSOVConfig } from '../hooks/useSOVConfig'
 import '../App.css'
 import './equations.css'
 
@@ -549,7 +552,7 @@ const GLOSSARY = [
 /* ------------------------------------------------------------------ */
 const STAGE_IDS = [
   'intro', 'engagement', 'reach', 'sentiment', 'decay', 'weight',
-  'author', 'share', 'blend', 'sov', 'sentiment-metric',
+  'author', 'share', 'weights', 'blend', 'sov', 'sentiment-metric',
 ]
 
 /* ------------------------------------------------------------------ */
@@ -558,6 +561,18 @@ const STAGE_IDS = [
 export default function Equations({ onLogout, onNavigate }) {
   const [activeStage, setActiveStage] = useState('intro')
   const obsRef = useRef(null)
+
+  // Live data for the interactive platform-weights explainer (step 7 companion).
+  // Same derivation as the Dashboard: the DIRECT-competitor post set (missing
+  // `type` defaults to 'direct'; indirect competitors are excluded from SOV).
+  const { allPosts, competitors } = useSOVData()
+  const { config: sovConfig } = useSOVConfig()
+  const directPosts = useMemo(() => {
+    const directNames = new Set(
+      (competitors || []).filter(c => (c.type || 'direct') !== 'indirect').map(c => c.name)
+    )
+    return (allPosts || []).filter(p => directNames.has(p.companyName))
+  }, [allPosts, competitors])
 
   useEffect(() => {
     const els = STAGE_IDS.map(id => document.getElementById(id)).filter(Boolean)
@@ -585,7 +600,7 @@ export default function Equations({ onLogout, onNavigate }) {
   // hero highlight maps the author/blend/sov ids back to a hero node
   const heroActive = ['engagement', 'reach', 'decay', 'weight', 'share'].includes(activeStage)
     ? activeStage
-    : (activeStage === 'author' ? 'weight' : (['blend', 'sov', 'sentiment-metric'].includes(activeStage) ? 'sov' : null))
+    : (activeStage === 'author' ? 'weight' : (activeStage === 'weights' ? 'share' : (['blend', 'sov', 'sentiment-metric'].includes(activeStage) ? 'sov' : null)))
 
   return (
     <div className="app">
@@ -740,6 +755,12 @@ export default function Equations({ onLogout, onNavigate }) {
             </Callout>
             <MultiplierScale />
             <div className="meth-example-line">example: 168.6 × <strong>1</strong> (LinkedIn) = <strong>168.6</strong> mindshare units</div>
+          </Stage>
+
+          {/* 7b — INTERACTIVE COMPANION: tune the multipliers on the live board */}
+          <Stage number="try it" id="weights" title="Tune the trust dial yourself"
+            intuition="The multipliers above are the one knob the team actually sets. Drag the News dial below and watch the real board of direct competitors recompute live — a hands-on companion to step 7. Nothing here saves; it’s a sandbox to find the number.">
+            <PlatformWeightsExplainer posts={directPosts} config={sovConfig} />
           </Stage>
 
           {/* 8 — ONE SHARED POOL */}
