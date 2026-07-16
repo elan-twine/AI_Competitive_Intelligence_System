@@ -93,7 +93,10 @@ export function PostsOfInterest({ competitors = [], allPosts = [] }) {
 
   if (loading) {
     return (
-      <GlassCard className="card" intensity={3}>
+      // `interactive` disables the mouse-tilt — without it the loading card tips/
+      // scales under a mid-screen cursor on mount, then snaps flat when data
+      // replaces it (the "strange animation"). Match the loaded/empty cards.
+      <GlassCard className="card" intensity={3} interactive>
         <div className="empty-state"><p>Loading posts of interest…</p></div>
       </GlassCard>
     )
