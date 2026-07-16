@@ -83,6 +83,9 @@
 .asst-row { display: flex; flex-direction: column; gap: 3px; max-width: 100%; }
 .asst-row-user { align-items: flex-end; }
 .asst-row-assistant, .asst-row-error { align-items: flex-start; }
+/* Assistant (LLM) answers sit on the left, but their copy action aligns to the
+   right edge — bottom-right of the bubble, out of the way of the text. */
+.asst-row-assistant .asst-actions { align-self: flex-end; }
 .asst-actions { display: flex; gap: 1px; opacity: 0; transition: opacity 0.12s ease; }
 .asst-row:hover .asst-actions, .asst-actions:focus-within { opacity: 1; }
 .asst-act-btn { display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 3px; border-radius: 6px; }
