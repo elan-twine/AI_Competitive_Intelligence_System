@@ -53,7 +53,10 @@ create or replace function public.assistant_semantic_search(
 returns jsonb
 language sql
 security definer
-set search_path = public
+-- search_path must include `extensions`: Supabase installs pgvector there, and
+-- with a pinned search_path of just `public` the <=> operator is unresolvable
+-- inside the function body ("operator does not exist: extensions.vector <=> …").
+set search_path = public, extensions
 as $$
   select coalesce(jsonb_agg(row_to_json(t)), '[]'::jsonb)
   from (
