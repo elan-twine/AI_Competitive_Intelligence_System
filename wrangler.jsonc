@@ -14,10 +14,12 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  // Nightly embed of newly attributed posts for the assistant's semantic search
-  // (04:10 UTC = after the daily scrape/attribution pipeline finishes).
+  // Nightly prune + embed of attributed posts for the assistant's semantic
+  // search. Workers crons are UTC-fixed while the n8n pipeline runs on Israel
+  // local time: 05:10 UTC = 07:10 IST (winter) / 08:10 IDT (summer) — safely
+  // after the processor's final 06:20 Israel attribution drain in BOTH offsets.
   "triggers": {
-    "crons": ["10 4 * * *"]
+    "crons": ["10 5 * * *"]
   },
   "vars": {
     "SUPABASE_URL": "https://addwjngdezmmnxddulll.supabase.co",
