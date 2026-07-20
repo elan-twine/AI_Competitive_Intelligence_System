@@ -50,8 +50,10 @@ globalThis.fetch = async (url, opts = {}) => {
   }
   if (u.includes('/rpc/assistant_semantic_search')) { rec.semanticSearch = JSON.parse(opts.body); return json(scenario.matches ?? [{ company: 'Linx', platform: 'LinkedIn', date: '2026-07-18', snippet: 'passwordless rollout…', url: 'https://x/1', similarity: 0.62 }]) }
   if (u.includes('/rpc/assistant_posts_to_embed')) { rec.postsToEmbed = JSON.parse(opts.body); return json(scenario.pending ?? []) }
+  if (u.includes('/rpc/assistant_prune_stale_vectors')) { rec.pruneCalled = true; return json(scenario.pruneCount ?? 0) }
   if (u.includes('api.openai.com/v1/embeddings')) { rec.embedInput = JSON.parse(opts.body).input; return json({ data: rec.embedInput.map(() => ({ embedding: Array(1536).fill(0.01) })) }) }
-  if (u.includes('/rest/v1/post_vectors')) { (rec.vectorInserts ||= []).push({ url: u, rows: JSON.parse(opts.body) }); return new Response(null, { status: 201 }) }
+  // return=representation with select=id → echo one id per actually-inserted row.
+  if (u.includes('/rest/v1/post_vectors')) { (rec.vectorInserts ||= []).push({ url: u, rows: JSON.parse(opts.body) }); return json(JSON.parse(opts.body).map((_, i) => ({ id: i + 1 })), 201) }
   if (u.includes('/linkedin_posts') || u.includes('/tweets') || u.includes('/reddit_posts') || u.includes('/googlenews')) { (rec.postUrls ||= []).push(u); return json([]) }
   if (u.includes('/rest/v1/')) return json([])
   if (u.includes('api.anthropic.com')) {
@@ -287,8 +289,8 @@ test('search_posts degrades to a self-correction hint without the embedding key'
   assert.equal(rec.embedInput, undefined)
 })
 
-test('embed-posts route: lists pending via service RPC, embeds, inserts with on_conflict', async () => {
-  scenario = { _n: 0, pending: [
+test('embed-posts route: prunes stale vectors, embeds pending, reports honest counts', async () => {
+  scenario = { _n: 0, pruneCount: 3, pending: [
     { platform: 'LinkedIn', source_url: 'https://li/1', company: 'Cerby', posted_at: '2026-07-19T00:00:00Z', snippet: 'agentic AI post' },
     { platform: 'Google News', source_url: 'https://n/2', company: 'Twine', posted_at: '2026-07-18T00:00:00Z', snippet: 'funding article (Press)' },
   ] }
@@ -296,11 +298,22 @@ test('embed-posts route: lists pending via service RPC, embeds, inserts with on_
   const req = new Request('https://app.test/api/embed-posts', { method: 'POST', headers: { authorization: 'Bearer t' } })
   const res = await worker.fetch(req, { ...env, OPENAI_API_KEY: 'ok', SUPABASE_SERVICE_KEY: 'svc' })
   const out = await res.json()
-  assert.equal(out.embedded, 2)
+  assert.equal(out.embedded, 2) // = rows actually inserted (representation), not chunk size
+  assert.equal(out.pruned, 3)
+  assert.equal(rec.pruneCalled, true)
   assert.equal(rec.postsToEmbed.p_limit, 200)
   assert.match(rec.embedInput[0], /^Cerby on LinkedIn: agentic AI post$/)
-  assert.match(rec.vectorInserts[0].url, /on_conflict=platform,source_url/)
+  assert.match(rec.vectorInserts[0].url, /on_conflict=platform,source_url&select=id/)
   assert.equal(rec.vectorInserts[0].rows[0].embedding.length, 1536)
+})
+
+test('search_posts caps scraped snippets before they reach the model', async () => {
+  await ask('long posts?', {
+    matches: [{ company: 'Linx', platform: 'LinkedIn', date: '2026-07-18', snippet: 'y'.repeat(1000), url: 'https://x/1', similarity: 0.7 }],
+    turn: (n) => n === 1 ? toolTurn('s', 'search_posts', { query: 'anything', limit: 25 }) : textTurn('ok'),
+  }, {}, { OPENAI_API_KEY: 'ok' })
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.ok(fed.rows[0].snippet.length <= 220, `snippet is ${fed.rows[0].snippet.length} chars`)
 })
 
 test('embed-posts route: reports cleanly when the service key is missing', async () => {
@@ -312,14 +325,15 @@ test('embed-posts route: reports cleanly when the service key is missing', async
   assert.match(out.note, /SUPABASE_SERVICE_KEY/)
 })
 
-test('scheduled handler embeds pending posts via waitUntil', async () => {
-  scenario = { _n: 0, pending: [{ platform: 'X', source_url: 'https://t/9', company: 'Orchid', posted_at: null, snippet: 'tweet' }] }
+test('scheduled handler prunes then embeds via waitUntil (and never throws)', async () => {
+  scenario = { _n: 0, pruneCount: 1, pending: [{ platform: 'X', source_url: 'https://t/9', company: 'Orchid', posted_at: null, snippet: 'tweet' }] }
   rec = {}
   let waited
   await worker.scheduled({}, { ...env, OPENAI_API_KEY: 'ok', SUPABASE_SERVICE_KEY: 'svc' }, { waitUntil: (p) => { waited = p } })
-  const out = await waited
-  assert.equal(out.embedded, 1)
+  await waited // resolves (logs internally); a rejection here would fail the test
+  assert.equal(rec.pruneCalled, true)
   assert.equal(rec.postsToEmbed.p_limit, 300)
+  assert.equal(rec.vectorInserts.length, 1)
 })
 
 // ---- guards --------------------------------------------------------------------
