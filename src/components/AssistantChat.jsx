@@ -8,6 +8,8 @@ import './assistantChat.css'
 // Markdown renderers: open links in a new tab (safely), and never render raw HTML
 // (react-markdown's default — LLM output is untrusted).
 const MD_COMPONENTS = {
+  // Destructure `node` only to keep react-markdown's AST node off the DOM element.
+  // eslint-disable-next-line no-unused-vars
   a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
 }
 
@@ -36,6 +38,11 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
   // send this instead of the transcript. Created lazily on first send; rotated on
   // reset/edit (a new id = a fresh server conversation).
   const sessionIdRef = useRef(null)
+  // Typewriter buffer: network chunks arrive in bursts, so painting them directly
+  // reads splotchy. Incoming text lands in `target` and a rAF loop reveals it at
+  // an adaptive pace — trickles at reading speed, accelerates when backlog grows —
+  // so the answer flows smoothly regardless of how the frames were delivered.
+  const typerRef = useRef({ target: '', shown: 0, raf: 0 })
 
   useEffect(() => {
     if (open && inputRef.current) inputRef.current.focus()
@@ -61,48 +68,92 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  // Update the trailing assistant bubble in place (token/step frames + the typer).
+  const patchAssistant = useCallback((fn) => setMessages(m => {
+    const c = [...m]
+    for (let i = c.length - 1; i >= 0; i--) { if (c[i].role === 'assistant') { c[i] = fn(c[i]); break } }
+    return c
+  }), [])
+
+  // Stop the reveal loop; optionally flush whatever text is still buffered.
+  const stopTyper = useCallback((flush) => {
+    const t = typerRef.current
+    if (t.raf) cancelAnimationFrame(t.raf)
+    t.raf = 0
+    if (flush && t.shown < t.target.length) {
+      t.shown = t.target.length
+      const text = t.target
+      patchAssistant(a => ({ ...a, content: text }))
+    }
+  }, [patchAssistant])
+
+  // Reveal buffered text smoothly: ~2 chars/frame at reading pace, scaling up
+  // with backlog so a burst catches up in under a second instead of slamming in.
+  const pumpTyper = useCallback(() => {
+    if (typerRef.current.raf) return
+    const tick = () => {
+      const t = typerRef.current
+      if (t.shown < t.target.length) {
+        t.shown = Math.min(t.target.length, t.shown + Math.max(2, Math.round((t.target.length - t.shown) / 20)))
+        const text = t.target.slice(0, t.shown)
+        patchAssistant(a => ({ ...a, content: text }))
+        t.raf = requestAnimationFrame(tick)
+      } else { t.raf = 0 }
+    }
+    typerRef.current.raf = requestAnimationFrame(tick)
+  }, [patchAssistant])
+
+  // Cancel any in-flight reveal when the panel unmounts.
+  useEffect(() => () => { if (typerRef.current.raf) cancelAnimationFrame(typerRef.current.raf) }, [])
+
   const send = useCallback(async (text) => {
     const question = String(text ?? input).trim()
     if (!question || busy) return
     setInput('')
     const history = messages.filter(m => m.role !== 'error').map(m => ({ role: m.role, content: m.content }))
+    // If a previous answer is still typing out, land it before starting anew.
+    stopTyper(true)
+    typerRef.current = { target: '', shown: 0, raf: 0 }
     // Add the question + an empty assistant bubble the stream fills in place.
     setMessages(m => [...m, { role: 'user', content: question }, { role: 'assistant', content: '', steps: [] }])
     setBusy(true)
     let gotDraft = false
-    // Update the trailing assistant bubble in place (used by both token + step frames).
-    const patchAssistant = (fn) => setMessages(m => {
-      const c = [...m]
-      for (let i = c.length - 1; i >= 0; i--) { if (c[i].role === 'assistant') { c[i] = fn(c[i]); break } }
-      return c
-    })
+    const reducedMotion = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     try {
       // Thin UI-state header — deixis, not data. The agent fetches the rest itself.
       const context = { tab, window: windowLabel, platformFilter: platform, drilledCompany }
       if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID()
-      await askAssistant({
+      const out = await askAssistant({
         question, context, history, sessionId: sessionIdRef.current,
-        onToken: (_chunk, full) => { if (gotDraft) return; patchAssistant(a => ({ ...a, content: full })) },
+        // Buffer tokens and reveal via the typer (direct paint under reduced motion).
+        onToken: (_chunk, full) => {
+          if (gotDraft) return
+          if (reducedMotion) { patchAssistant(a => ({ ...a, content: full })); return }
+          typerRef.current.target = full
+          pumpTyper()
+        },
         // A tool step is running — surface it as live "thinking" above the answer.
         onProgress: (label) => { if (gotDraft || !label) return; patchAssistant(a => ({ ...a, steps: [...(a.steps || []), label] })) },
         // Today's question budget → footer counter.
         onUsage: (u) => setUsage(u),
         // Model wants to file feedback → replace the placeholder with a review card.
         // Nothing is filed until the user taps "File it".
-        onDraft: (draft) => { gotDraft = true; setMessages(m => {
+        onDraft: (draft) => { gotDraft = true; stopTyper(false); setMessages(m => {
           const c = [...m]
           for (let i = c.length - 1; i >= 0; i--) { if (c[i].role === 'assistant') { c[i] = { role: 'assistant', kind: 'draft', draft, content: '' }; break } }
           return c
         }) },
       })
       // Nothing streamed back → show a fallback in the placeholder bubble.
-      if (!gotDraft) setMessages(m => {
-        const c = [...m], last = c[c.length - 1]
-        if (last && last.role === 'assistant' && !last.content) c[c.length - 1] = { ...last, content: "I couldn't find an answer for that." }
-        return c
-      })
+      // (Check the returned text, not the rendered bubble — the typer may still be
+      // mid-reveal when the network finishes.)
+      if (!gotDraft && (typeof out !== 'string' || !out.trim())) {
+        stopTyper(false)
+        patchAssistant(a => (a.content ? a : { ...a, content: "I couldn't find an answer for that." }))
+      }
     } catch (err) {
       // Drop the empty placeholder, surface the error.
+      stopTyper(true)
       setMessages(m => {
         const c = [...m]
         if (c.length && c[c.length - 1].role === 'assistant' && !c[c.length - 1].content) c.pop()
@@ -111,7 +162,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     } finally {
       setBusy(false)
     }
-  }, [input, busy, messages, platform, windowLabel, tab, drilledCompany])
+  }, [input, busy, messages, platform, windowLabel, tab, drilledCompany, patchAssistant, stopTyper, pumpTyper])
 
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
@@ -119,7 +170,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
 
   // Clear the whole conversation: drop local messages AND rotate the server-side
   // session id, so the next send starts a genuinely fresh conversation.
-  const reset = () => { setMessages([]); setInput(''); sessionIdRef.current = null; if (inputRef.current) inputRef.current.focus() }
+  const reset = () => { stopTyper(false); setMessages([]); setInput(''); sessionIdRef.current = null; if (inputRef.current) inputRef.current.focus() }
 
   // Confirm a draft → actually file the issue, then swap the card for the result.
   const fileDraft = useCallback(async (idx, draft) => {
