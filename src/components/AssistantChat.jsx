@@ -48,8 +48,18 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     if (open && inputRef.current) inputRef.current.focus()
   }, [open])
 
+  // Stick to the bottom only when the user is already there — scrolling up to
+  // reread must not fight the incoming stream. Scrolling back near the bottom
+  // re-engages the stickiness; sending a new question always snaps down.
+  const forceScrollRef = useRef(false)
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    const el = scrollRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (nearBottom || forceScrollRef.current) {
+      forceScrollRef.current = false
+      el.scrollTop = el.scrollHeight
+    }
   }, [messages, busy])
 
   // Auto-size the input to its content (up to the CSS max-height), and shrink it
@@ -126,6 +136,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     // If a previous answer is still typing out, land it before starting anew.
     stopTyper(true)
     typerRef.current = { target: '', shown: 0, raf: 0, acc: 0 }
+    forceScrollRef.current = true // a fresh question always snaps to the bottom
     // Add the question + an empty assistant bubble the stream fills in place.
     setMessages(m => [...m, { role: 'user', content: question }, { role: 'assistant', content: '', steps: [] }])
     setBusy(true)
