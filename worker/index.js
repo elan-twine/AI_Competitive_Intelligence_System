@@ -106,6 +106,7 @@ USING YOUR TOOLS (fetch first, then answer — you may chain up to ${MAX_STEPS} 
 - get_board — standings/ranking/movement questions ("who's #1", "top mover", "how did the board change"). Returns every direct competitor's SOV% AND its change vs. the prior period in one call. window_days 7 (default) / 30 / 0 (all-time).
 - get_company — anything about ONE company ("why is X at Y%", "what's driving X", "how's X doing on LinkedIn", "tell me about X"). One call returns its current SOV%, a short trend, its per-platform impact split, avg sentiment, and its top posts with links. This is usually all you need for a single-company question — don't stitch query_data calls when this covers it.
 - query_data — the lower-level fallback for what the two above don't cover: individual mentions with filters ("all Cerby news in June", "most negative posts about Twine") via source 'posts'; raw week-by-week history via 'weekly_board'; AI-answer/GEO visibility ("how often does ChatGPT name us") via 'ai_visibility'. Answer ONLY from the rows returned; if empty, say so.
+- search_posts — SEMANTIC search by meaning/topic ("posts about passwordless", "complaints about pricing", "who's talking about agentic AI") when exact keywords would miss paraphrases. text_contains = exact words; search_posts = concepts. Treat similarity below ~0.35 as weak evidence, and verify anything load-bearing with query_data.
 - explain — the authoritative METHODOLOGY (formulas, author tiers, decay, multipliers, SOV pooling, AI-visibility, data flow, app map). Call this for "how is impact/SOV scored", "how does decay work", "why is an external mention worth 5×", "how does AI Visibility work", "where do I find X" — then re-express it in the user's language + the panel format. Prefer it over explaining the math from memory. (For the current live multiplier/half-life NUMBERS specifically, system_status is authoritative.)
 - system_status — OPERATIONAL questions: "is anything waiting to be processed/attributed?" (LinkedIn queue), "when did we last scrape X?" (per-platform freshness), "what are the current weights / multipliers / half-lives?" (live scoring config — trust this over any numbers in this prompt).
 - create_github_issue — see below.
@@ -155,6 +156,20 @@ const ASSISTANT_TOOLS = [{
       limit: { type: 'integer', description: 'Max rows, default 25, capped at 100.' },
     },
     required: ['source'],
+  },
+}, {
+  name: 'search_posts',
+  description: 'SEMANTIC search over all attributed posts/mentions — finds posts by MEANING, not exact words ("posts about passwordless auth", "complaints about pricing", "anyone discussing agentic AI security"). Use when the user asks about a topic/theme and exact-keyword text_contains would miss paraphrases. Returns the closest-matching posts with similarity scores; treat low-similarity matches (< ~0.35) as weak.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'What to search for, phrased as meaning (a topic, claim, or theme).' },
+      company: { type: 'string', description: 'Optional: limit to one tracked competitor.' },
+      platform: { type: 'string', enum: ['LinkedIn', 'X', 'Reddit', 'Google News'], description: 'Optional: one platform.' },
+      since: { type: 'string', description: 'Optional start date YYYY-MM-DD.' },
+      limit: { type: 'integer', description: 'Max matches, default 8, capped at 25.' },
+    },
+    required: ['query'],
   },
 }, {
   name: 'explain',
@@ -588,9 +603,116 @@ function runExplain(args) {
   return JSON.stringify({ topic, content })
 }
 
+// ---- Semantic post search (P4) -----------------------------------------------
+// post_vectors mirrors the poi_vectors pattern: text-embedding-3-small, 1536 dims.
+// Queries are embedded here in the Worker (OPENAI_API_KEY secret) and matched via
+// the SECURITY DEFINER RPC assistant_semantic_search under the USER's token; the
+// nightly cron + /api/embed-posts keep the vectors populated via the SERVICE key.
+
+// Embed strings with OpenAI. Returns number[][] | null.
+async function embedTexts(env, texts) {
+  if (!env.OPENAI_API_KEY || !texts.length) return null
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), 20000)
+  try {
+    const r = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
+      body: JSON.stringify({ model: 'text-embedding-3-small', input: texts }),
+      signal: ctl.signal,
+    })
+    if (!r.ok) return null
+    const j = await r.json().catch(() => null)
+    if (!j || !Array.isArray(j.data)) return null
+    return j.data.map(d => d.embedding)
+  } catch { return null } finally { clearTimeout(timer) }
+}
+
+// search_posts: embed the query, nearest-neighbor via RPC (read-only; embeddings
+// never leave the DB). Every failure degrades to a tool-visible error that points
+// the model at query_data text_contains, so the agent can self-correct.
+async function runSearchPosts(env, authToken, args) {
+  const query = String(args && args.query || '').trim().slice(0, 500)
+  if (!query) return JSON.stringify({ error: 'query required' })
+  if (!env.OPENAI_API_KEY) return JSON.stringify({ error: 'semantic search not configured (missing embedding key) — use query_data text_contains instead' })
+  if (!authToken || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return JSON.stringify({ error: 'data access unavailable' })
+  const emb = await embedTexts(env, [query])
+  if (!emb) return JSON.stringify({ error: 'embedding failed — use query_data text_contains instead' })
+  const since = /^\d{4}-\d{2}-\d{2}/.test(String((args && args.since) || '')) ? args.since.slice(0, 10) : null
+  try {
+    const r = await fetch(env.SUPABASE_URL + '/rest/v1/rpc/assistant_semantic_search', {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + authToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        p_embedding: emb[0],
+        p_count: Math.min(Math.max(Number(args && args.limit) || 8, 1), 25),
+        p_company: (args && args.company) ? String(args.company).trim() : null,
+        p_platform: (args && args.platform) || null,
+        p_since: since,
+      }),
+    })
+    if (!r.ok) return JSON.stringify({ error: `semantic search failed (${r.status}) — the post_vectors migration may not be deployed; use query_data text_contains instead` })
+    const rows = await r.json().catch(() => [])
+    return JSON.stringify({ query, count: Array.isArray(rows) ? rows.length : 0, note: 'similarity is cosine (1 = identical); below ~0.35 is a weak match', rows })
+  } catch { return JSON.stringify({ error: 'semantic search failed — use query_data text_contains instead' }) }
+}
+
+// Embed the next batch of attributed posts that don't have vectors yet. Runs with
+// the SERVICE key (Worker secret, server-side only — never in the client bundle):
+// lists via the service-only RPC, embeds via OpenAI, inserts into post_vectors.
+async function embedPendingPosts(env, batch = 200) {
+  if (!env.SUPABASE_SERVICE_KEY) return { embedded: 0, note: 'SUPABASE_SERVICE_KEY not set' }
+  if (!env.OPENAI_API_KEY) return { embedded: 0, note: 'OPENAI_API_KEY not set' }
+  const SH = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' }
+  let posts
+  try {
+    const r = await fetch(env.SUPABASE_URL + '/rest/v1/rpc/assistant_posts_to_embed', {
+      method: 'POST', headers: SH, body: JSON.stringify({ p_limit: batch }),
+    })
+    if (!r.ok) return { embedded: 0, note: `posts_to_embed failed (${r.status}) — is the post_vectors migration deployed?` }
+    posts = await r.json().catch(() => [])
+  } catch { return { embedded: 0, note: 'posts_to_embed failed' } }
+  if (!Array.isArray(posts) || !posts.length) return { embedded: 0, note: 'up to date' }
+
+  // Embed "<company> on <platform>: <snippet>" so company/platform context is in
+  // the vector too (matches how users phrase topical questions).
+  const embs = await embedTexts(env, posts.map(p => `${p.company} on ${p.platform}: ${p.snippet}`))
+  if (!embs || embs.length !== posts.length) return { embedded: 0, note: 'embedding failed' }
+
+  // Insert in chunks (vectors are ~30KB each as JSON); ignore duplicates so a
+  // concurrent or repeated run can't error out.
+  let inserted = 0
+  for (let i = 0; i < posts.length; i += 50) {
+    const chunk = posts.slice(i, i + 50).map((p, j) => ({
+      platform: p.platform, source_url: p.source_url, company: p.company,
+      posted_at: p.posted_at, snippet: p.snippet, embedding: embs[i + j],
+    }))
+    try {
+      const r = await fetch(env.SUPABASE_URL + '/rest/v1/post_vectors?on_conflict=platform,source_url', {
+        method: 'POST',
+        headers: { ...SH, Prefer: 'resolution=ignore-duplicates,return=minimal' },
+        body: JSON.stringify(chunk),
+      })
+      if (r.ok) inserted += chunk.length
+    } catch { /* next chunk */ }
+  }
+  return { embedded: inserted, remaining_hint: posts.length === batch ? 'more pending — run again' : 'caught up' }
+}
+
+// Manual backfill/catch-up: any logged-in user may trigger one batch (embedding
+// cost is negligible; the service-only RPC + unique constraint make it idempotent).
+async function handleEmbedPosts(request, env) {
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
+  const user = await verifyUser(request, env)
+  if (!user) return json(401, { error: 'unauthorized' })
+  const res = await embedPendingPosts(env, 200)
+  return json(200, res)
+}
+
 // A friendly one-line label for the "thinking" progress frame of a tool step.
 function labelForTool(tu) {
   if (tu.name === 'explain') return 'Checking the methodology…'
+  if (tu.name === 'search_posts') return 'Searching posts by meaning…'
   if (tu.name === 'get_board') return 'Reading the SOV board…'
   if (tu.name === 'get_company') { const n = tu.input && tu.input.name; return n ? `Rolling up ${n}…` : 'Rolling up the company…' }
   if (tu.name === 'system_status') return 'Checking pipeline status…'
@@ -751,7 +873,9 @@ async function handleAsk(request, env) {
                 ? await runGetCompany(env, authToken, tu.input || {})
                 : tu.name === 'explain'
                   ? runExplain(tu.input || {})
-                  : tu.name === 'system_status'
+                  : tu.name === 'search_posts'
+                    ? await runSearchPosts(env, authToken, tu.input || {})
+                    : tu.name === 'system_status'
                     ? await runSystemStatus(env, authToken)
                     : tu.name === 'query_data'
                       ? await runDataQuery(env, authToken, tu.input || {})
@@ -815,7 +939,15 @@ export default {
     if (url.pathname.startsWith('/api/briefing/')) return handleBriefing(request, env, url)
     if (url.pathname === '/api/ask') return handleAsk(request, env)
     if (url.pathname === '/api/file-issue') return handleFileIssue(request, env)
+    if (url.pathname === '/api/embed-posts') return handleEmbedPosts(request, env)
     // Non-API path → static assets / SPA fallback.
     return env.ASSETS.fetch(request)
+  },
+
+  // Nightly (wrangler.jsonc triggers.crons): embed newly attributed posts so
+  // semantic search stays current. No-ops harmlessly if the service key or the
+  // post_vectors migration isn't deployed yet.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(embedPendingPosts(env, 300))
   },
 }

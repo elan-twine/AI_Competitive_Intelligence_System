@@ -14,6 +14,11 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  // Nightly embed of newly attributed posts for the assistant's semantic search
+  // (04:10 UTC = after the daily scrape/attribution pipeline finishes).
+  "triggers": {
+    "crons": ["10 4 * * *"]
+  },
   "vars": {
     "SUPABASE_URL": "https://addwjngdezmmnxddulll.supabase.co",
     "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZHdqbmdkZXptbW54ZGR1bGxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4Nzk1MjUsImV4cCI6MjA4NzQ1NTUyNX0.t-SI3JkUEyUQRZuc36PcJZ_E2F6FHGq_gzXysUeM1RY"

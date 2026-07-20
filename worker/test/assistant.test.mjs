@@ -48,6 +48,10 @@ globalThis.fetch = async (url, opts = {}) => {
       { company: 'Linx', snapshot_date: '2026-07-13', weighted_pct: 42.0 }, { company: 'Orchid', snapshot_date: '2026-07-13', weighted_pct: 15.0 },
     ])
   }
+  if (u.includes('/rpc/assistant_semantic_search')) { rec.semanticSearch = JSON.parse(opts.body); return json(scenario.matches ?? [{ company: 'Linx', platform: 'LinkedIn', date: '2026-07-18', snippet: 'passwordless rollout…', url: 'https://x/1', similarity: 0.62 }]) }
+  if (u.includes('/rpc/assistant_posts_to_embed')) { rec.postsToEmbed = JSON.parse(opts.body); return json(scenario.pending ?? []) }
+  if (u.includes('api.openai.com/v1/embeddings')) { rec.embedInput = JSON.parse(opts.body).input; return json({ data: rec.embedInput.map(() => ({ embedding: Array(1536).fill(0.01) })) }) }
+  if (u.includes('/rest/v1/post_vectors')) { (rec.vectorInserts ||= []).push({ url: u, rows: JSON.parse(opts.body) }); return new Response(null, { status: 201 }) }
   if (u.includes('/linkedin_posts') || u.includes('/tweets') || u.includes('/reddit_posts') || u.includes('/googlenews')) { (rec.postUrls ||= []).push(u); return json([]) }
   if (u.includes('/rest/v1/')) return json([])
   if (u.includes('api.anthropic.com')) {
@@ -58,12 +62,12 @@ globalThis.fetch = async (url, opts = {}) => {
   throw new Error('unstubbed fetch: ' + u)
 }
 
-async function ask(question, sc, extra = {}) {
+async function ask(question, sc, extra = {}, envOverride = {}) {
   scenario = { ...sc, _n: 0 }
   rec = {}
   const body = JSON.stringify({ question, context: { tab: 'overview' }, history: [], ...extra })
   const req = new Request('https://app.test/api/ask', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer t', 'content-length': String(body.length) }, body })
-  const res = await worker.fetch(req, env)
+  const res = await worker.fetch(req, { ...env, ...envOverride })
   const frames = (await res.text()).split('\x1e').filter(Boolean).map(s => JSON.parse(s))
   return {
     status: res.status,
@@ -255,6 +259,67 @@ test('persisted session payload is byte-bounded under the 64KB RPC backstop', as
   const bytes = new TextEncoder().encode(JSON.stringify(rec.sessionPut.p_data)).length
   assert.ok(bytes <= 48000, `persisted payload is ${bytes} bytes (> 48000 would risk the silent 64KB drop)`)
   assert.ok(rec.sessionPut.p_data.turns.length >= 2, 'kept at least the newest exchange')
+})
+
+// ---- semantic search (P4) --------------------------------------------------------
+
+test('search_posts: embeds the query and calls the semantic RPC with filters', async () => {
+  const r = await ask('anyone talking about passwordless?', {
+    turn: (n) => n === 1 ? toolTurn('s', 'search_posts', { query: 'passwordless authentication', company: 'Linx', since: '2026-06-01', limit: 5 }) : textTurn('Linx posted about a passwordless rollout.'),
+  }, {}, { OPENAI_API_KEY: 'ok' })
+  assert.equal(r.progress[0].tool, 'search_posts')
+  assert.deepEqual(rec.embedInput, ['passwordless authentication'])
+  assert.equal(rec.semanticSearch.p_embedding.length, 1536)
+  assert.equal(rec.semanticSearch.p_company, 'Linx')
+  assert.equal(rec.semanticSearch.p_since, '2026-06-01')
+  assert.equal(rec.semanticSearch.p_count, 5)
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.equal(fed.rows[0].similarity, 0.62)
+  assert.match(r.answer, /passwordless/)
+})
+
+test('search_posts degrades to a self-correction hint without the embedding key', async () => {
+  await ask('posts about pricing?', {
+    turn: (n) => n === 1 ? toolTurn('s', 'search_posts', { query: 'pricing complaints' }) : textTurn('Let me try keywords instead.'),
+  }) // env has no OPENAI_API_KEY
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.match(fed.error, /text_contains/)
+  assert.equal(rec.embedInput, undefined)
+})
+
+test('embed-posts route: lists pending via service RPC, embeds, inserts with on_conflict', async () => {
+  scenario = { _n: 0, pending: [
+    { platform: 'LinkedIn', source_url: 'https://li/1', company: 'Cerby', posted_at: '2026-07-19T00:00:00Z', snippet: 'agentic AI post' },
+    { platform: 'Google News', source_url: 'https://n/2', company: 'Twine', posted_at: '2026-07-18T00:00:00Z', snippet: 'funding article (Press)' },
+  ] }
+  rec = {}
+  const req = new Request('https://app.test/api/embed-posts', { method: 'POST', headers: { authorization: 'Bearer t' } })
+  const res = await worker.fetch(req, { ...env, OPENAI_API_KEY: 'ok', SUPABASE_SERVICE_KEY: 'svc' })
+  const out = await res.json()
+  assert.equal(out.embedded, 2)
+  assert.equal(rec.postsToEmbed.p_limit, 200)
+  assert.match(rec.embedInput[0], /^Cerby on LinkedIn: agentic AI post$/)
+  assert.match(rec.vectorInserts[0].url, /on_conflict=platform,source_url/)
+  assert.equal(rec.vectorInserts[0].rows[0].embedding.length, 1536)
+})
+
+test('embed-posts route: reports cleanly when the service key is missing', async () => {
+  scenario = { _n: 0 }; rec = {}
+  const req = new Request('https://app.test/api/embed-posts', { method: 'POST', headers: { authorization: 'Bearer t' } })
+  const res = await worker.fetch(req, { ...env, OPENAI_API_KEY: 'ok' })
+  const out = await res.json()
+  assert.equal(out.embedded, 0)
+  assert.match(out.note, /SUPABASE_SERVICE_KEY/)
+})
+
+test('scheduled handler embeds pending posts via waitUntil', async () => {
+  scenario = { _n: 0, pending: [{ platform: 'X', source_url: 'https://t/9', company: 'Orchid', posted_at: null, snippet: 'tweet' }] }
+  rec = {}
+  let waited
+  await worker.scheduled({}, { ...env, OPENAI_API_KEY: 'ok', SUPABASE_SERVICE_KEY: 'svc' }, { waitUntil: (p) => { waited = p } })
+  const out = await waited
+  assert.equal(out.embedded, 1)
+  assert.equal(rec.postsToEmbed.p_limit, 300)
 })
 
 // ---- guards --------------------------------------------------------------------
