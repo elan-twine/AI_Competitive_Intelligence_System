@@ -87,14 +87,17 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     }
   }, [patchAssistant])
 
-  // Reveal buffered text smoothly: ~2 chars/frame at reading pace, scaling up
-  // with backlog so a burst catches up in under a second instead of slamming in.
+  // Reveal buffered text smoothly. Two speed knobs (per ~60fps frame):
+  //   floor (TYPER_MIN chars/frame) = steady-state pace → 1 ≈ 60 chars/s;
+  //   divisor (TYPER_CATCHUP) = how hard a backlog accelerates the reveal.
+  const TYPER_MIN = 1
+  const TYPER_CATCHUP = 32
   const pumpTyper = useCallback(() => {
     if (typerRef.current.raf) return
     const tick = () => {
       const t = typerRef.current
       if (t.shown < t.target.length) {
-        t.shown = Math.min(t.target.length, t.shown + Math.max(2, Math.round((t.target.length - t.shown) / 20)))
+        t.shown = Math.min(t.target.length, t.shown + Math.max(TYPER_MIN, Math.round((t.target.length - t.shown) / TYPER_CATCHUP)))
         const text = t.target.slice(0, t.shown)
         patchAssistant(a => ({ ...a, content: text }))
         t.raf = requestAnimationFrame(tick)
