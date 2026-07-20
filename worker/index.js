@@ -100,13 +100,10 @@ WHERE THINGS ARE IN THE APP (use this for "where do I find…" questions):
 
 HOW DATA FLOWS (so you can reason about freshness): posts are scraped daily per platform → LinkedIn posts land in a raw staging queue and are then LLM-attributed to a competitor (or NONE) and scored; X/Reddit/News are attributed inline as they're scraped → attributed posts feed the SOV board (recomputed daily). So a very recent post can be scraped but not yet processed/attributed — that's a queue question (system_status), not a "missing data" one.
 
-USING YOUR TOOLS (fetch first, then answer — you may chain up to ${MAX_STEPS} calls and should retry with different parameters if a result is empty or surprising):
-- query_data — the read tool for board + posts + AI visibility:
-  • Current standings → source 'daily_board' (window_days 7 for the trailing-7-day board, 30 for 30d, 0 for all-time cumulative); the newest snapshot_date rows are today's board.
-  • SOV history over time → source 'weekly_board' or 'daily_board' with a company + date range.
-  • Individual mentions / "what drove a move" / "most negative" → source 'posts' (filter by company, platform, dates; sort top_weight / most_negative / newest).
-  • AI-answer visibility ("how often does ChatGPT name us", GEO) → source 'ai_visibility'.
-  Answer ONLY from the rows returned; if empty, say so and suggest a narrower/broader query.
+USING YOUR TOOLS (fetch first, then answer — you may chain up to ${MAX_STEPS} calls and should retry with different parameters if a result is empty or surprising). Reach for the highest-level tool that fits:
+- get_board — standings/ranking/movement questions ("who's #1", "top mover", "how did the board change"). Returns every direct competitor's SOV% AND its change vs. the prior period in one call. window_days 7 (default) / 30 / 0 (all-time).
+- get_company — anything about ONE company ("why is X at Y%", "what's driving X", "how's X doing on LinkedIn", "tell me about X"). One call returns its current SOV%, a short trend, its per-platform impact split, avg sentiment, and its top posts with links. This is usually all you need for a single-company question — don't stitch query_data calls when this covers it.
+- query_data — the lower-level fallback for what the two above don't cover: individual mentions with filters ("all Cerby news in June", "most negative posts about Twine") via source 'posts'; raw week-by-week history via 'weekly_board'; AI-answer/GEO visibility ("how often does ChatGPT name us") via 'ai_visibility'. Answer ONLY from the rows returned; if empty, say so.
 - system_status — OPERATIONAL questions: "is anything waiting to be processed/attributed?" (LinkedIn queue), "when did we last scrape X?" (per-platform freshness), "what are the current weights / multipliers / half-lives?" (live scoring config — trust this over any numbers in this prompt).
 - create_github_issue — see below.
 
@@ -118,8 +115,29 @@ STYLE: Answer in clean, skimmable GitHub-flavored Markdown, rendered in a narrow
 
 // Tools in Anthropic format ({ name, description, input_schema }).
 const ASSISTANT_TOOLS = [{
+  name: 'get_board',
+  description: 'The current SOV standings for all direct competitors WITH each company\'s change vs. the prior period — the fastest way to answer "who\'s winning / who\'s #1", "who\'s the top mover", "how did the board change this week". Cross-platform (the pooled board; direct competitors sum to ~100%). Prefer this over query_data for any standings/ranking/movement question.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      window_days: { type: 'integer', enum: [7, 30, 0], description: 'Board window: 7 = trailing week (default), 30 = trailing 30 days, 0 = all-time cumulative.' },
+    },
+    required: [],
+  },
+}, {
+  name: 'get_company',
+  description: 'Everything about ONE company in a single call: its current SOV%, a short SOV trend, its impact split by platform, average sentiment, and its top posts (with links). Use this for "why is X at Y% / what\'s driving X", "how is X doing (on LinkedIn/lately)", "tell me about X". Prefer this over stitching query_data calls for a single-company question.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'The company name (a tracked direct or indirect competitor).' },
+      window_days: { type: 'integer', enum: [7, 30, 0], description: 'Window: 7 (default), 30, or 0 = all-time.' },
+    },
+    required: ['name'],
+  },
+}, {
   name: 'query_data',
-  description: 'Read rows from the database: the SOV board (current standings or history), individual posts/mentions across LinkedIn/X/Reddit/News, or AI-answer (GEO) visibility. E.g. "current SOV standings" (daily_board), "Twine\'s SOV by week" (weekly_board), "all Cerby news in June" or "most negative posts about Twine" (posts), "how often does ChatGPT name us?" (ai_visibility). Returns rows scoped to what this user is allowed to see; answer only from them.',
+  description: 'Lower-level row reader for cases get_board/get_company don\'t cover: individual posts/mentions with filters ("all Cerby news in June", "most negative posts about Twine"), raw SOV history by week (weekly_board), or AI-answer (GEO) visibility ("how often does ChatGPT name us?"). For standings use get_board; for a single company use get_company. Returns rows scoped to what this user is allowed to see; answer only from them.',
   input_schema: {
     type: 'object',
     properties: {
@@ -316,6 +334,96 @@ async function runSystemStatus(env, authToken) {
   } catch { return JSON.stringify({ error: 'status query failed' }) }
 }
 
+const DAY_MS = 86400000
+const r1 = (n) => (n == null || isNaN(n)) ? null : Math.round(n * 10) / 10
+
+// get_board: current SOV standings for direct competitors + each company's change
+// vs. ~7 days earlier. Reads the frozen daily board (sov_daily) — no re-scoring.
+async function runGetBoard(env, authToken, args) {
+  if (!authToken || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return JSON.stringify({ error: 'data access unavailable' })
+  const H = { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + authToken }
+  const BASE = env.SUPABASE_URL + '/rest/v1'
+  const wd = [7, 30, 0].includes(Number(args && args.window_days)) ? Number(args.window_days) : 7
+  let rows
+  try {
+    const r = await fetch(BASE + '/sov_daily?select=company,snapshot_date,weighted_pct&window_days=eq.' + wd + '&order=snapshot_date.desc&limit=400', { headers: H })
+    if (!r.ok) return JSON.stringify({ error: `board query failed (${r.status})` })
+    rows = await r.json()
+  } catch { return JSON.stringify({ error: 'board query failed' }) }
+  if (!Array.isArray(rows) || !rows.length) return JSON.stringify({ window_days: wd, count: 0, rows: [] })
+
+  const dates = [...new Set(rows.map(x => String(x.snapshot_date).slice(0, 10)))].sort().reverse()
+  const current = dates[0]
+  const curT = new Date(current + 'T00:00:00Z').getTime()
+  // Prior = the latest snapshot that's at least 7 days before current (week-over-week);
+  // if none that old exists, fall back to the oldest snapshot we fetched.
+  let prior = null
+  for (const d of dates.slice(1)) { if (new Date(d + 'T00:00:00Z').getTime() <= curT - 7 * DAY_MS) { prior = d; break } }
+  if (!prior && dates.length > 1) prior = dates[dates.length - 1]
+
+  const curMap = {}, priorMap = {}
+  for (const x of rows) {
+    const d = String(x.snapshot_date).slice(0, 10)
+    if (d === current) curMap[x.company] = x.weighted_pct
+    else if (d === prior) priorMap[x.company] = x.weighted_pct
+  }
+  const board = Object.entries(curMap)
+    .map(([company, pct]) => ({ company, sov_pct: r1(pct), delta: prior != null ? r1((pct || 0) - (priorMap[company] || 0)) : null }))
+    .sort((a, b) => (b.sov_pct || 0) - (a.sov_pct || 0))
+  return JSON.stringify({ window_days: wd, current_date: current, prior_date: prior, note: 'delta = change vs prior_date (week-over-week); cross-platform pooled board', rows: board })
+}
+
+// get_company: one company rolled up — current SOV, short trend, per-platform
+// impact split, avg sentiment, and top posts. Aggregation (sum post_weight per
+// platform) runs in the assistant_company_rollup RPC; the Worker applies the live
+// platform multipliers (sov_config) to get the impact split, and reuses the board
+// (sov_daily) for the trend and query_data for the top posts.
+async function runGetCompany(env, authToken, args) {
+  if (!authToken || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return JSON.stringify({ error: 'data access unavailable' })
+  const name = String(args && args.name || '').trim()
+  if (!name) return JSON.stringify({ error: 'company name required' })
+  const wd = [7, 30, 0].includes(Number(args && args.window_days)) ? Number(args.window_days) : 7
+  const H = { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + authToken }
+  const BASE = env.SUPABASE_URL + '/rest/v1'
+  const enc = encodeURIComponent
+  const since = wd === 0 ? null : new Date(Date.now() - wd * DAY_MS).toISOString().slice(0, 10)
+  const getJson = async (path, opts) => { try { const r = await fetch(BASE + path, opts || { headers: H }); return r.ok ? await r.json() : null } catch { return null } }
+
+  const [rollup, cfg, series, topStr] = await Promise.all([
+    getJson('/rpc/assistant_company_rollup', { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_company: name, p_since: since, p_until: null }) }),
+    getJson('/sov_config?select=config&limit=1'),
+    getJson('/sov_daily?select=snapshot_date,weighted_pct,sentiment_pct,posts_count&window_days=eq.' + wd + '&company=ilike.*' + enc(name) + '*&order=snapshot_date.desc&limit=14'),
+    runDataQuery(env, authToken, { source: 'posts', company: name, sort: 'top_weight', since, limit: 6 }),
+  ])
+
+  const mult = (cfg && cfg[0] && cfg[0].config && cfg[0].config.platformMultipliers) || { LinkedIn: 1, X: 1, Reddit: 1.5, 'Google News': 15 }
+  const platforms = (rollup && rollup.platforms) || {}
+  let totalImpact = 0
+  const split = {}
+  for (const [p, v] of Object.entries(platforms)) {
+    const imp = (mult[p] || 0) * (v.sum_weight || 0)
+    split[p] = { impact: r1(imp), posts: v.posts, avg_sentiment: v.avg_sentiment }
+    totalImpact += imp
+  }
+  for (const p of Object.keys(split)) split[p].share_pct = totalImpact > 0 ? r1(split[p].impact / totalImpact * 100) : 0
+
+  const ser = Array.isArray(series) ? series.map(s => ({ date: String(s.snapshot_date).slice(0, 10), sov_pct: r1(s.weighted_pct), sentiment: s.sentiment_pct != null ? r1(s.sentiment_pct) : null, posts: s.posts_count })) : []
+  let top = []
+  try { top = JSON.parse(topStr).rows || [] } catch { /* leave empty */ }
+
+  return JSON.stringify({
+    company: name,
+    window_days: wd,
+    since,
+    current_sov_pct: ser.length ? ser[0].sov_pct : null,
+    total_posts: rollup ? rollup.total_posts : null,
+    platform_split: split,
+    sov_trend: ser.slice(0, 8),
+    top_posts: top,
+    note: 'platform_split.share_pct = share of THIS company\'s pooled impact by platform; sov_pct is its share of the whole board.',
+  })
+}
+
 // Per-user/day rate limit. Atomically bumps a counter via a SECURITY DEFINER RPC
 // (keyed on auth.uid()) and returns {allowed, count, limit, remaining}. FAIL-OPEN:
 // if the RPC isn't deployed yet (migration not run) or errors, returns null and
@@ -412,6 +520,8 @@ async function streamAnthropicTurn(env, system, messages, tools, onText) {
 
 // A friendly one-line label for the "thinking" progress frame of a tool step.
 function labelForTool(tu) {
+  if (tu.name === 'get_board') return 'Reading the SOV board…'
+  if (tu.name === 'get_company') { const n = tu.input && tu.input.name; return n ? `Rolling up ${n}…` : 'Rolling up the company…' }
   if (tu.name === 'system_status') return 'Checking pipeline status…'
   if (tu.name === 'query_data') {
     const s = (tu.input && tu.input.source) || 'posts'
@@ -514,11 +624,15 @@ async function handleAsk(request, env) {
           const results = []
           for (const tu of turn.toolUses) {
             await send({ t: 'progress', label: labelForTool(tu) })
-            const out = tu.name === 'system_status'
-              ? await runSystemStatus(env, authToken)
-              : tu.name === 'query_data'
-                ? await runDataQuery(env, authToken, tu.input || {})
-                : JSON.stringify({ error: 'unknown tool' })
+            const out = tu.name === 'get_board'
+              ? await runGetBoard(env, authToken, tu.input || {})
+              : tu.name === 'get_company'
+                ? await runGetCompany(env, authToken, tu.input || {})
+                : tu.name === 'system_status'
+                  ? await runSystemStatus(env, authToken)
+                  : tu.name === 'query_data'
+                    ? await runDataQuery(env, authToken, tu.input || {})
+                    : JSON.stringify({ error: 'unknown tool' })
             results.push({ type: 'tool_result', tool_use_id: tu.id, content: String(out).slice(0, 12000) })
           }
           messages.push({ role: 'user', content: results })
