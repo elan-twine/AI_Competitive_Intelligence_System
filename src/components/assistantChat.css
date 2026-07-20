@@ -182,6 +182,10 @@
 .asst-step.active::before { background: var(--accent); animation: asstStepPulse 1.1s infinite ease-in-out; }
 @keyframes asstStepPulse { 0%, 100% { transform: scale(0.7); opacity: 0.5; } 50% { transform: scale(1.15); opacity: 1; } }
 
+/* Daily-budget counter in the footer; turns amber when nearly spent. */
+.asst-usage { white-space: nowrap; }
+.asst-usage.low { color: var(--negative); font-weight: 600; }
+
 .asst-input-row { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px 4px; border-top: 1px solid var(--divider); flex-shrink: 0; }
 .asst-input {
   flex: 1;
