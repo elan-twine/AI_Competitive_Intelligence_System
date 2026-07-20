@@ -34,6 +34,15 @@ revoke all on table public.post_vectors from anon, authenticated;
 -- Nearest-neighbor search over the post embeddings (cosine). SECURITY DEFINER so
 -- the logged-in user's token can search without direct table access. Returns only
 -- the display fields + similarity — never the embeddings.
+--
+-- Each candidate is VALIDITY-CHECKED against its source table before being
+-- served: the post must still exist, un-flagged (misattributed), and still be
+-- attributed to the same company. post_vectors is append-only, so without this a
+-- post the user flagged (which the flag control promises to "soft-exclude from
+-- all calculations") — or one later re-attributed — would keep surfacing in
+-- semantic search forever. Candidates are over-fetched (×3) so filtering doesn't
+-- under-fill the result. Snippets are capped at 200 chars (mirrors query_data's
+-- minimization of scraped third-party text fed to the model).
 create or replace function public.assistant_semantic_search(
   p_embedding vector(1536),
   p_count     integer default 8,
@@ -44,27 +53,75 @@ create or replace function public.assistant_semantic_search(
 returns jsonb
 language sql
 security definer
-set search_path = public
+-- search_path must include `extensions`: Supabase installs pgvector there, and
+-- with a pinned search_path of just `public` the <=> operator is unresolvable
+-- inside the function body ("operator does not exist: extensions.vector <=> …").
+set search_path = public, extensions
 as $$
   select coalesce(jsonb_agg(row_to_json(t)), '[]'::jsonb)
   from (
+    with cand as (
+      select company, platform, posted_at, snippet, source_url,
+             (embedding <=> p_embedding) as dist
+      from public.post_vectors
+      where (p_company  is null or company ilike '%'||p_company||'%')
+        and (p_platform is null or platform = p_platform)
+        and (p_since    is null or posted_at::date >= p_since)
+      order by embedding <=> p_embedding
+      limit least(greatest(coalesce(p_count, 8), 1), 25) * 3
+    )
     select company,
            platform,
            to_char(posted_at, 'YYYY-MM-DD') as date,
-           snippet,
+           left(snippet, 200) as snippet,
            source_url as url,
-           round((1 - (embedding <=> p_embedding))::numeric, 3) as similarity
-    from public.post_vectors
-    where (p_company  is null or company ilike '%'||p_company||'%')
-      and (p_platform is null or platform = p_platform)
-      and (p_since    is null or posted_at::date >= p_since)
-    order by embedding <=> p_embedding
+           round((1 - dist)::numeric, 3) as similarity
+    from cand c
+    where case c.platform
+        when 'LinkedIn'    then exists (select 1 from public.linkedin_posts s where s.post_url = c.source_url                  and coalesce(s.misattributed, false) = false and s."companyName" = c.company)
+        when 'X'           then exists (select 1 from public.tweets s         where coalesce(s."twitterUrl", s.url) = c.source_url and coalesce(s.misattributed, false) = false and s."companyName" = c.company)
+        when 'Reddit'      then exists (select 1 from public.reddit_posts s   where coalesce(s.url, s.permalink) = c.source_url   and coalesce(s.misattributed, false) = false and s."companyName" = c.company)
+        when 'Google News' then exists (select 1 from public.googlenews s     where s.url = c.source_url                       and coalesce(s.misattributed, false) = false and s."companyName" = c.company)
+        else false
+      end
+    order by dist
     limit least(greatest(coalesce(p_count, 8), 1), 25)
   ) t;
 $$;
 
 revoke all on function public.assistant_semantic_search(vector, integer, text, text, date) from public;
 grant execute on function public.assistant_semantic_search(vector, integer, text, text, date) to authenticated;
+
+-- Prune vectors whose source post was flagged, re-attributed, or deleted. Run
+-- nightly by the Worker cron (before embedding, so a re-attributed post's vector
+-- is deleted here and re-embedded with the fresh company by the anti-join in the
+-- same run). SERVICE-ROLE ONLY. Returns the number of rows deleted.
+create or replace function public.assistant_prune_stale_vectors()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  n integer;
+begin
+  delete from public.post_vectors v
+  where not (
+    case v.platform
+      when 'LinkedIn'    then exists (select 1 from public.linkedin_posts s where s.post_url = v.source_url                  and coalesce(s.misattributed, false) = false and s."companyName" = v.company)
+      when 'X'           then exists (select 1 from public.tweets s         where coalesce(s."twitterUrl", s.url) = v.source_url and coalesce(s.misattributed, false) = false and s."companyName" = v.company)
+      when 'Reddit'      then exists (select 1 from public.reddit_posts s   where coalesce(s.url, s.permalink) = v.source_url   and coalesce(s.misattributed, false) = false and s."companyName" = v.company)
+      when 'Google News' then exists (select 1 from public.googlenews s     where s.url = v.source_url                       and coalesce(s.misattributed, false) = false and s."companyName" = v.company)
+      else false
+    end
+  );
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+
+revoke all on function public.assistant_prune_stale_vectors() from public, anon, authenticated;
+grant execute on function public.assistant_prune_stale_vectors() to service_role;
 
 -- List attributed posts that don't have an embedding yet (the embed queue).
 -- Normalizes the four posts tables into one shape. SERVICE-ROLE ONLY: called by

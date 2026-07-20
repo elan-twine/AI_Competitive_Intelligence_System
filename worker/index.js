@@ -652,8 +652,12 @@ async function runSearchPosts(env, authToken, args) {
       }),
     })
     if (!r.ok) return JSON.stringify({ error: `semantic search failed (${r.status}) — the post_vectors migration may not be deployed; use query_data text_contains instead` })
-    const rows = await r.json().catch(() => [])
-    return JSON.stringify({ query, count: Array.isArray(rows) ? rows.length : 0, note: 'similarity is cosine (1 = identical); below ~0.35 is a weak match', rows })
+    const raw = await r.json().catch(() => [])
+    // Defensive snippet cap (the RPC also caps at 200): stored snippets are up to
+    // 1000 chars of scraped third-party text — untrimmed, 25 rows would blow the
+    // 12KB tool_result slice (truncated mid-JSON) and 6× the injection surface.
+    const rows = (Array.isArray(raw) ? raw : []).map(x => ({ ...x, snippet: String(x && x.snippet || '').slice(0, 220) }))
+    return JSON.stringify({ query, count: rows.length, note: 'similarity is cosine (1 = identical); below ~0.35 is a weak match', rows })
   } catch { return JSON.stringify({ error: 'semantic search failed — use query_data text_contains instead' }) }
 }
 
@@ -680,7 +684,9 @@ async function embedPendingPosts(env, batch = 200) {
   if (!embs || embs.length !== posts.length) return { embedded: 0, note: 'embedding failed' }
 
   // Insert in chunks (vectors are ~30KB each as JSON); ignore duplicates so a
-  // concurrent or repeated run can't error out.
+  // concurrent or repeated run can't error out. `select=id` + return=representation
+  // makes the response the rows ACTUALLY inserted (duplicate-skips excluded), so
+  // the reported count is honest — without echoing the 30KB embeddings back.
   let inserted = 0
   for (let i = 0; i < posts.length; i += 50) {
     const chunk = posts.slice(i, i + 50).map((p, j) => ({
@@ -688,15 +694,33 @@ async function embedPendingPosts(env, batch = 200) {
       posted_at: p.posted_at, snippet: p.snippet, embedding: embs[i + j],
     }))
     try {
-      const r = await fetch(env.SUPABASE_URL + '/rest/v1/post_vectors?on_conflict=platform,source_url', {
+      const r = await fetch(env.SUPABASE_URL + '/rest/v1/post_vectors?on_conflict=platform,source_url&select=id', {
         method: 'POST',
-        headers: { ...SH, Prefer: 'resolution=ignore-duplicates,return=minimal' },
+        headers: { ...SH, Prefer: 'resolution=ignore-duplicates,return=representation' },
         body: JSON.stringify(chunk),
       })
-      if (r.ok) inserted += chunk.length
+      if (r.ok) { const rows = await r.json().catch(() => null); inserted += Array.isArray(rows) ? rows.length : 0 }
     } catch { /* next chunk */ }
   }
   return { embedded: inserted, remaining_hint: posts.length === batch ? 'more pending — run again' : 'caught up' }
+}
+
+// Prune vectors whose source post was flagged misattributed, re-attributed to a
+// different company, or deleted — the search RPC also validity-checks at read
+// time, but pruning keeps the table honest and lets the anti-join re-embed
+// re-attributed posts with their fresh company. Service key; returns a count.
+async function pruneStaleVectors(env) {
+  if (!env.SUPABASE_SERVICE_KEY) return null
+  try {
+    const r = await fetch(env.SUPABASE_URL + '/rest/v1/rpc/assistant_prune_stale_vectors', {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    if (!r.ok) return null
+    const n = await r.json().catch(() => null)
+    return typeof n === 'number' ? n : null
+  } catch { return null }
 }
 
 // Manual backfill/catch-up: any logged-in user may trigger one batch (embedding
@@ -705,8 +729,9 @@ async function handleEmbedPosts(request, env) {
   if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
   const user = await verifyUser(request, env)
   if (!user) return json(401, { error: 'unauthorized' })
+  const pruned = await pruneStaleVectors(env)
   const res = await embedPendingPosts(env, 200)
-  return json(200, res)
+  return json(200, { ...res, pruned })
 }
 
 // A friendly one-line label for the "thinking" progress frame of a tool step.
@@ -944,10 +969,20 @@ export default {
     return env.ASSETS.fetch(request)
   },
 
-  // Nightly (wrangler.jsonc triggers.crons): embed newly attributed posts so
-  // semantic search stays current. No-ops harmlessly if the service key or the
-  // post_vectors migration isn't deployed yet.
+  // Nightly (wrangler.jsonc triggers.crons): prune stale vectors (flagged /
+  // re-attributed posts), then embed newly attributed ones. No-ops harmlessly if
+  // the service key or the post_vectors migration isn't deployed. Logged so
+  // wrangler observability shows whether it's actually working — a silent
+  // fire-and-forget cron that fails every night is invisible otherwise.
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(embedPendingPosts(env, 300))
+    ctx.waitUntil((async () => {
+      try {
+        const pruned = await pruneStaleVectors(env)
+        const res = await embedPendingPosts(env, 300)
+        console.log('[embed-cron]', JSON.stringify({ pruned, ...res }))
+      } catch (e) {
+        console.error('[embed-cron] failed:', e && e.message)
+      }
+    })())
   },
 }
