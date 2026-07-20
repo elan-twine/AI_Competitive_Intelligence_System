@@ -92,7 +92,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
   // Catch-up exists only as a safety valve: if the backlog exceeds
   // TYPER_CATCHUP_AT chars (a monster answer arriving far faster than the reveal),
   // pace scales up proportionally so the tail can't lag many seconds behind.
-  const TYPER_SPEED = 1
+  const TYPER_SPEED = 0.5
   const TYPER_CATCHUP_AT = 500
   const pumpTyper = useCallback(() => {
     if (typerRef.current.raf) return
