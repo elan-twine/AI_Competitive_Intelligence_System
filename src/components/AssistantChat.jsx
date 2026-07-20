@@ -87,19 +87,28 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     }
   }, [patchAssistant])
 
-  // Reveal buffered text smoothly. Two speed knobs (per ~60fps frame):
-  //   floor (TYPER_MIN chars/frame) = steady-state pace → 1 ≈ 60 chars/s;
-  //   divisor (TYPER_CATCHUP) = how hard a backlog accelerates the reveal.
-  const TYPER_MIN = 1
-  const TYPER_CATCHUP = 32
+  // Reveal buffered text at ONE constant pace — no speed wobble. TYPER_SPEED is
+  // chars per ~60fps frame (fractional values work: 0.5 ≈ 30 chars/s, 1 ≈ 60/s).
+  // Catch-up exists only as a safety valve: if the backlog exceeds
+  // TYPER_CATCHUP_AT chars (a monster answer arriving far faster than the reveal),
+  // pace scales up proportionally so the tail can't lag many seconds behind.
+  const TYPER_SPEED = 1
+  const TYPER_CATCHUP_AT = 500
   const pumpTyper = useCallback(() => {
     if (typerRef.current.raf) return
     const tick = () => {
       const t = typerRef.current
-      if (t.shown < t.target.length) {
-        t.shown = Math.min(t.target.length, t.shown + Math.max(TYPER_MIN, Math.round((t.target.length - t.shown) / TYPER_CATCHUP)))
-        const text = t.target.slice(0, t.shown)
-        patchAssistant(a => ({ ...a, content: text }))
+      const backlog = t.target.length - t.shown
+      if (backlog > 0) {
+        const pace = backlog > TYPER_CATCHUP_AT ? TYPER_SPEED * (backlog / TYPER_CATCHUP_AT) : TYPER_SPEED
+        t.acc = (t.acc || 0) + pace
+        const step = Math.floor(t.acc)
+        if (step >= 1) {
+          t.acc -= step
+          t.shown = Math.min(t.target.length, t.shown + step)
+          const text = t.target.slice(0, t.shown)
+          patchAssistant(a => ({ ...a, content: text }))
+        }
         t.raf = requestAnimationFrame(tick)
       } else { t.raf = 0 }
     }
@@ -116,7 +125,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     const history = messages.filter(m => m.role !== 'error').map(m => ({ role: m.role, content: m.content }))
     // If a previous answer is still typing out, land it before starting anew.
     stopTyper(true)
-    typerRef.current = { target: '', shown: 0, raf: 0 }
+    typerRef.current = { target: '', shown: 0, raf: 0, acc: 0 }
     // Add the question + an empty assistant bubble the stream fills in place.
     setMessages(m => [...m, { role: 'user', content: question }, { role: 'assistant', content: '', steps: [] }])
     setBusy(true)
