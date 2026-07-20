@@ -29,8 +29,13 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [copiedIdx, setCopiedIdx] = useState(null)
+  const [usage, setUsage] = useState(null) // { used, limit, remaining } — today's budget
   const inputRef = useRef(null)
   const scrollRef = useRef(null)
+  // Server-side conversation id: the Worker remembers prior turns under it, so we
+  // send this instead of the transcript. Created lazily on first send; rotated on
+  // reset/edit (a new id = a fresh server conversation).
+  const sessionIdRef = useRef(null)
 
   useEffect(() => {
     if (open && inputRef.current) inputRef.current.focus()
@@ -74,11 +79,14 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     try {
       // Thin UI-state header — deixis, not data. The agent fetches the rest itself.
       const context = { tab, window: windowLabel, platformFilter: platform, drilledCompany }
+      if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID()
       await askAssistant({
-        question, context, history,
+        question, context, history, sessionId: sessionIdRef.current,
         onToken: (_chunk, full) => { if (gotDraft) return; patchAssistant(a => ({ ...a, content: full })) },
         // A tool step is running — surface it as live "thinking" above the answer.
         onProgress: (label) => { if (gotDraft || !label) return; patchAssistant(a => ({ ...a, steps: [...(a.steps || []), label] })) },
+        // Today's question budget → footer counter.
+        onUsage: (u) => setUsage(u),
         // Model wants to file feedback → replace the placeholder with a review card.
         // Nothing is filed until the user taps "File it".
         onDraft: (draft) => { gotDraft = true; setMessages(m => {
@@ -109,9 +117,9 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  // Clear the whole conversation. There's no server-side session — history lives
-  // only in this state and is re-sent each turn — so this fully resets context.
-  const reset = () => { setMessages([]); setInput(''); if (inputRef.current) inputRef.current.focus() }
+  // Clear the whole conversation: drop local messages AND rotate the server-side
+  // session id, so the next send starts a genuinely fresh conversation.
+  const reset = () => { setMessages([]); setInput(''); sessionIdRef.current = null; if (inputRef.current) inputRef.current.focus() }
 
   // Confirm a draft → actually file the issue, then swap the card for the result.
   const fileDraft = useCallback(async (idx, draft) => {
@@ -140,13 +148,16 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
 
   // Edit an earlier question: pull it back into the input and drop that turn and
   // everything after it, so the next send restarts the conversation from here
-  // (same as editing a prior message in Claude).
+  // (same as editing a prior message in Claude). Rotate the server session id —
+  // the stored session still holds the dropped turns; the next send seeds a fresh
+  // session from the kept local history instead.
   const editMessage = useCallback((idx) => {
     if (busy) return
     const msg = messages[idx]
     if (!msg || msg.role !== 'user') return
     setInput(msg.content)
     setMessages(prev => prev.slice(0, idx))
+    sessionIdRef.current = null
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [busy, messages])
 
@@ -266,7 +277,12 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
               <ArrowUp size={16} />
             </button>
           </div>
-          <div className="asst-foot">The assistant looks up the board, posts, and pipeline status to answer. It can be wrong — verify anything important.</div>
+          <div className="asst-foot">
+            The assistant looks up the board, posts, and pipeline status to answer. It can be wrong — verify anything important.
+            {usage && usage.limit != null && (
+              <span className={`asst-usage ${usage.remaining <= 5 ? 'low' : ''}`}> · {usage.used}/{usage.limit} today</span>
+            )}
+          </div>
         </div>
       )}
     </>

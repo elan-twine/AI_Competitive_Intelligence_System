@@ -9,19 +9,23 @@ export const ASK_PATH = '/api/ask'
 export const FILE_ISSUE_PATH = '/api/file-issue'
 
 // The Worker streams a sequence of \x1e-delimited JSON frames:
-//   {t:'progress', label}  — a tool step is running (live "thinking")
-//   {t:'token', text}      — a chunk of the final answer (append)
-//   {t:'draft', draft}     — an issue draft to review before filing (terminal)
-//   {t:'error', message}   — failure
+//   {t:'progress', label}          — a tool step is running (live "thinking")
+//   {t:'token', text}              — a chunk of the final answer (append)
+//   {t:'draft', draft}             — an issue draft to review before filing (terminal)
+//   {t:'usage', used, limit, remaining} — today's question budget (footer counter)
+//   {t:'error', message}           — failure
 // \x1e (record separator) never appears inside JSON.stringify output, so it's a
 // safe frame delimiter.
 const FRAME_SEP = '\x1e'
 
 // `onToken(chunk, fullSoFar)` streams the answer out live; `onProgress(label)`
 // surfaces each tool step as it runs; `onDraft(draft)` hands over a feedback
-// draft (nothing is filed until the user confirms). Returns the full answer
+// draft (nothing is filed until the user confirms); `onUsage({used, limit,
+// remaining})` reports today's budget. `sessionId` names the server-side
+// conversation — the server remembers prior turns under it, so `history` is only
+// a fallback (first turn of an edited/restored thread). Returns the full answer
 // text, or { draft } when a draft was sent.
-export async function askAssistant({ question, context, history = [], onToken, onProgress, onDraft }) {
+export async function askAssistant({ question, context, history = [], sessionId, onToken, onProgress, onDraft, onUsage }) {
   const { data } = await supabase.auth.getSession()
   const token = data?.session?.access_token
   if (!token) throw new Error('Please sign in again — your session expired.')
@@ -31,7 +35,7 @@ export async function askAssistant({ question, context, history = [], onToken, o
     r = await fetch(ASK_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ question, context, history }),
+      body: JSON.stringify({ question, context, history, session_id: sessionId || undefined }),
     })
   } catch {
     throw new Error('Could not reach the assistant. Check your connection and try again.')
@@ -65,6 +69,8 @@ export async function askAssistant({ question, context, history = [], onToken, o
     } else if (frame.t === 'draft') {
       draftOut = frame.draft || null
       if (draftOut && onDraft) onDraft(draftOut)
+    } else if (frame.t === 'usage') {
+      if (onUsage) onUsage({ used: frame.used, limit: frame.limit, remaining: frame.remaining })
     } else if (frame.t === 'error') {
       throw new Error(frame.message || 'Assistant error.')
     }
