@@ -57,87 +57,98 @@ async function handleBriefing(request, env, url) {
   return new Response(text || '{}', { status: resp.status, headers: JSON_HEADERS })
 }
 
-// ---- Dashboard assistant ----------------------------------------------------
-// A session-gated Q&A endpoint. The browser sends the question + a compact
-// snapshot of what's currently on screen (board, recent movement, top recent
-// posts); the Worker adds the static app map + methodology below and calls
-// OpenAI. The OpenAI key lives in a Worker secret (OPENAI_API_KEY), never the
-// client bundle — same principle as the briefing webhooks above.
-const ASSISTANT_SYSTEM = `You are the assistant built into the Twine "Share of Voice" (SOV) competitive-intelligence dashboard. You help the logged-in user understand what they're seeing and why the numbers move. Be concise, concrete, and grounded ONLY in the DATA CONTEXT provided — never invent posts, numbers, or companies. If the data doesn't contain the answer, say so and suggest where they might look.
+// ---- Dashboard assistant (v2 — agentic) -------------------------------------
+// A session-gated Q&A endpoint backed by a real agentic loop on Claude Sonnet
+// 4.5. The browser sends the question + a THIN UI-state header (what tab/window
+// the user is looking at, ~100 tokens) — NOT a data snapshot. The agent fetches
+// everything it needs itself via tools (query_data / system_status), can chain
+// up to MAX_STEPS calls, and self-corrects on empty results. The Anthropic key
+// lives in a Worker secret (ANTHROPIC_API_KEY), never the client bundle.
+//
+// Wire protocol to the client: a stream of `\x1e`-delimited JSON frames
+//   {t:'progress', label}  — a tool step is running (live "thinking" visibility)
+//   {t:'token', text}      — a chunk of the final answer (appended client-side)
+//   {t:'draft', draft}     — an issue draft to review before filing (terminal)
+//   {t:'error', message}   — something failed
+// \x1e (record separator) never appears inside JSON.stringify output (control
+// chars are \u-escaped), so it's a safe frame delimiter.
+
+const MODEL = 'claude-sonnet-4-5'
+const MAX_STEPS = 6           // tool-call rounds per question (guardrail)
+const DEFAULT_DAILY_LIMIT = 50 // questions/user/day (override via ASSISTANT_DAILY_LIMIT)
+
+const ASSISTANT_SYSTEM = `You are the assistant built into the Twine "Share of Voice" (SOV) competitive-intelligence dashboard. You help the logged-in user understand what they're seeing and why the numbers move. Be concise, concrete, and grounded ONLY in data you fetch with your tools — never invent posts, numbers, or companies.
+
+WHAT YOU ARE GIVEN: only a small UI-STATE header (below) telling you what the user is currently looking at — the tab, the time window, the platform filter, and any company they've drilled into. This tells you what "this"/"here"/"they" refer to. You are NOT given the board or any posts inline. Fetch what you need yourself with the tools before citing any number, and prefer to call tools SILENTLY — do not narrate "let me check…"; just call the tool and then answer.
 
 HOW SOV IS CALCULATED (use this to explain "why"):
 - Every post (LinkedIn, X, Reddit, Google News) gets a post_weight from its engagement, who posted it, and how old it is.
 - Engagement → reach = engagement^(49/50). Author tier sets a baseline+multiplier: a company's own account counts least, a confirmed employee more, an unaffiliated "external" voice most (an outsider talking about you is worth ~5×). Older posts decay (LinkedIn half-life 14d, News 30d, Reddit 10d, X 7d), flat for the first 7 days.
 - Each post's weight is multiplied by a per-platform trust multiplier (currently LinkedIn 1, X 1, Reddit 1.5, Google News 15) and pooled into ONE cross-platform total. A company's SOV% = its share of that pool. Only DIRECT competitors are in the denominator (they sum to 100%); indirect competitors are shown but excluded from the 100%.
 - News articles have no engagement, so they score by outlet tier × decay. Sentiment is measured and displayed but currently does NOT move the ranking.
-- So a "spike" almost always traces to one or a few recent high-impact posts — usually an external mention, a viral/high-engagement post, or (for News) a tier-1 article. The DATA CONTEXT's "movement" (last 7d vs prior 7d) and "recentTopPosts" are where to look; cite the specific post(s) by company/platform/date/snippet when explaining a move.
+- So a "spike" almost always traces to one or a few recent high-impact posts — usually an external mention, a viral/high-engagement post, or (for News) a tier-1 article. To explain a move: fetch the current board, then fetch that company's highest-weight recent posts and cite them by platform/date/snippet + link.
 
 WHERE THINGS ARE IN THE APP (use this for "where do I find…" questions):
 - Top nav: "SOV Dashboard", "Social Briefs" (weekly review of competitors' own LinkedIn posts with 👍/👎), "Comp Briefs" (AI-written per-competitor briefing docs).
-- Inside SOV Dashboard, five tabs (all share the Platform filter + 7d/30d/YTD time window at the top):
+- Inside SOV Dashboard, four tabs (all share the Platform filter + 7d/30d/YTD time window at the top):
   • Overview — the ranking table + the Share-of-Voice trend chart. Click any company row to drill in to "why is X at Y%?" (week-by-week, platform-by-platform, down to individual posts).
   • Posts of Interest — a curated weekly digest of each competitor's most notable posts.
-  • AI Visibility — how often each company is named in AI-answer engines (share of model).
+  • AI Visibility — GEO/AEO: how often each company is named when AI engines answer buyer questions (with web search on), plus per-prompt win/miss.
   • Compare — two companies side by side (SOV, sentiment, platform split).
-  • Weights — an explainer of the platform trust multipliers.
-- Header icons: About (what the score measures), Methodology (the full math), Manage competitors, light/dark toggle, log out.
+- Header icons: About (what the score measures), Methodology (the full math + the interactive platform-weights explainer), Manage competitors, light/dark toggle, log out.
 - To remove a wrong mention: every post card has a small flag/remove control — it soft-excludes that mention from all calculations without deleting the data.
 
-HOW DATA FLOWS (so you can reason about freshness and what's "in" the numbers): posts are scraped daily per platform → LinkedIn posts land in a raw staging queue and are then LLM-attributed to a competitor (or NONE) and scored; X/Reddit/News are attributed inline as they're scraped → attributed posts feed the SOV board (recomputed daily). So a very recent post can be scraped but not yet processed/attributed, which is a queue question, not a "missing data" one.
+HOW DATA FLOWS (so you can reason about freshness): posts are scraped daily per platform → LinkedIn posts land in a raw staging queue and are then LLM-attributed to a competitor (or NONE) and scored; X/Reddit/News are attributed inline as they're scraped → attributed posts feed the SOV board (recomputed daily). So a very recent post can be scraped but not yet processed/attributed — that's a queue question (system_status), not a "missing data" one.
 
-DATA ACCESS: The DATA CONTEXT below is only a snapshot of the current screen. You have two read tools — use them instead of telling the user to look elsewhere:
-- query_data — for rows beyond the snapshot: specific posts, a date range, "most negative", a single company's history, SOV by week/day, and AI-answer visibility ("share of model", how often an engine names a company). Answer ONLY from the rows it returns; never invent rows; if empty, say so.
-- system_status — for OPERATIONAL questions: "is anything waiting to be processed/attributed?" (the LinkedIn queue), "is the pipeline running / when did we last scrape X?" (per-platform freshness), and "what are the current weights / multipliers / half-lives?" (live scoring config — trust this over any numbers in this prompt).
-Cite specifics and link posts where relevant.
+USING YOUR TOOLS (fetch first, then answer — you may chain up to ${MAX_STEPS} calls and should retry with different parameters if a result is empty or surprising):
+- query_data — the read tool for board + posts + AI visibility:
+  • Current standings → source 'daily_board' (window_days 7 for the trailing-7-day board, 30 for 30d, 0 for all-time cumulative); the newest snapshot_date rows are today's board.
+  • SOV history over time → source 'weekly_board' or 'daily_board' with a company + date range.
+  • Individual mentions / "what drove a move" / "most negative" → source 'posts' (filter by company, platform, dates; sort top_weight / most_negative / newest).
+  • AI-answer visibility ("how often does ChatGPT name us", GEO) → source 'ai_visibility'.
+  Answer ONLY from the rows returned; if empty, say so and suggest a narrower/broader query.
+- system_status — OPERATIONAL questions: "is anything waiting to be processed/attributed?" (LinkedIn queue), "when did we last scrape X?" (per-platform freshness), "what are the current weights / multipliers / half-lives?" (live scoring config — trust this over any numbers in this prompt).
+- create_github_issue — see below.
 
-FILING FEEDBACK: When the user reports something actionable that should change — a mis-weighted article (e.g. "this should be tier 1, not tier 2"), a wrong attribution or sentiment, a bug, or a feature request — call the create_github_issue tool. This does NOT file immediately: it creates a DRAFT the user reviews and confirms before anything is filed, so draft faithfully. Rules: (1) capture ONLY what the user actually said — never invent a cause, fix, or solution they did not state; (2) if they raised multiple distinct points, list each as its own item and label it a bug or an enhancement; (3) prefer their own wording over paraphrase — their exact message is attached to the issue automatically as a verbatim quote, so you don't need to reproduce it. Give a concise, specific title and a body with the concrete details they referenced (company, platform, article title/URL, current vs expected value, reasoning). Only file for genuine actionable feedback about the system — never for ordinary questions.
+FILING FEEDBACK: When the user reports something actionable that should change — a mis-weighted article ("this should be tier 1"), a wrong attribution or sentiment, a bug, or a feature request — call create_github_issue. This does NOT file immediately: it creates a DRAFT the user reviews and confirms, so draft faithfully. Rules: (1) capture ONLY what the user actually said — never invent a cause, fix, or solution they didn't state; (2) if they raised multiple distinct points, list each as its own item labeled a bug or an enhancement; (3) their exact message is attached automatically as a verbatim quote, so prefer their wording over paraphrase. Give a concise, specific title and a body with the concrete details (company, platform, article title/URL, current vs expected value, reasoning). Only file for genuine actionable feedback — never for ordinary questions.
 
-LANGUAGE: Always reply in the same language the user's question is written in — if they write in Hebrew, answer in Hebrew (and write any GitHub issue you file in that language too). All the formatting rules below apply in every language.
+LANGUAGE: Always reply in the same language the user's question is written in — if they write in Hebrew, answer in Hebrew (and write any GitHub issue in that language too). All formatting rules below apply in every language.
 
-STYLE: Answer in clean, skimmable GitHub-flavored Markdown, rendered in a narrow (~360px) chat panel. Keep it tight — usually 2–5 sentences or a short list. Lead with the direct answer in the first line. Use **bold** for the key numbers, company names, and section names. When you enumerate multiple drivers, companies, or steps, use a short bullet list (one idea per bullet) rather than a run-on sentence. Use \`inline code\` for exact tab/field names. Link a post or article as [short label](url) — never paste a bare URL. Avoid headings for short answers, avoid deeply nested lists, keep any table to 2–3 narrow columns (the panel is narrow), and never dump raw JSON. For "why" questions name the specific driver(s) + the number; for "where" questions name the exact tab/section and the path to it.`
+STYLE: Answer in clean, skimmable GitHub-flavored Markdown, rendered in a narrow (~360px) chat panel. Keep it tight — usually 2–5 sentences or a short list. Lead with the direct answer in the first line. Use **bold** for key numbers, company names, and section names. When you enumerate multiple drivers, companies, or steps, use a short bullet list (one idea per bullet). Use \`inline code\` for exact tab/field names. Link a post or article as [short label](url) — never paste a bare URL. Avoid headings for short answers, avoid deeply nested lists, keep any table to 2–3 narrow columns, and never dump raw JSON. For "why" questions name the specific driver(s) + the number; for "where" questions name the exact tab/section and the path to it.`
 
-// Tool the model can call to turn actionable feedback into a tracked GitHub issue.
+// Tools in Anthropic format ({ name, description, input_schema }).
 const ASSISTANT_TOOLS = [{
-  type: 'function',
-  function: {
-    name: 'create_github_issue',
-    description: 'File a GitHub issue in the dashboard repo when the user reports an actionable problem or request — a mis-weighted article, wrong attribution/sentiment, a bug, or a feature idea. Do NOT call this for ordinary questions.',
-    parameters: {
-      type: 'object',
-      properties: {
-        title: { type: 'string', description: 'Concise, specific issue title (e.g. "Article X mis-weighted tier 2, should be tier 1").' },
-        body: { type: 'string', description: 'Faithful details of ONLY what the user reported — the specific data referenced (company, platform, article title/URL, current vs expected value) and their reasoning. If they raised multiple distinct points, list each as its own item labeled (bug) or (enhancement). Do NOT invent fixes, causes, or solutions they did not state.' },
-        category: { type: 'string', enum: ['data-correction', 'bug', 'feature-request', 'other'], description: 'Type of feedback.' },
-      },
-      required: ['title', 'body'],
+  name: 'query_data',
+  description: 'Read rows from the database: the SOV board (current standings or history), individual posts/mentions across LinkedIn/X/Reddit/News, or AI-answer (GEO) visibility. E.g. "current SOV standings" (daily_board), "Twine\'s SOV by week" (weekly_board), "all Cerby news in June" or "most negative posts about Twine" (posts), "how often does ChatGPT name us?" (ai_visibility). Returns rows scoped to what this user is allowed to see; answer only from them.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      source: { type: 'string', enum: ['posts', 'weekly_board', 'daily_board', 'ai_visibility'], description: 'posts = individual mentions; weekly_board/daily_board = SOV% standings/history; ai_visibility = how often each company is named in AI-answer engines.' },
+      company: { type: 'string', description: 'Filter to one tracked competitor by name.' },
+      platform: { type: 'string', enum: ['LinkedIn', 'X', 'Reddit', 'Google News'], description: 'posts only: limit to one platform; omit for all.' },
+      since: { type: 'string', description: 'Start date YYYY-MM-DD (inclusive).' },
+      until: { type: 'string', description: 'End date YYYY-MM-DD (inclusive).' },
+      sort: { type: 'string', enum: ['newest', 'top_weight', 'top_engagement', 'most_negative', 'most_positive'], description: 'posts ordering; default newest.' },
+      window_days: { type: 'integer', enum: [7, 30, 0], description: 'daily_board only: 7d / 30d / 0 = all-time cumulative. Use the newest snapshot_date rows for the current board.' },
+      limit: { type: 'integer', description: 'Max rows, default 25, capped at 100.' },
     },
+    required: ['source'],
   },
 }, {
-  type: 'function',
-  function: {
-    name: 'query_data',
-    description: 'Look up rows from the database when the answer is NOT in the on-screen DATA CONTEXT — individual posts, SOV history, or AI-answer visibility. E.g. "all Cerby news articles in June", "most negative posts about Twine", "Twine\'s SOV by week", "how often does ChatGPT name us?". Returns rows scoped to what this user is allowed to see. Answer only from the returned rows.',
-    parameters: {
-      type: 'object',
-      properties: {
-        source: { type: 'string', enum: ['posts', 'weekly_board', 'daily_board', 'ai_visibility'], description: 'posts = individual mentions across LinkedIn/X/Reddit/News; weekly_board/daily_board = frozen SOV% history; ai_visibility = "share of model" — how often each company is named in AI-answer engines (per engine, per week).' },
-        company: { type: 'string', description: 'Filter to one tracked competitor by name.' },
-        platform: { type: 'string', enum: ['LinkedIn', 'X', 'Reddit', 'Google News'], description: 'posts only: limit to one platform; omit for all.' },
-        since: { type: 'string', description: 'Start date YYYY-MM-DD (inclusive).' },
-        until: { type: 'string', description: 'End date YYYY-MM-DD (inclusive).' },
-        sort: { type: 'string', enum: ['newest', 'top_weight', 'top_engagement', 'most_negative', 'most_positive'], description: 'posts ordering; default newest.' },
-        window_days: { type: 'integer', enum: [7, 30, 0], description: 'daily_board only: 7d / 30d / 0 = all-time cumulative.' },
-        limit: { type: 'integer', description: 'Max rows, default 25, capped at 100.' },
-      },
-      required: ['source'],
-    },
-  },
+  name: 'system_status',
+  description: 'Operational/pipeline status (NOT the SOV numbers). Use for: "is anything waiting to be processed/attributed?" (the LinkedIn ingestion queue — pending vs done, oldest-pending age); "is the pipeline running / when did we last scrape X?" (per-platform last successful scrape); and "what are the current weights / the News multiplier / half-lives?" (the live scoring config). Returns a small status object; answer only from it.',
+  input_schema: { type: 'object', properties: {}, required: [] },
 }, {
-  type: 'function',
-  function: {
-    name: 'system_status',
-    description: 'Operational/pipeline status (NOT the SOV numbers). Use for: "is anything waiting to be processed/attributed?" (the LinkedIn ingestion queue — pending vs done, oldest-pending age); "is the pipeline running / when did we last scrape X?" (per-platform last successful scrape); and "what are the current weights / the News multiplier / half-lives?" (the live scoring config). Returns a small status object; answer only from it.',
-    parameters: { type: 'object', properties: {}, required: [] },
+  name: 'create_github_issue',
+  description: 'File a GitHub issue in the dashboard repo when the user reports an actionable problem or request — a mis-weighted article, wrong attribution/sentiment, a bug, or a feature idea. Creates a DRAFT the user confirms; do NOT call this for ordinary questions.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'Concise, specific issue title (e.g. "Article X mis-weighted tier 2, should be tier 1").' },
+      body: { type: 'string', description: 'Faithful details of ONLY what the user reported — the specific data referenced (company, platform, article title/URL, current vs expected value) and their reasoning. If they raised multiple distinct points, list each as its own item labeled (bug) or (enhancement). Do NOT invent fixes, causes, or solutions they did not state.' },
+      category: { type: 'string', enum: ['data-correction', 'bug', 'feature-request', 'other'], description: 'Type of feedback.' },
+    },
+    required: ['title', 'body'],
   },
 }]
 
@@ -192,18 +203,26 @@ async function runDataQuery(env, authToken, args) {
   }
 
   if (source === 'ai_visibility') {
-    // "Share of model" — llm_sov: per engine, per week, how often each company is
-    // named in AI answers. Newest week first.
-    const rows = await get('/llm_sov?' + q([
-      'select=company,week_start,engine,mention_rate,share_of_model,avg_first_pos,n_prompts,n_samples',
-      company ? `company=ilike.*${enc(company)}*` : '',
-      since ? `week_start=gte.${since}` : '',
-      until ? `week_start=lte.${until}` : '',
-      'order=week_start.desc,share_of_model.desc',
+    // GEO / "share of model" — how often each company is named in AI answers.
+    // Newest run first, then by within-answer position (earlier = more prominent).
+    const rows = await get('/geo_results?' + q([
+      'select=topic,engine,run_date,mentions',
+      since ? `run_date=gte.${since}` : '',
+      until ? `run_date=lte.${until}` : '',
+      'order=run_date.desc',
       `limit=${limit}`,
     ]))
     if (rows == null) return JSON.stringify({ error: 'query failed' })
-    return JSON.stringify({ source, count: rows.length, rows })
+    // Flatten into company-level rows, optionally filtered to one company.
+    const cf = company.toLowerCase()
+    const out = []
+    for (const r of rows) {
+      for (const m of (Array.isArray(r.mentions) ? r.mentions : [])) {
+        if (cf && !String(m.company || '').toLowerCase().includes(cf)) continue
+        out.push({ company: m.company, position: m.position, engine: r.engine, topic: r.topic, run_date: String(r.run_date || '').slice(0, 10) })
+      }
+    }
+    return JSON.stringify({ source, count: out.length, rows: out.slice(0, limit) })
   }
 
   if (source === 'weekly_board' || source === 'daily_board') {
@@ -297,217 +316,186 @@ async function runSystemStatus(env, authToken) {
   } catch { return JSON.stringify({ error: 'status query failed' }) }
 }
 
-// Model tiers: gpt-4.1-mini by default (5× cheaper), gpt-4.1 for complex
-// questions. A tiny gpt-4.1-nano classifier routes each question; on any error
-// or timeout a keyword heuristic decides instead, so routing never hangs.
-const MODEL_FULL = 'gpt-4.1'
-const MODEL_MINI = 'gpt-4.1-mini'
-
-function heuristicComplex(question) {
-  const q = String(question || '')
-  if (q.length > 180) return true
-  return /\b(compare|versus|vs\.?|why|trend|across|explain|recommend|strateg|driver|between|most |top \d|how many|list |all )\b/i.test(q)
+// Per-user/day rate limit. Atomically bumps a counter via a SECURITY DEFINER RPC
+// (keyed on auth.uid()) and returns {allowed, count, limit, remaining}. FAIL-OPEN:
+// if the RPC isn't deployed yet (migration not run) or errors, returns null and
+// the caller does not block — the assistant keeps working, just uncapped.
+async function bumpUsage(env, authToken, max) {
+  if (!authToken || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return null
+  try {
+    const r = await fetch(env.SUPABASE_URL + '/rest/v1/rpc/assistant_bump_usage', {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + authToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_max: max }),
+    })
+    if (!r.ok) return null
+    return await r.json().catch(() => null)
+  } catch { return null }
 }
 
-async function pickModel(env, question) {
+// One (non-streaming) Anthropic Messages call. Returns { data } or { error }.
+async function callAnthropic(env, system, messages, tools) {
   const ctl = new AbortController()
-  const timer = setTimeout(() => ctl.abort(), 6000)
+  const timer = setTimeout(() => ctl.abort(), 40000)
+  let r
   try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
       body: JSON.stringify({
-        model: 'gpt-4.1-nano',
-        temperature: 0,
-        max_tokens: 2,
-        messages: [
-          { role: 'system', content: "Route a dashboard question to a model tier. Reply with ONE word: 'complex' if a good answer needs multi-step reasoning, comparing or synthesizing several data points, nuanced analysis, or precise database-query parameters (a company + a date range + filters); otherwise 'simple' (a lookup, navigation, a definition, or filing feedback). Reply only 'simple' or 'complex'." },
-          { role: 'user', content: String(question || '').slice(0, 1000) },
-        ],
+        model: MODEL,
+        max_tokens: 1024,
+        system,
+        messages,
+        ...(tools ? { tools } : {}),
       }),
       signal: ctl.signal,
     })
-    if (r.ok) {
-      const j = await r.json().catch(() => null)
-      const out = String((j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').toLowerCase()
-      if (out.includes('complex')) return MODEL_FULL
-      if (out.includes('simple')) return MODEL_MINI
-    }
-  } catch { /* nano failed/timed out — fall through to heuristic */ } finally {
-    clearTimeout(timer)
-  }
-  return heuristicComplex(question) ? MODEL_FULL : MODEL_MINI
+  } catch { clearTimeout(timer); return { error: 'network' } }
+  clearTimeout(timer)
+  if (!r.ok) return { error: 'status', status: r.status }
+  const j = await r.json().catch(() => null)
+  if (!j || !Array.isArray(j.content)) return { error: 'parse' }
+  return { data: j }
 }
 
-// Second-pass completion after a tool result: stream the answer text, no tools.
-async function streamAnswer(env, messages, writer, enc, model) {
-  const ctl = new AbortController()
-  const timer = setTimeout(() => ctl.abort(), 25000)
-  let resp
-  try {
-    resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
-      body: JSON.stringify({ model: model || MODEL_FULL, messages, temperature: 0.2, max_tokens: 600, stream: true }),
-      signal: ctl.signal,
-    })
-  } catch { clearTimeout(timer); return false }
-  clearTimeout(timer)
-  if (!resp.ok || !resp.body) return false
-  const reader = resp.body.getReader()
-  const dec = new TextDecoder()
-  let buf = ''
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buf += dec.decode(value, { stream: true })
-    const lines = buf.split('\n')
-    buf = lines.pop() || ''
-    for (const line of lines) {
-      const t = line.trim()
-      if (!t.startsWith('data:')) continue
-      const data = t.slice(5).trim()
-      if (!data || data === '[DONE]') continue
-      try {
-        const p = JSON.parse(data)
-        const c = p.choices && p.choices[0] && p.choices[0].delta && p.choices[0].delta.content
-        if (c) await writer.write(enc.encode(c))
-      } catch { /* skip */ }
-    }
+// A friendly one-line label for the "thinking" progress frame of a tool step.
+function labelForTool(tu) {
+  if (tu.name === 'system_status') return 'Checking pipeline status…'
+  if (tu.name === 'query_data') {
+    const s = (tu.input && tu.input.source) || 'posts'
+    if (s === 'posts') return 'Searching posts…'
+    if (s === 'ai_visibility') return 'Checking AI visibility…'
+    return 'Reading the SOV board…'
   }
-  return true
+  return 'Working…'
+}
+
+// Normalize the client history into strictly-alternating user/assistant turns
+// starting with user, so the Anthropic API accepts it. The new question is
+// appended by the caller after this.
+function normalizeHistory(history) {
+  const out = []
+  for (const m of history) {
+    if (!m || !m.content) continue
+    const role = m.role === 'user' ? 'user' : 'assistant'
+    const content = String(m.content).slice(0, 4000)
+    if (!content) continue
+    if (out.length === 0 && role !== 'user') continue // must start with user
+    if (out.length && out[out.length - 1].role === role) { out[out.length - 1] = { role, content }; continue }
+    out.push({ role, content })
+  }
+  // Drop a dangling trailing user turn (the current question supersedes it).
+  if (out.length && out[out.length - 1].role === 'user') out.pop()
+  return out
 }
 
 async function handleAsk(request, env) {
   if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
   const user = await verifyUser(request, env)
   if (!user) return json(401, { error: 'unauthorized' })
-  if (!env.OPENAI_API_KEY) return json(503, { error: 'assistant not configured' })
-  // The caller's Supabase token — reused so query_data reads AS this user (RLS).
+  if (!env.ANTHROPIC_API_KEY) return json(503, { error: 'assistant not configured' })
+  // The caller's Supabase token — reused so tools read AS this user (RLS).
   const authToken = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
 
-  // Cap the body before parsing so a huge context can't burn CPU/memory.
+  // Cap the body before parsing (the thin context is small; this rejects abuse).
   const clen = Number(request.headers.get('content-length') || 0)
-  if (clen > 200000) return json(413, { error: 'request too large' })
+  if (clen > 60000) return json(413, { error: 'request too large' })
 
   let payload
   try { payload = await request.json() } catch { return json(400, { error: 'bad request' }) }
   const question = String((payload && payload.question) || '').trim().slice(0, 2000)
   if (!question) return json(400, { error: 'empty question' })
-  const context = (payload && payload.context) || {}
-  const history = Array.isArray(payload && payload.history) ? payload.history.slice(-6) : []
+  const uiState = (payload && payload.context) || {}
+  const history = Array.isArray(payload && payload.history) ? payload.history.slice(-8) : []
 
-  const messages = [
-    { role: 'system', content: ASSISTANT_SYSTEM + '\n\nDATA CONTEXT (JSON — what the user is currently looking at):\n' + JSON.stringify(context).slice(0, 24000) },
-    ...history
-      .filter(m => m && m.content)
-      .map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.content).slice(0, 4000) })),
-    { role: 'user', content: question },
-  ]
+  // Rate limit (fail-open — see bumpUsage). Check before spending model tokens.
+  const dailyLimit = Number(env.ASSISTANT_DAILY_LIMIT) || DEFAULT_DAILY_LIMIT
+  const usage = await bumpUsage(env, authToken, dailyLimit)
+  const overLimit = usage && usage.allowed === false && usage.reason !== 'unauthenticated'
 
-  // Pick the model tier for this question (mini default, gpt-4.1 when complex).
-  const model = await pickModel(env, question)
-
-  // Timeout guards only the initial connect (headers). Once the stream starts we
-  // let it flow to completion so a long answer isn't truncated mid-token.
-  const ctl = new AbortController()
-  const timer = setTimeout(() => ctl.abort(), 25000)
-  let resp
-  try {
-    resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
-      body: JSON.stringify({ model, messages, temperature: 0.2, max_tokens: 600, stream: true, tools: ASSISTANT_TOOLS, tool_choice: 'auto' }),
-      signal: ctl.signal,
-    })
-  } catch {
-    clearTimeout(timer)
-    return json(502, { error: 'assistant upstream failed' })
-  }
-  clearTimeout(timer)
-  // On error OpenAI sends a JSON body, not a stream — surface a generic error
-  // (don't forward its raw quota/billing wording to the client).
-  if (!resp.ok || !resp.body) return json(502, { error: 'assistant error' })
-
-  // Transform OpenAI's SSE into a plain-text stream of content deltas so the
-  // browser can append tokens live. If the model calls create_github_issue
-  // instead of answering, accumulate the call, run it, and stream the
-  // confirmation text in its place.
+  const system = ASSISTANT_SYSTEM + '\n\nUI STATE (what the user is currently looking at):\n' + JSON.stringify(uiState).slice(0, 1500)
   const GH_REPO = env.GITHUB_REPO || 'elan-twine/AI_Competitive_Intelligence_System'
+
   const { readable, writable } = new TransformStream()
+  const enc = new TextEncoder()
   ;(async () => {
-    const reader = resp.body.getReader()
-    const dec = new TextDecoder()
-    const enc = new TextEncoder()
     const writer = writable.getWriter()
-    let buf = ''
-    let toolName = ''
-    let toolArgs = ''
-    let toolId = ''
+    const send = (obj) => writer.write(enc.encode('\x1e' + JSON.stringify(obj)))
+    const streamText = async (text) => { const S = 48; for (let i = 0; i < text.length; i += S) await send({ t: 'token', text: text.slice(i, i + S) }) }
     try {
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += dec.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() || '' // keep the trailing partial line for next chunk
-        for (const line of lines) {
-          const t = line.trim()
-          if (!t.startsWith('data:')) continue
-          const data = t.slice(5).trim()
-          if (!data || data === '[DONE]') continue
-          try {
-            const piece = JSON.parse(data)
-            const delta = piece.choices && piece.choices[0] && piece.choices[0].delta
-            if (!delta) continue
-            if (delta.content) await writer.write(enc.encode(delta.content))
-            const call = delta.tool_calls && delta.tool_calls[0]
-            if (call) {
-              if (call.id) toolId = call.id
-              if (call.function && call.function.name) toolName = call.function.name
-              if (call.function && call.function.arguments) toolArgs += call.function.arguments
-            }
-          } catch { /* keep-alive or partial JSON — skip */ }
-        }
+      if (overLimit) {
+        await streamText(`You've reached today's limit of **${dailyLimit}** assistant questions. The count resets daily. If you need more, an admin can raise the limit.`)
+        return
       }
-      if (toolName === 'create_github_issue') {
-        let args = {}
-        try { args = JSON.parse(toolArgs || '{}') } catch { /* leave empty → defaulted title */ }
-        // Don't file yet — emit a DRAFT for the user to review & confirm (the client
-        // renders a preview + "File it"). The user's verbatim message is attached so
-        // the final issue keeps their exact words regardless of the model's summary.
-        // Leading \x1e (a control char that never appears in answer text) signals the
-        // client this frame is a draft envelope, not answer tokens.
-        const draft = {
-          _kind: 'issue_draft',
-          title: String(args.title || '').slice(0, 240),
-          body: String(args.body || '').slice(0, 6000),
-          category: args.category || null,
-          verbatim: question,
+
+      const messages = [...normalizeHistory(history), { role: 'user', content: question }]
+      let steps = 0
+      let answered = false
+
+      while (steps < MAX_STEPS) {
+        const res = await callAnthropic(env, system, messages, ASSISTANT_TOOLS)
+        if (res.error) { await send({ t: 'error', message: 'The assistant hit an error reaching the model. Please try again in a moment.' }); return }
+        const blocks = res.data.content
+        const stop = res.data.stop_reason
+
+        if (stop === 'tool_use') {
+          // Echo the assistant turn (incl. tool_use blocks) back verbatim — required.
+          messages.push({ role: 'assistant', content: blocks })
+          const toolUses = blocks.filter(b => b.type === 'tool_use')
+
+          // create_github_issue is terminal: emit a draft to review, then stop.
+          const issue = toolUses.find(b => b.name === 'create_github_issue')
+          if (issue) {
+            const a = issue.input || {}
+            await send({ t: 'draft', draft: {
+              title: String(a.title || '').slice(0, 240),
+              body: String(a.body || '').slice(0, 6000),
+              category: a.category || null,
+              verbatim: question,
+            } })
+            return
+          }
+
+          // Run the read tools, feed results back, loop.
+          const results = []
+          for (const tu of toolUses) {
+            await send({ t: 'progress', label: labelForTool(tu) })
+            const out = tu.name === 'system_status'
+              ? await runSystemStatus(env, authToken)
+              : tu.name === 'query_data'
+                ? await runDataQuery(env, authToken, tu.input || {})
+                : JSON.stringify({ error: 'unknown tool' })
+            results.push({ type: 'tool_result', tool_use_id: tu.id, content: String(out).slice(0, 12000) })
+          }
+          messages.push({ role: 'user', content: results })
+          steps++
+          continue
         }
-        await writer.write(enc.encode('\x1e' + JSON.stringify(draft)))
-      } else if (toolName === 'query_data' || toolName === 'system_status') {
-        let args = {}
-        try { args = JSON.parse(toolArgs || '{}') } catch { /* defaulted below */ }
-        const result = toolName === 'system_status'
-          ? await runSystemStatus(env, authToken)
-          : await runDataQuery(env, authToken, args)
-        // Feed the result back and stream a natural-language answer grounded in it.
-        const messages2 = [
-          ...messages,
-          { role: 'assistant', content: null, tool_calls: [{ id: toolId || 'call_1', type: 'function', function: { name: toolName, arguments: toolArgs || '{}' } }] },
-          { role: 'tool', tool_call_id: toolId || 'call_1', content: result },
-        ]
-        const ok = await streamAnswer(env, messages2, writer, enc, model)
-        if (!ok) await writer.write(enc.encode('I fetched the data but hit an error summarizing it — please try again.'))
+
+        // Final answer (end_turn / max_tokens / stop_sequence).
+        const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('').trim()
+        if (text) { await streamText(text); answered = true }
+        break
       }
-    } catch { /* upstream aborted/failed mid-stream — just close */ } finally {
-      try { await writer.close() } catch { /* already closed */ }
-    }
+
+      // Exhausted the tool budget without a final answer → force one last
+      // answer with tools disabled, grounded in what we've already fetched.
+      if (!answered) {
+        const res = await callAnthropic(env, system, [...messages, { role: 'user', content: 'You have used your tool budget. Answer now using only what you already fetched; if it is not enough, say briefly what is missing.' }], null)
+        const text = res.data ? res.data.content.filter(b => b.type === 'text').map(b => b.text).join('').trim() : ''
+        await streamText(text || "I looked into that but couldn't pull together a clear answer — try rephrasing, or narrow it to a specific company or date range.")
+      }
+    } catch { try { await send({ t: 'error', message: 'Something went wrong. Please try again.' }) } catch { /* closed */ } }
+    finally { try { await writer.close() } catch { /* already closed */ } }
   })()
 
   return new Response(readable, {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Assistant-Model': model },
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Assistant-Model': MODEL },
   })
 }
 

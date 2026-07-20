@@ -1,23 +1,27 @@
 import { supabase } from './supabase'
 
-// Client for the dashboard assistant. POSTs the question + the in-memory data
-// context to the session-gated Worker route (which holds the OpenAI key — never
-// the browser). Mirrors the briefing-proxy auth pattern: bearer the Supabase
-// access token so the Worker can verify a real logged-in session.
+// Client for the dashboard assistant. POSTs the question + a THIN UI-state header
+// (what the user is looking at — not a data snapshot) to the session-gated Worker
+// route, which runs the agentic loop (it holds the Anthropic key, never the
+// browser). Mirrors the briefing-proxy auth pattern: bearer the Supabase access
+// token so the Worker can verify a real logged-in session and read AS this user.
 export const ASK_PATH = '/api/ask'
 export const FILE_ISSUE_PATH = '/api/file-issue'
 
-// The Worker prefixes an issue-DRAFT frame with this control char (never present
-// in normal answer text) so we can tell a draft envelope from answer tokens.
-const DRAFT_SENTINEL = '\x1e'
+// The Worker streams a sequence of \x1e-delimited JSON frames:
+//   {t:'progress', label}  — a tool step is running (live "thinking")
+//   {t:'token', text}      — a chunk of the final answer (append)
+//   {t:'draft', draft}     — an issue draft to review before filing (terminal)
+//   {t:'error', message}   — failure
+// \x1e (record separator) never appears inside JSON.stringify output, so it's a
+// safe frame delimiter.
+const FRAME_SEP = '\x1e'
 
-// `onToken(chunk, fullSoFar)` is called as text streams in, so the UI can type
-// the answer out live. The Worker streams plain-text token deltas on success and
-// falls back to a JSON body for errors / the not-configured case. If the model
-// wants to file feedback, the Worker instead sends a single draft frame — we
-// parse it and hand it to `onDraft(draft)` (nothing is filed until the user
-// confirms). Returns the full answer text, or { draft } when a draft was sent.
-export async function askAssistant({ question, context, history = [], onToken, onDraft }) {
+// `onToken(chunk, fullSoFar)` streams the answer out live; `onProgress(label)`
+// surfaces each tool step as it runs; `onDraft(draft)` hands over a feedback
+// draft (nothing is filed until the user confirms). Returns the full answer
+// text, or { draft } when a draft was sent.
+export async function askAssistant({ question, context, history = [], onToken, onProgress, onDraft }) {
   const { data } = await supabase.auth.getSession()
   const token = data?.session?.access_token
   if (!token) throw new Error('Please sign in again — your session expired.')
@@ -44,25 +48,39 @@ export async function askAssistant({ question, context, history = [], onToken, o
 
   const reader = r.body.getReader()
   const decoder = new TextDecoder()
+  let buffer = ''
   let full = ''
-  let isDraft = false
-  let started = false
+  let draftOut = null
+
+  const dispatch = (raw) => {
+    const s = raw.trim()
+    if (!s) return
+    let frame
+    try { frame = JSON.parse(s) } catch { return } // partial/garbled — skip
+    if (frame.t === 'token') {
+      full += frame.text || ''
+      if (onToken) onToken(frame.text || '', full)
+    } else if (frame.t === 'progress') {
+      if (onProgress) onProgress(frame.label || '')
+    } else if (frame.t === 'draft') {
+      draftOut = frame.draft || null
+      if (draftOut && onDraft) onDraft(draftOut)
+    } else if (frame.t === 'error') {
+      throw new Error(frame.message || 'Assistant error.')
+    }
+  }
+
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
-    const chunk = decoder.decode(value, { stream: true })
-    if (!chunk) continue
-    full += chunk
-    // Decide draft-vs-answer on the first byte: a leading sentinel = draft frame.
-    if (!started) { started = true; isDraft = full.charCodeAt(0) === 0x1e }
-    if (!isDraft && onToken) onToken(chunk, full)
+    buffer += decoder.decode(value, { stream: true })
+    const parts = buffer.split(FRAME_SEP)
+    buffer = parts.pop() || '' // keep the trailing (possibly incomplete) frame
+    for (const p of parts) dispatch(p)
   }
-  if (isDraft) {
-    let draft = null
-    try { draft = JSON.parse(full.slice(DRAFT_SENTINEL.length)) } catch { /* malformed → treat as no draft */ }
-    if (draft && onDraft) onDraft(draft)
-    return { draft: draft || null }
-  }
+  if (buffer) dispatch(buffer) // flush the final frame
+
+  if (draftOut) return { draft: draftOut }
   return full
 }
 
