@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Sparkles, X, ArrowUp, RotateCcw, FileText, Copy, Check, Pencil } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { buildAssistantContext } from '../lib/assistantContext'
 import { askAssistant, fileIssue } from '../lib/assistant'
 import './assistantChat.css'
 
@@ -14,8 +13,9 @@ const MD_COMPONENTS = {
 
 // Floating "ask about this data" assistant. Lives on the dashboard; answers both
 // specific questions ("why did Orchid spike?") and navigational ones ("where do
-// I see AI visibility?") from the data already in memory + the app map baked into
-// the Worker system prompt. Data-bearing props come from the Dashboard.
+// I see AI visibility?"). It runs a server-side agentic loop (Claude Sonnet 4.5)
+// that fetches its own data via tools — this component only sends a THIN UI-state
+// header (what the user is currently looking at), not a data snapshot.
 const SUGGESTIONS = [
   'Why did the top mover change this week?',
   'Who gained the most share recently, and why?',
@@ -23,7 +23,7 @@ const SUGGESTIONS = [
   'Report a data or weighting error',
 ]
 
-export function AssistantChat({ allPosts = [], ranked = [], competitors = [], config = {}, platform = 'All', windowLabel = 'current' }) {
+export function AssistantChat({ platform = 'All', windowLabel = 'current', tab = null, drilledCompany = null }) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([]) // { role:'user'|'assistant'|'error', content }
   const [input, setInput] = useState('')
@@ -62,18 +62,23 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
     setInput('')
     const history = messages.filter(m => m.role !== 'error').map(m => ({ role: m.role, content: m.content }))
     // Add the question + an empty assistant bubble the stream fills in place.
-    setMessages(m => [...m, { role: 'user', content: question }, { role: 'assistant', content: '' }])
+    setMessages(m => [...m, { role: 'user', content: question }, { role: 'assistant', content: '', steps: [] }])
     setBusy(true)
     let gotDraft = false
+    // Update the trailing assistant bubble in place (used by both token + step frames).
+    const patchAssistant = (fn) => setMessages(m => {
+      const c = [...m]
+      for (let i = c.length - 1; i >= 0; i--) { if (c[i].role === 'assistant') { c[i] = fn(c[i]); break } }
+      return c
+    })
     try {
-      const context = buildAssistantContext({ allPosts, ranked, competitors, config, filters: { platform, window: windowLabel } })
+      // Thin UI-state header — deixis, not data. The agent fetches the rest itself.
+      const context = { tab, window: windowLabel, platformFilter: platform, drilledCompany }
       await askAssistant({
         question, context, history,
-        onToken: (_chunk, full) => { if (gotDraft) return; setMessages(m => {
-          const c = [...m]
-          for (let i = c.length - 1; i >= 0; i--) { if (c[i].role === 'assistant') { c[i] = { ...c[i], content: full }; break } }
-          return c
-        }) },
+        onToken: (_chunk, full) => { if (gotDraft) return; patchAssistant(a => ({ ...a, content: full })) },
+        // A tool step is running — surface it as live "thinking" above the answer.
+        onProgress: (label) => { if (gotDraft || !label) return; patchAssistant(a => ({ ...a, steps: [...(a.steps || []), label] })) },
         // Model wants to file feedback → replace the placeholder with a review card.
         // Nothing is filed until the user taps "File it".
         onDraft: (draft) => { gotDraft = true; setMessages(m => {
@@ -98,7 +103,7 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
     } finally {
       setBusy(false)
     }
-  }, [input, busy, messages, allPosts, ranked, competitors, config, platform, windowLabel])
+  }, [input, busy, messages, platform, windowLabel, tab, drilledCompany])
 
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
@@ -219,7 +224,13 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
                           ? <div className="asst-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.content}</ReactMarkdown></div>
                           : m.content)
                       : (m.role === 'assistant'
-                          ? <span className="asst-typing" aria-label="Thinking"><span></span><span></span><span></span></span>
+                          ? (m.steps && m.steps.length
+                              ? <div className="asst-steps" aria-label="Working">
+                                  {m.steps.map((s, si) => (
+                                    <div key={si} className={`asst-step ${si === m.steps.length - 1 ? 'active' : 'done'}`}>{s}</div>
+                                  ))}
+                                </div>
+                              : <span className="asst-typing" aria-label="Thinking"><span></span><span></span><span></span></span>)
                           : '')}
                   </div>
                   {m.content && m.role !== 'error' && (
@@ -255,7 +266,7 @@ export function AssistantChat({ allPosts = [], ranked = [], competitors = [], co
               <ArrowUp size={16} />
             </button>
           </div>
-          <div className="asst-foot">Answers use the board + posts currently loaded. It can be wrong — verify anything important.</div>
+          <div className="asst-foot">The assistant looks up the board, posts, and pipeline status to answer. It can be wrong — verify anything important.</div>
         </div>
       )}
     </>
