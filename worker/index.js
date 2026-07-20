@@ -12,6 +12,8 @@
 // (with SPA fallback), so this handler only ever sees API routes in practice.
 // The ASSETS.fetch fallback is a safety net.
 
+import { METHODOLOGY_KB } from './methodology_kb.js'
+
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: JSON_HEADERS })
 
@@ -104,6 +106,7 @@ USING YOUR TOOLS (fetch first, then answer — you may chain up to ${MAX_STEPS} 
 - get_board — standings/ranking/movement questions ("who's #1", "top mover", "how did the board change"). Returns every direct competitor's SOV% AND its change vs. the prior period in one call. window_days 7 (default) / 30 / 0 (all-time).
 - get_company — anything about ONE company ("why is X at Y%", "what's driving X", "how's X doing on LinkedIn", "tell me about X"). One call returns its current SOV%, a short trend, its per-platform impact split, avg sentiment, and its top posts with links. This is usually all you need for a single-company question — don't stitch query_data calls when this covers it.
 - query_data — the lower-level fallback for what the two above don't cover: individual mentions with filters ("all Cerby news in June", "most negative posts about Twine") via source 'posts'; raw week-by-week history via 'weekly_board'; AI-answer/GEO visibility ("how often does ChatGPT name us") via 'ai_visibility'. Answer ONLY from the rows returned; if empty, say so.
+- explain — the authoritative METHODOLOGY (formulas, author tiers, decay, multipliers, SOV pooling, AI-visibility, data flow, app map). Call this for "how is impact/SOV scored", "how does decay work", "why is an external mention worth 5×", "how does AI Visibility work", "where do I find X" — then re-express it in the user's language + the panel format. Prefer it over explaining the math from memory. (For the current live multiplier/half-life NUMBERS specifically, system_status is authoritative.)
 - system_status — OPERATIONAL questions: "is anything waiting to be processed/attributed?" (LinkedIn queue), "when did we last scrape X?" (per-platform freshness), "what are the current weights / multipliers / half-lives?" (live scoring config — trust this over any numbers in this prompt).
 - create_github_issue — see below.
 
@@ -144,6 +147,7 @@ const ASSISTANT_TOOLS = [{
       source: { type: 'string', enum: ['posts', 'weekly_board', 'daily_board', 'ai_visibility'], description: 'posts = individual mentions; weekly_board/daily_board = SOV% standings/history; ai_visibility = how often each company is named in AI-answer engines.' },
       company: { type: 'string', description: 'Filter to one tracked competitor by name.' },
       platform: { type: 'string', enum: ['LinkedIn', 'X', 'Reddit', 'Google News'], description: 'posts only: limit to one platform; omit for all.' },
+      text_contains: { type: 'string', description: 'posts only: keep only posts whose text/title/body contains this word or phrase (case-insensitive substring). Use for topic/keyword searches like "zero trust" or a product name.' },
       since: { type: 'string', description: 'Start date YYYY-MM-DD (inclusive).' },
       until: { type: 'string', description: 'End date YYYY-MM-DD (inclusive).' },
       sort: { type: 'string', enum: ['newest', 'top_weight', 'top_engagement', 'most_negative', 'most_positive'], description: 'posts ordering; default newest.' },
@@ -151,6 +155,16 @@ const ASSISTANT_TOOLS = [{
       limit: { type: 'integer', description: 'Max rows, default 25, capped at 100.' },
     },
     required: ['source'],
+  },
+}, {
+  name: 'explain',
+  description: 'Get the authoritative methodology for a topic — the exact formulas, tiers, multipliers, and definitions behind the numbers. Use for "how is impact/SOV scored", "how does decay work", "why is an external mention worth more", "what are the multipliers", "how does AI Visibility work", "where do I find X". Prefer this over answering methodology from memory. Returns markdown to re-express for the user.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      topic: { type: 'string', enum: ['scoring', 'author_tiers', 'decay', 'platform_multipliers', 'sov_pooling', 'x_scoring', 'sentiment', 'ai_visibility_geo', 'data_flow', 'app_map'], description: 'Which methodology topic to retrieve.' },
+    },
+    required: ['topic'],
   },
 }, {
   name: 'system_status',
@@ -271,6 +285,9 @@ async function runDataQuery(env, authToken, args) {
     Reddit: { table: 'reddit_posts', date: 'createdAt', sel: 'companyName,createdAt,score,numComments,post_weight,sentiment,title,selfText,url,permalink' },
     'Google News': { table: 'googlenews', date: 'publishedAt', sel: 'companyName,publishedAt,post_weight,sentiment,title,source,url' },
   }
+  // Free-text search columns per platform (used by text_contains).
+  const TEXTCOLS = { LinkedIn: ['text', 'title'], X: ['text'], Reddit: ['title', 'selfText'], 'Google News': ['title'] }
+  const textContains = args && args.text_contains ? String(args.text_contains).trim().slice(0, 80) : ''
   const sort = (args && args.sort) || 'newest'
   const platforms = (args && args.platform && PLAT[args.platform]) ? [args.platform] : Object.keys(PLAT)
   const orderFor = (p) => {
@@ -289,6 +306,11 @@ async function runDataQuery(env, authToken, args) {
       since ? `${d.date}=gte.${since}` : '',
       until ? `${d.date}=lte.${until}` : '',
       'misattributed=not.is.true', // keep false+null (unflagged), exclude only flagged-true
+      // Keyword search across this platform's text columns (OR). Encode comma AND
+      // parens in the term — encodeURIComponent leaves ()  unescaped, and a raw )
+      // would prematurely close the or=() group. PostgREST decodes them back to
+      // literal characters inside the ILIKE pattern.
+      textContains ? `or=(${TEXTCOLS[p].map(c => `${c}.ilike.*${enc(textContains).replace(/\(/g, '%28').replace(/\)/g, '%29')}*`).join(',')})` : '',
       `order=${orderFor(p)}`,
       `limit=${limit}`,
     ]))
@@ -518,8 +540,18 @@ async function streamAnthropicTurn(env, system, messages, tools, onText) {
   return { text, toolUses, stopReason }
 }
 
+// explain: return the authoritative methodology chunk for a topic (from the
+// embedded KB). No DB access — pure retrieval the model re-expresses for the user.
+function runExplain(args) {
+  const topic = String(args && args.topic || '').trim()
+  const content = METHODOLOGY_KB[topic]
+  if (!content) return JSON.stringify({ error: 'unknown topic', available: Object.keys(METHODOLOGY_KB) })
+  return JSON.stringify({ topic, content })
+}
+
 // A friendly one-line label for the "thinking" progress frame of a tool step.
 function labelForTool(tu) {
+  if (tu.name === 'explain') return 'Checking the methodology…'
   if (tu.name === 'get_board') return 'Reading the SOV board…'
   if (tu.name === 'get_company') { const n = tu.input && tu.input.name; return n ? `Rolling up ${n}…` : 'Rolling up the company…' }
   if (tu.name === 'system_status') return 'Checking pipeline status…'
@@ -628,11 +660,13 @@ async function handleAsk(request, env) {
               ? await runGetBoard(env, authToken, tu.input || {})
               : tu.name === 'get_company'
                 ? await runGetCompany(env, authToken, tu.input || {})
-                : tu.name === 'system_status'
-                  ? await runSystemStatus(env, authToken)
-                  : tu.name === 'query_data'
-                    ? await runDataQuery(env, authToken, tu.input || {})
-                    : JSON.stringify({ error: 'unknown tool' })
+                : tu.name === 'explain'
+                  ? runExplain(tu.input || {})
+                  : tu.name === 'system_status'
+                    ? await runSystemStatus(env, authToken)
+                    : tu.name === 'query_data'
+                      ? await runDataQuery(env, authToken, tu.input || {})
+                      : JSON.stringify({ error: 'unknown tool' })
             results.push({ type: 'tool_result', tool_use_id: tu.id, content: String(out).slice(0, 12000) })
           }
           messages.push({ role: 'user', content: results })
