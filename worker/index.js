@@ -333,10 +333,14 @@ async function bumpUsage(env, authToken, max) {
   } catch { return null }
 }
 
-// One (non-streaming) Anthropic Messages call. Returns { data } or { error }.
-async function callAnthropic(env, system, messages, tools) {
+// One STREAMING Anthropic Messages turn. Parses the SSE stream and invokes
+// onText(delta) for each text token AS IT ARRIVES (so the client sees the answer
+// stream live, at generation speed). Tool-call turns carry no text under our
+// "call tools silently" instruction, so nothing leaks before a tool runs.
+// Returns { text, toolUses:[{id,name,input}], stop_reason } or { error }.
+async function streamAnthropicTurn(env, system, messages, tools, onText) {
   const ctl = new AbortController()
-  const timer = setTimeout(() => ctl.abort(), 40000)
+  const timer = setTimeout(() => ctl.abort(), 45000)
   let r
   try {
     r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -351,16 +355,59 @@ async function callAnthropic(env, system, messages, tools) {
         max_tokens: 1024,
         system,
         messages,
+        stream: true,
         ...(tools ? { tools } : {}),
       }),
       signal: ctl.signal,
     })
   } catch { clearTimeout(timer); return { error: 'network' } }
+  if (!r.ok || !r.body) { clearTimeout(timer); return { error: 'status', status: r.status } }
+
+  const reader = r.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ''
+  const blocks = {} // index → { type, text } | { type:'tool_use', id, name, json }
+  let stopReason = null
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+      for (const line of lines) {
+        const t = line.trim()
+        if (!t.startsWith('data:')) continue
+        const data = t.slice(5).trim()
+        if (!data) continue
+        let ev
+        try { ev = JSON.parse(data) } catch { continue }
+        if (ev.type === 'content_block_start') {
+          const cb = ev.content_block || {}
+          blocks[ev.index] = cb.type === 'tool_use'
+            ? { type: 'tool_use', id: cb.id, name: cb.name, json: '' }
+            : { type: 'text', text: '' }
+        } else if (ev.type === 'content_block_delta') {
+          const b = blocks[ev.index]
+          if (!b) continue
+          if (ev.delta && ev.delta.type === 'text_delta') { b.text += ev.delta.text; if (onText) await onText(ev.delta.text) }
+          else if (ev.delta && ev.delta.type === 'input_json_delta') { b.json += ev.delta.partial_json || '' }
+        } else if (ev.type === 'message_delta') {
+          if (ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason
+        }
+      }
+    }
+  } catch { clearTimeout(timer); return { error: 'stream' } }
   clearTimeout(timer)
-  if (!r.ok) return { error: 'status', status: r.status }
-  const j = await r.json().catch(() => null)
-  if (!j || !Array.isArray(j.content)) return { error: 'parse' }
-  return { data: j }
+
+  const ordered = Object.keys(blocks).sort((a, b) => Number(a) - Number(b)).map(k => blocks[k])
+  const text = ordered.filter(b => b.type === 'text').map(b => b.text).join('')
+  const toolUses = ordered.filter(b => b.type === 'tool_use').map(b => {
+    let input = {}
+    try { input = JSON.parse(b.json || '{}') } catch { /* leave empty */ }
+    return { id: b.id, name: b.name, input }
+  })
+  return { text, toolUses, stopReason }
 }
 
 // A friendly one-line label for the "thinking" progress frame of a tool step.
@@ -434,22 +481,24 @@ async function handleAsk(request, env) {
       }
 
       const messages = [...normalizeHistory(history), { role: 'user', content: question }]
+      // Live answer tokens stream straight to the client as they generate.
+      const onText = (t) => send({ t: 'token', text: t })
       let steps = 0
       let answered = false
 
       while (steps < MAX_STEPS) {
-        const res = await callAnthropic(env, system, messages, ASSISTANT_TOOLS)
-        if (res.error) { await send({ t: 'error', message: 'The assistant hit an error reaching the model. Please try again in a moment.' }); return }
-        const blocks = res.data.content
-        const stop = res.data.stop_reason
+        const turn = await streamAnthropicTurn(env, system, messages, ASSISTANT_TOOLS, onText)
+        if (turn.error) { await send({ t: 'error', message: 'The assistant hit an error reaching the model. Please try again in a moment.' }); return }
 
-        if (stop === 'tool_use') {
-          // Echo the assistant turn (incl. tool_use blocks) back verbatim — required.
-          messages.push({ role: 'assistant', content: blocks })
-          const toolUses = blocks.filter(b => b.type === 'tool_use')
+        if (turn.stopReason === 'tool_use') {
+          // Echo the assistant turn (any text + the tool_use blocks) back — required.
+          const content = []
+          if (turn.text) content.push({ type: 'text', text: turn.text })
+          for (const tu of turn.toolUses) content.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input })
+          messages.push({ role: 'assistant', content })
 
           // create_github_issue is terminal: emit a draft to review, then stop.
-          const issue = toolUses.find(b => b.name === 'create_github_issue')
+          const issue = turn.toolUses.find(b => b.name === 'create_github_issue')
           if (issue) {
             const a = issue.input || {}
             await send({ t: 'draft', draft: {
@@ -463,7 +512,7 @@ async function handleAsk(request, env) {
 
           // Run the read tools, feed results back, loop.
           const results = []
-          for (const tu of toolUses) {
+          for (const tu of turn.toolUses) {
             await send({ t: 'progress', label: labelForTool(tu) })
             const out = tu.name === 'system_status'
               ? await runSystemStatus(env, authToken)
@@ -477,18 +526,18 @@ async function handleAsk(request, env) {
           continue
         }
 
-        // Final answer (end_turn / max_tokens / stop_sequence).
-        const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('').trim()
-        if (text) { await streamText(text); answered = true }
+        // Final answer — already streamed live via onText above.
+        if (turn.text && turn.text.trim()) answered = true
         break
       }
 
       // Exhausted the tool budget without a final answer → force one last
-      // answer with tools disabled, grounded in what we've already fetched.
+      // answer with tools disabled (also streamed), grounded in what we fetched.
       if (!answered) {
-        const res = await callAnthropic(env, system, [...messages, { role: 'user', content: 'You have used your tool budget. Answer now using only what you already fetched; if it is not enough, say briefly what is missing.' }], null)
-        const text = res.data ? res.data.content.filter(b => b.type === 'text').map(b => b.text).join('').trim() : ''
-        await streamText(text || "I looked into that but couldn't pull together a clear answer — try rephrasing, or narrow it to a specific company or date range.")
+        const turn = await streamAnthropicTurn(env, system, [...messages, { role: 'user', content: 'You have used your tool budget. Answer now using only what you already fetched; if it is not enough, say briefly what is missing.' }], null, onText)
+        if (!turn.text || !turn.text.trim()) {
+          await streamText("I looked into that but couldn't pull together a clear answer — try rephrasing, or narrow it to a specific company or date range.")
+        }
       }
     } catch { try { await send({ t: 'error', message: 'Something went wrong. Please try again.' }) } catch { /* closed */ } }
     finally { try { await writer.close() } catch { /* already closed */ } }
