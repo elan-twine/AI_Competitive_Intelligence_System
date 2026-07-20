@@ -771,8 +771,6 @@ function normalizeHistory(history) {
 
 async function handleAsk(request, env) {
   if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
-  const user = await verifyUser(request, env)
-  if (!user) return json(401, { error: 'unauthorized' })
   if (!env.ANTHROPIC_API_KEY) return json(503, { error: 'assistant not configured' })
   // The caller's Supabase token — reused so tools read AS this user (RLS).
   const authToken = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
@@ -780,6 +778,14 @@ async function handleAsk(request, env) {
   // Cap the body before parsing (the thin context is small; this rejects abuse).
   const clen = Number(request.headers.get('content-length') || 0)
   if (clen > 60000) return json(413, { error: 'request too large' })
+
+  // Auth check + rate-limit bump run CONCURRENTLY (both act on the same token;
+  // bumpUsage no-ops for an invalid token — keyed on auth.uid()) — this shaves a
+  // full Supabase round-trip off time-to-first-token. The 401 gate still holds:
+  // nothing streams and no model call happens unless verifyUser passes.
+  const dailyLimit = Number(env.ASSISTANT_DAILY_LIMIT) || DEFAULT_DAILY_LIMIT
+  const userP = verifyUser(request, env)
+  const usageP = bumpUsage(env, authToken, dailyLimit)
 
   let payload
   try { payload = await request.json() } catch { return json(400, { error: 'bad request' }) }
@@ -789,9 +795,9 @@ async function handleAsk(request, env) {
   const history = Array.isArray(payload && payload.history) ? payload.history.slice(-8) : []
   const sessionId = UUID_RE.test(String((payload && payload.session_id) || '')) ? payload.session_id : null
 
-  // Rate limit (fail-open — see bumpUsage). Check before spending model tokens.
-  const dailyLimit = Number(env.ASSISTANT_DAILY_LIMIT) || DEFAULT_DAILY_LIMIT
-  const usage = await bumpUsage(env, authToken, dailyLimit)
+  const user = await userP
+  if (!user) return json(401, { error: 'unauthorized' })
+  const usage = await usageP
   const overLimit = usage && usage.allowed === false && usage.reason !== 'unauthenticated'
 
   const GH_REPO = env.GITHUB_REPO || 'elan-twine/AI_Competitive_Intelligence_System'
