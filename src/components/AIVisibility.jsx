@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Bot, Download, Info, Search } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList, CartesianGrid, Legend } from 'recharts'
 import { GlassCard } from './GlassCard'
 import { useGeoVisibility } from '../hooks/useGeoVisibility'
 import { colorForCompany } from '../lib/colors'
@@ -25,6 +25,8 @@ const ENGINE_LABELS = {
   perplexity: 'Perplexity',
 }
 const engineLabel = e => ENGINE_LABELS[e] || e
+// Per-engine line colors for the visibility-over-time trend (readable in both themes).
+const ENGINE_TREND_COLORS = { openai: '#1D9E75', anthropic: '#D8814E', perplexity: '#7F77DD' }
 
 const pct = (n, d) => (d ? (n / d) * 100 : 0)
 const mean = arr => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null)
@@ -125,7 +127,7 @@ function MiniBar({ company, visibility, highlight }) {
 }
 
 export function AIVisibility() {
-  const { prompts, results, weekStart, engines, loading } = useGeoVisibility()
+  const { prompts, results, allResults, runDates, weekStart, engines, loading } = useGeoVisibility()
   const [engineSel, setEngineSel] = useState(null)
   // Which company the summary / per-topic line / win-miss list are ABOUT.
   // Default us (Twine); switch to any competitor to inspect their visibility.
@@ -206,6 +208,26 @@ export function AIVisibility() {
     if (!model) return [TWINE]
     return model.companies.map(c => c.company)
   }, [model])
+
+  // Visibility-over-time for the focus company: one point per run date, one line
+  // per engine (focus's share of that run's answered prompts). Populates weekly
+  // from the Thursday AI-Answers run — a single dot today, a real trend over
+  // time. { dates, engines, rows:[{ date, <engine>: pct }] }.
+  const trend = useMemo(() => {
+    const trendEngines = [...new Set(allResults.map(r => r.engine))].sort()
+    const rows = runDates.map(date => {
+      const row = { date }
+      for (const eng of trendEngines) {
+        const runRows = allResults.filter(r => r.engine === eng && String(r.run_date || '').slice(0, 10) === date)
+        const answered = [...latestByPrompt(runRows).values()]
+        if (!answered.length) { row[eng] = null; continue }
+        const named = answered.filter(r => (r.mentions || []).some(m => m?.company === focus)).length
+        row[eng] = Math.round(pct(named, answered.length))
+      }
+      return row
+    })
+    return { rows, engines: trendEngines }
+  }, [allResults, runDates, focus])
 
   // CSV: one row per mention across ALL engines this week (latest run per
   // prompt×engine). Columns: week_start, engine, topic, prompt, company, position.
@@ -331,6 +353,36 @@ export function AIVisibility() {
           <strong>{focus}</strong> named in <strong>{model.focusRow?.count || 0}</strong> of <strong>{model.answeredCount}</strong> answered prompts
         </span>
       </div>
+
+      {/* 3.5 — Visibility over time (focus company, per engine) */}
+      <div className="geo-section-title">
+        Visibility over time — {isUs ? 'Twine' : focus}
+        {trend.rows.length < 2 && <span style={{ fontWeight: 400, color: 'var(--text-secondary)', marginLeft: 8, fontSize: 11 }}>· builds each week from the Thursday run</span>}
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={trend.rows} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} vertical={false} />
+          <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} tickLine={false} axisLine={{ stroke: 'var(--border)', opacity: 0.4 }} />
+          <YAxis domain={[0, 100]} unit="%" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} tickLine={false} axisLine={false} width={40} />
+          <Tooltip
+            contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+            formatter={(v, name) => [v == null ? 'no data' : `${v}%`, engineLabel(name)]}
+          />
+          <Legend wrapperStyle={{ fontSize: 11.5, paddingTop: 6 }} formatter={engineLabel} />
+          {trend.engines.map(eng => (
+            <Line
+              key={eng}
+              type="monotone"
+              dataKey={eng}
+              stroke={ENGINE_TREND_COLORS[eng] || 'var(--accent)'}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              connectNulls
+              isAnimationActive={false}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
 
       {/* 4 — Leaderboard (all companies; focus highlighted) */}
       <div className="geo-section-title">Leaderboard — visibility across all questions</div>

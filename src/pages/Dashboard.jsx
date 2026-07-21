@@ -7,6 +7,9 @@ import { useLastUpdated } from '../hooks/useLastUpdated'
 import { usePersistedState } from '../hooks/usePersistedState'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
+import { HealthStrip } from '../components/HealthStrip'
+import { AnnotationBar } from '../components/AnnotationBar'
+import { useAnnotations } from '../hooks/useAnnotations'
 import { SOVTrendChart } from '../components/SOVTrendChart'
 import { SocialBriefs } from '../components/SocialBriefs'
 import { CompanyDrillIn } from '../components/CompanyDrillIn'
@@ -82,6 +85,7 @@ function Dashboard({ onLogout, onNavigate }) {
   }
   const { config: sovConfig } = useSOVConfig()
   const lastUpdated = useLastUpdated()
+  const { annotations, add: addAnnotation, remove: removeAnnotation } = useAnnotations()
 
   // Give every tracked company its own unique chart color (sorted-roster slot
   // assignment — see colors.js). Must run before children render their lines.
@@ -225,6 +229,7 @@ function Dashboard({ onLogout, onNavigate }) {
         <button className={`tab ${tab === 'posts' ? 'active' : ''}`} onClick={() => setTab('posts')}>Posts of Interest</button>
         <button className={`tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>AI Visibility</button>
         <button className={`tab ${tab === 'compare' ? 'active' : ''}`} onClick={() => setTab('compare')}>Compare</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}><HealthStrip /></div>
       </div>
 
       {/* Posts of Interest has its own period control, so the global platform/time
@@ -373,6 +378,7 @@ function Dashboard({ onLogout, onNavigate }) {
                 Share of Voice — {windowLabel}{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
               </span>
             </div>
+            <AnnotationBar annotations={annotations} onAdd={addAnnotation} onRemove={removeAnnotation} />
             <SOVTrendChart
               competitors={competitors}
               metric="overall"
@@ -382,6 +388,7 @@ function Dashboard({ onLogout, onNavigate }) {
               config={sovConfig}
               windowDays={windowDays}
               nowValues={nowValues}
+              annotations={annotations}
             />
           </GlassCard>
 
