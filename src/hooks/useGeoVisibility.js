@@ -48,5 +48,9 @@ export function useGeoVisibility() {
   const results = weekStart ? allResults.filter(r => r.week_start === weekStart) : []
   const engines = [...new Set(results.map(r => r.engine))].sort()
 
-  return { prompts, results, weekStart, engines, loading }
+  // allResults (every run, newest-first) powers the visibility-over-time trend;
+  // runDates is the sorted (oldest→newest) list of distinct run dates.
+  const runDates = [...new Set(allResults.map(r => String(r.run_date || '').slice(0, 10)).filter(Boolean))].sort()
+
+  return { prompts, results, allResults, runDates, weekStart, engines, loading }
 }

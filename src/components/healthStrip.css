@@ -1,0 +1,29 @@
+/* Pipeline-health strip — a compact color-coded pill row in the dashboard header. */
+.health-strip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.health-pulse { display: inline-flex; align-items: center; }
+.health-strip.level-green .health-pulse { color: var(--positive, #3ecf8e); }
+.health-strip.level-amber .health-pulse { color: var(--warning, #e6b800); }
+.health-strip.level-red .health-pulse { color: var(--negative, #e5484d); }
+
+.health-pill {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.health-pill.level-green { border-color: color-mix(in srgb, var(--positive, #3ecf8e) 40%, transparent); color: var(--positive, #3ecf8e); }
+.health-pill.level-amber { border-color: color-mix(in srgb, var(--warning, #e6b800) 45%, transparent); color: var(--warning, #e6b800); }
+.health-pill.level-red { border-color: color-mix(in srgb, var(--negative, #e5484d) 45%, transparent); color: var(--negative, #e5484d); }
+
+@media (max-width: 640px) {
+  .health-strip { display: none; } /* header is tight on mobile — hide the strip */
+}

@@ -68,7 +68,7 @@ function TrendTooltip({ active, payload, isDaily, isSentiment }) {
 // sov_daily; null/other => YTD weekly board from sov_weekly). When `live` is set
 // (a platform filter is active) sov_daily can't be sliced by platform, so we
 // fall back to a weekly series computed live from the passed posts.
-export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %', posts = null, live = false, config = undefined, windowDays = null, nowValues = null }) {
+export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = 'SOV %', posts = null, live = false, config = undefined, windowDays = null, nowValues = null, annotations = [] }) {
   // Daily whenever the window is 7d/30d — whether from the precomputed sov_daily
   // board (all-platform) or, under a platform filter, a live rolling series.
   const isDaily = (windowDays === 7 || windowDays === 30)
@@ -426,6 +426,16 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
             <ReferenceLine x={nowTs} stroke="var(--accent)" strokeOpacity={0.5} strokeDasharray="3 3"
               label={{ value: 'live', position: 'insideTop', fill: 'var(--accent)', fontSize: 10, dx: -11, dy: 2 }} />
           )}
+          {/* Event markers (campaign launches, funding, releases) — team-authored
+              annotations dropped on the timeline so moves are readable in context. */}
+          {annotations.map(a => {
+            const ts = new Date(String(a.event_date) + 'T12:00:00').getTime()
+            if (isNaN(ts)) return null
+            return (
+              <ReferenceLine key={a.id} x={ts} stroke="var(--text-secondary)" strokeOpacity={0.55} strokeDasharray="2 3"
+                label={{ value: a.label, position: 'insideTopLeft', fill: 'var(--text-secondary)', fontSize: 9.5, angle: -90, dy: 6, dx: 2 }} />
+            )
+          })}
           <Tooltip content={<TrendTooltip isDaily={isDaily} isSentiment={isSentiment} />} />
           <Legend
             wrapperStyle={{ fontSize: 12, paddingTop: 6 }}
