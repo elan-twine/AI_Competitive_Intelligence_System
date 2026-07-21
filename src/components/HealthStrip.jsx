@@ -8,15 +8,22 @@ import './healthStrip.css'
 // a color-coded pulse: green = healthy, amber = attention, red = stale/stuck —
 // so pipeline trouble is visible without having to ask the assistant.
 //
-// Freshness thresholds are generous: the daily scrape runs ~02:00–06:00 Israel
-// time, so anything scraped in the last ~30h is normal; >30h is amber, >54h red.
+// Freshness thresholds are PER-PLATFORM, keyed to each scraper's cadence:
+// LinkedIn/X/News run daily (amber >30h, red >54h); Reddit runs WEEKLY (amber
+// >8.5d, red >10d) — a flat daily threshold would show the healthy weekly
+// Reddit scrape as perma-red 5 days out of 7. Amber/red in hours.
 const HOUR = 3600000
-const fresh = (iso, now) => {
+const THRESHOLDS = {
+  Reddit: { amber: 204, red: 240 },      // weekly: ~8.5d / ~10d
+  _default: { amber: 30, red: 54 },      // daily platforms
+}
+const fresh = (platform, iso, now) => {
+  const t = THRESHOLDS[platform] || THRESHOLDS._default
   if (!iso) return { level: 'red', ago: 'never' }
   const ms = now - new Date(iso).getTime()
   const h = ms / HOUR
   const ago = h < 1 ? `${Math.max(1, Math.round(ms / 60000))}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`
-  return { level: h > 54 ? 'red' : h > 30 ? 'amber' : 'green', ago }
+  return { level: h > t.red ? 'red' : h > t.amber ? 'amber' : 'green', ago }
 }
 
 export function HealthStrip() {
@@ -41,7 +48,7 @@ export function HealthStrip() {
     // Queue: 0 pending = green; a backlog forming = amber; old backlog stuck = red.
     const queueLevel = pending === 0 ? 'green' : oldestH > 24 ? 'red' : 'amber'
     const platforms = (Array.isArray(status.scrape_freshness) ? status.scrape_freshness : [])
-      .map(p => ({ platform: p.platform, ...fresh(p.finished_at, now) }))
+      .map(p => ({ platform: p.platform, ...fresh(p.platform, p.finished_at, now) }))
       .sort((a, b) => a.platform.localeCompare(b.platform))
     const worst = ['red', 'amber', 'green'].find(l => queueLevel === l || platforms.some(p => p.level === l)) || 'green'
     return { pending, queueLevel, platforms, worst }

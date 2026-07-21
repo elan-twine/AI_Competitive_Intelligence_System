@@ -5,7 +5,7 @@ import './annotationBar.css'
 // Compact control for the SOV trend card: shows existing event markers as
 // removable chips and a small "add event" form (date + label). Markers render as
 // vertical lines on the chart (see SOVTrendChart). Backed by useAnnotations.
-export function AnnotationBar({ annotations = [], onAdd, onRemove }) {
+export function AnnotationBar({ annotations = [], onAdd, onRemove, currentUserId = null }) {
   const [open, setOpen] = useState(false)
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [label, setLabel] = useState('')
@@ -30,9 +30,11 @@ export function AnnotationBar({ annotations = [], onAdd, onRemove }) {
             <Flag size={10} aria-hidden="true" />
             <span className="annot-chip-label">{a.label}</span>
             <span className="annot-chip-date">{String(a.event_date).slice(5)}</span>
-            <button className="annot-chip-x" onClick={() => onRemove(a.id)} aria-label={`Remove ${a.label}`} title="Remove (only your own)">
-              <X size={11} />
-            </button>
+            {currentUserId && a.created_by === currentUserId && (
+              <button className="annot-chip-x" onClick={() => onRemove(a.id)} aria-label={`Remove ${a.label}`} title="Remove">
+                <X size={11} />
+              </button>
+            )}
           </span>
         ))}
         <button className="annot-add-btn" onClick={() => setOpen(o => !o)} aria-expanded={open}>

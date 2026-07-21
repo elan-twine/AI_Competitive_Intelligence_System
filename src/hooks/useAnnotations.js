@@ -9,6 +9,13 @@ import { supabase } from '../lib/supabase'
 export function useAnnotations() {
   const [annotations, setAnnotations] = useState([])
   const [error, setError] = useState(null)
+  const [userId, setUserId] = useState(null) // to gate delete to owned markers
+
+  useEffect(() => {
+    let alive = true
+    supabase.auth.getUser().then(({ data }) => { if (alive) setUserId(data?.user?.id || null) })
+    return () => { alive = false }
+  }, [])
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -36,13 +43,19 @@ export function useAnnotations() {
     return {}
   }, [load])
 
-  // Delete a marker (RLS allows only your own — a foreign one no-ops server-side).
+  // Delete a marker. RLS allows only your own, and a blocked delete returns 2xx
+  // with ZERO rows (no error) — so we .select() the deleted rows and, if none
+  // came back, reload to restore the chip and report it, instead of a silent
+  // false success. (The UI also hides the delete button on markers you don't own.)
   const remove = useCallback(async (id) => {
     setAnnotations(prev => prev.filter(a => a.id !== id)) // optimistic
-    const { error } = await supabase.from('sov_annotations').delete().eq('id', id)
-    if (error) { await load(); return { error: error.message } } // rollback via reload
+    const { data, error } = await supabase.from('sov_annotations').delete().eq('id', id).select('id')
+    if (error || !Array.isArray(data) || data.length === 0) {
+      await load() // restore
+      return { error: error?.message || "That marker isn't yours to remove." }
+    }
     return {}
   }, [load])
 
-  return { annotations, add, remove, error }
+  return { annotations, userId, add, remove, error }
 }

@@ -85,7 +85,7 @@ function Dashboard({ onLogout, onNavigate }) {
   }
   const { config: sovConfig } = useSOVConfig()
   const lastUpdated = useLastUpdated()
-  const { annotations, add: addAnnotation, remove: removeAnnotation } = useAnnotations()
+  const { annotations, userId: annotationUserId, add: addAnnotation, remove: removeAnnotation } = useAnnotations()
 
   // Give every tracked company its own unique chart color (sorted-roster slot
   // assignment — see colors.js). Must run before children render their lines.
@@ -378,7 +378,7 @@ function Dashboard({ onLogout, onNavigate }) {
                 Share of Voice — {windowLabel}{platformScopeLabel ? ` · ${platformScopeLabel}` : ''}
               </span>
             </div>
-            <AnnotationBar annotations={annotations} onAdd={addAnnotation} onRemove={removeAnnotation} />
+            <AnnotationBar annotations={annotations} onAdd={addAnnotation} onRemove={removeAnnotation} currentUserId={annotationUserId} />
             <SOVTrendChart
               competitors={competitors}
               metric="overall"
