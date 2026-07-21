@@ -119,7 +119,13 @@ FILING FEEDBACK: When the user reports something actionable that should change �
 
 LANGUAGE: Always reply in the same language the user's question is written in — if they write in Hebrew, answer in Hebrew (and write any GitHub issue in that language too). All formatting rules below apply in every language.
 
-STYLE: Answer in clean, skimmable GitHub-flavored Markdown, rendered in a narrow (~360px) chat panel. Keep it tight — usually 2–5 sentences or a short list. Lead with the direct answer in the first line. Use **bold** for key numbers, company names, and section names. When you enumerate multiple drivers, companies, or steps, use a short bullet list (one idea per bullet). Use \`inline code\` for exact tab/field names. Link a post or article as [short label](url) — never paste a bare URL. Avoid headings for short answers, avoid deeply nested lists, keep any table to 2–3 narrow columns, and never dump raw JSON. For "why" questions name the specific driver(s) + the number; for "where" questions name the exact tab/section and the path to it.`
+STYLE: Answer in clean, skimmable GitHub-flavored Markdown, rendered in a narrow (~360px) chat panel. Keep it tight — usually 2–5 sentences or a short list. Lead with the direct answer in the first line. Use **bold** for key numbers, company names, and section names. When you enumerate multiple drivers, companies, or steps, use a short bullet list (one idea per bullet). Use \`inline code\` for exact tab/field names. Link a post or article as [short label](url) — never paste a bare URL. Avoid headings for short answers, avoid deeply nested lists, keep any table to 2–3 narrow columns, and never dump raw JSON. For "why" questions name the specific driver(s) + the number; for "where" questions name the exact tab/section and the path to it.
+
+COMPANY LINKS: the FIRST time you name a DIRECT competitor in an answer, link it as [Exact Company Name](app://company/<URL-encoded exact name>) — clicking opens that company's drill-in in the dashboard. Use the exact name from tool results (e.g. [Orchid Security](app://company/Orchid%20Security)). Do NOT link indirect competitors (they have no drill-in) or untracked companies. Later mentions stay plain text; posts/articles keep their normal https links.
+
+WEEKLY BRIEF: when asked for "the weekly brief" / an OKR meeting summary, produce a meeting-ready markdown brief — the one case where headings and a longer answer are expected. Fetch fresh data first (batch what you can): get_board 7d for standings + movers; get_company on the 1–2 biggest movers for drivers; query_data ai_visibility for GEO highlights. Structure: **Board** (top 3 + Twine's position, with weekly deltas) · **Movers & why** (the driving posts, with links) · **AI visibility** (which engines name Twine, notable wins/misses) · **Watch items** (competitor moves worth knowing). Exact numbers throughout; keep it under ~250 words so it pastes cleanly into Slack.
+
+FOLLOW-UP SUGGESTIONS: after your final answer, append a line that is exactly <<<FOLLOWUPS>>> followed by a JSON array of 2–3 short follow-up questions the user would naturally ask next, phrased in the user's voice and language (e.g. ["Why did Cerby drop?","Show me Orchid's top posts"]). Make them specific to THIS answer (drill into a number you cited, a company you named, a comparison you implied) — never generic. Omit the line entirely for refusals, errors, or when drafting an issue. This line is stripped before display — never reference it in your answer.`
 
 // Tools in Anthropic format ({ name, description, input_schema }).
 const ASSISTANT_TOOLS = [{
@@ -942,8 +948,66 @@ async function handleAsk(request, env) {
       const messages = [...usedHistory, { role: 'user', content: toolContext + question }]
       // Live answer tokens stream straight to the client as they generate; also
       // accumulated so the exchange can be persisted to the session afterwards.
-      let fullAnswer = ''
-      const onText = (t) => { fullAnswer += t; return send({ t: 'token', text: t }) }
+      // The model appends follow-up suggestions after a sentinel line — that tail
+      // must never reach the visible answer, so emission holds back enough chars
+      // to cover a sentinel split across stream chunks, and stops at the sentinel.
+      const SUGG = '<<<FOLLOWUPS>>>'
+      const HOLD = SUGG.length + 8 // also covers the newline(s) preceding the sentinel
+      // Sentinel handling is PER TURN: each model turn gets a fresh buffer, so a
+      // stray "<<<FOLLOWUPS>>>" in a tool-turn preamble (or echoed scraped text)
+      // can never gag the real final answer or truncate it — only the final
+      // turn's own sentinel is honored. Tool turns are silent (no answer text)
+      // under the system prompt, so nothing meaningful is lost per-turn.
+      let turnBuf = ''       // current turn's raw streamed text
+      let turnEmitted = 0    // chars of turnBuf already sent as token frames
+      let turnSuppress = false
+      let turnSentinelIdx = -1
+      const resetTurn = () => { turnBuf = ''; turnEmitted = 0; turnSuppress = false; turnSentinelIdx = -1 }
+      const onText = (t) => {
+        turnBuf += t
+        if (turnSuppress) return
+        const idx = turnBuf.indexOf(SUGG)
+        if (idx >= 0) {
+          turnSuppress = true; turnSentinelIdx = idx
+          const chunk = turnBuf.slice(turnEmitted, idx).replace(/\s+$/, '')
+          turnEmitted = idx
+          return chunk ? send({ t: 'token', text: chunk }) : undefined
+        }
+        const safeEnd = turnBuf.length - HOLD
+        if (safeEnd > turnEmitted) {
+          const chunk = turnBuf.slice(turnEmitted, safeEnd)
+          turnEmitted = safeEnd
+          return send({ t: 'token', text: chunk })
+        }
+      }
+      // Strip a trailing PARTIAL sentinel (max_tokens cut the marker mid-way).
+      // The partial is always within the held-back tail (≤ HOLD), so it hasn't
+      // been emitted — removing it here keeps it out of the visible/persisted text.
+      const stripPartialSentinel = (s) => {
+        for (let k = Math.min(SUGG.length - 1, s.length); k >= 1; k--) {
+          if (s.endsWith(SUGG.slice(0, k))) return s.slice(0, s.length - k)
+        }
+        return s
+      }
+      // Flush the final turn's held-back tail, emit the suggestions frame (only
+      // for a real, non-empty answer), and return the clean answer text.
+      const finalizeTurn = async () => {
+        const cut = turnSentinelIdx >= 0 ? turnSentinelIdx : turnBuf.length
+        let clean = turnBuf.slice(0, cut).replace(/\s+$/, '')
+        if (turnSentinelIdx < 0) clean = stripPartialSentinel(clean).replace(/\s+$/, '')
+        if (clean.length > turnEmitted) await send({ t: 'token', text: clean.slice(turnEmitted) })
+        turnEmitted = Math.max(turnEmitted, clean.length)
+        if (turnSentinelIdx >= 0 && clean.trim()) { // no chips on an empty/refusal answer
+          try {
+            const items = JSON.parse(turnBuf.slice(turnSentinelIdx + SUGG.length).trim())
+            if (Array.isArray(items)) {
+              const chips = items.filter(x => typeof x === 'string' && x.trim()).slice(0, 3).map(s => s.trim().slice(0, 120))
+              if (chips.length) await send({ t: 'suggest', items: chips })
+            }
+          } catch { /* malformed suggestions — drop silently */ }
+        }
+        return clean
+      }
       // Persist the exchange (best-effort, before the stream closes). Seeds from
       // the turns actually used, so edited/fallback histories carry forward too.
       // The payload is bounded in BYTES (oldest turns dropped first) well under the
@@ -962,11 +1026,19 @@ async function handleAsk(request, env) {
         return sessionPut(env, authToken, sessionId, data)
       }
       let steps = 0
-      let answered = false
+      let gotFinal = false
 
       while (steps < MAX_STEPS) {
+        resetTurn()
         const turn = await streamAnthropicTurn(env, system, messages, ASSISTANT_TOOLS, onText)
-        if (turn.error) { await send({ t: 'error', message: 'The assistant hit an error reaching the model. Please try again in a moment.' }); return }
+        if (turn.error) {
+          // Flush whatever streamed this turn (minus a partial sentinel) so a
+          // mid-answer failure doesn't silently drop the last held-back chars.
+          const clean = stripPartialSentinel(turnBuf.slice(0, turnSentinelIdx >= 0 ? turnSentinelIdx : turnBuf.length)).replace(/\s+$/, '')
+          if (clean.length > turnEmitted) await send({ t: 'token', text: clean.slice(turnEmitted) })
+          await send({ t: 'error', message: 'The assistant hit an error reaching the model. Please try again in a moment.' })
+          return
+        }
 
         if (turn.stopReason === 'tool_use') {
           // Echo the assistant turn (any text + the tool_use blocks) back — required.
@@ -1008,31 +1080,38 @@ async function handleAsk(request, env) {
                     : tu.name === 'query_data'
                       ? await runDataQuery(env, authToken, tu.input || {})
                       : JSON.stringify({ error: 'unknown tool' })
-            results.push({ type: 'tool_result', tool_use_id: tu.id, content: String(out).slice(0, 12000) })
-            toolLog.push({ name: tu.name, input: tu.input, result: String(out).slice(0, 1500) })
+            // Strip the sentinel token from tool output so untrusted scraped text
+            // can never smuggle a "<<<FOLLOWUPS>>>" marker into the stream.
+            const safeOut = String(out).split(SUGG).join('')
+            results.push({ type: 'tool_result', tool_use_id: tu.id, content: safeOut.slice(0, 12000) })
+            toolLog.push({ name: tu.name, input: tu.input, result: safeOut.slice(0, 1500) })
           }
           messages.push({ role: 'user', content: results })
           steps++
           continue
         }
 
-        // Final answer — already streamed live via onText above.
-        if (turn.text && turn.text.trim()) answered = true
+        // Final answer turn — turnBuf holds it (streamed live via onText).
+        gotFinal = true
         break
       }
 
       // Exhausted the tool budget without a final answer → force one last
       // answer with tools disabled (also streamed), grounded in what we fetched.
-      if (!answered) {
-        const turn = await streamAnthropicTurn(env, system, [...messages, { role: 'user', content: 'You have used your tool budget. Answer now using only what you already fetched; if it is not enough, say briefly what is missing.' }], null, onText)
-        if (!turn.text || !turn.text.trim()) {
-          await streamText("I looked into that but couldn't pull together a clear answer — try rephrasing, or narrow it to a specific company or date range.")
-        }
+      if (!gotFinal) {
+        resetTurn()
+        await streamAnthropicTurn(env, system, [...messages, { role: 'user', content: 'You have used your tool budget. Answer now using only what you already fetched; if it is not enough, say briefly what is missing.' }], null, onText)
       }
 
-      // Persist the exchange to the server-side session (before the stream closes,
-      // so the write isn't cancelled with the response). Best-effort.
-      if (fullAnswer.trim()) await persist(fullAnswer)
+      // Flush the final turn's held-back tail + emit chips, then persist the CLEAN
+      // answer (sentinel stripped) — before the stream closes. If nothing usable
+      // came back, stream a canned fallback (not persisted, no chips).
+      let cleanAnswer = await finalizeTurn()
+      if (!cleanAnswer.trim()) {
+        await streamText("I looked into that but couldn't pull together a clear answer — try rephrasing, or narrow it to a specific company or date range.")
+        cleanAnswer = ''
+      }
+      if (cleanAnswer.trim()) await persist(cleanAnswer)
     } catch { try { await send({ t: 'error', message: 'Something went wrong. Please try again.' }) } catch { /* closed */ } }
     finally { try { await writer.close() } catch { /* already closed */ } }
   })()

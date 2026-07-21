@@ -518,6 +518,15 @@ function Dashboard({ onLogout, onNavigate }) {
         windowLabel={days === 7 ? '7d' : days === 30 ? '30d' : 'YTD'}
         tab={tab}
         drilledCompany={drilledCompany}
+        onOpenCompany={(name) => {
+          // Deep link from an assistant answer → open that company's drill-in.
+          // Only DIRECT competitors have a drill-in (indirect ones aren't in the
+          // ranked board), and only names we actually track. Also switch back to
+          // the SOV view + Overview tab so the drill-in is actually visible.
+          const match = (competitors || []).find(c =>
+            c.name.toLowerCase() === String(name).toLowerCase() && (c.type || 'direct') !== 'indirect')
+          if (match) { setView('sov'); setTab('overview'); setDrilledCompany(match.name) }
+        }}
       />
     </div>
   )

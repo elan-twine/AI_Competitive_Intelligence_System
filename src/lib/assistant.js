@@ -13,6 +13,7 @@ export const FILE_ISSUE_PATH = '/api/file-issue'
 //   {t:'token', text}              — a chunk of the final answer (append)
 //   {t:'draft', draft}             — an issue draft to review before filing (terminal)
 //   {t:'usage', used, limit, remaining} — today's question budget (footer counter)
+//   {t:'suggest', items}           — follow-up question chips for the answer
 //   {t:'error', message}           — failure
 // \x1e (record separator) never appears inside JSON.stringify output, so it's a
 // safe frame delimiter.
@@ -25,7 +26,7 @@ const FRAME_SEP = '\x1e'
 // conversation — the server remembers prior turns under it, so `history` is only
 // a fallback (first turn of an edited/restored thread). Returns the full answer
 // text, or { draft } when a draft was sent.
-export async function askAssistant({ question, context, history = [], sessionId, onToken, onProgress, onDraft, onUsage }) {
+export async function askAssistant({ question, context, history = [], sessionId, onToken, onProgress, onDraft, onUsage, onSuggest }) {
   const { data } = await supabase.auth.getSession()
   const token = data?.session?.access_token
   if (!token) throw new Error('Please sign in again — your session expired.')
@@ -71,6 +72,8 @@ export async function askAssistant({ question, context, history = [], sessionId,
       if (draftOut && onDraft) onDraft(draftOut)
     } else if (frame.t === 'usage') {
       if (onUsage) onUsage({ used: frame.used, limit: frame.limit, remaining: frame.remaining })
+    } else if (frame.t === 'suggest') {
+      if (onSuggest && Array.isArray(frame.items)) onSuggest(frame.items)
     } else if (frame.t === 'error') {
       throw new Error(frame.message || 'Assistant error.')
     }

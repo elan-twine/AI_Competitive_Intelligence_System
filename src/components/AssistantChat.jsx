@@ -1,18 +1,18 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, X, ArrowUp, RotateCcw, FileText, Copy, Check, Pencil, Maximize2, Minimize2 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { Sparkles, X, ArrowUp, RotateCcw, FileText, Copy, Check, Pencil, Maximize2, Minimize2, ClipboardList } from 'lucide-react'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { usePersistedState } from '../hooks/usePersistedState'
 import { askAssistant, fileIssue } from '../lib/assistant'
 import './assistantChat.css'
 
-// Markdown renderers: open links in a new tab (safely), and never render raw HTML
-// (react-markdown's default — LLM output is untrusted).
-const MD_COMPONENTS = {
-  // Destructure `node` only to keep react-markdown's AST node off the DOM element.
-  // eslint-disable-next-line no-unused-vars
-  a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
-}
+// The deep-link scheme the model uses for tracked competitors — clicking one
+// opens that company's drill-in on the dashboard instead of leaving the app.
+const COMPANY_LINK = 'app://company/'
+
+// The canned prompt behind the header's "Weekly brief" button (the system prompt
+// carries the recipe: board + movers + drivers + AI visibility + watch items).
+const BRIEF_PROMPT = 'Compose the weekly competitive brief for the OKR meeting.'
 
 // Floating "ask about this data" assistant. Lives on the dashboard; answers both
 // specific questions ("why did Orchid spike?") and navigational ones ("where do
@@ -26,7 +26,7 @@ const SUGGESTIONS = [
   'Report a data or weighting error',
 ]
 
-export function AssistantChat({ platform = 'All', windowLabel = 'current', tab = null, drilledCompany = null }) {
+export function AssistantChat({ platform = 'All', windowLabel = 'current', tab = null, drilledCompany = null, onOpenCompany = null }) {
   const [open, setOpen] = useState(false)
   // Expanded = a roomier panel with larger type; remembered across sessions.
   const [expanded, setExpanded] = usePersistedState('twinesov:asst:expanded', false)
@@ -35,6 +35,9 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
   const [busy, setBusy] = useState(false)
   const [copiedIdx, setCopiedIdx] = useState(null)
   const [usage, setUsage] = useState(null) // { used, limit, remaining } — today's budget
+  // True once the current answer has fully typed out — follow-up chips wait for
+  // this so they don't pop in mid-reveal.
+  const [revealDone, setRevealDone] = useState(true)
   const inputRef = useRef(null)
   const scrollRef = useRef(null)
   // Server-side conversation id: the Worker remembers prior turns under it, so we
@@ -46,6 +49,40 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
   // an adaptive pace — trickles at reading speed, accelerates when backlog grows —
   // so the answer flows smoothly regardless of how the frames were delivered.
   const typerRef = useRef({ target: '', shown: 0, raf: 0 })
+
+  // react-markdown's default sanitizer (defaultUrlTransform) drops any href with
+  // a non-web protocol — including our app:// scheme — BEFORE the custom renderer
+  // runs. So we keep the sanitizer for everything except app://company/ links,
+  // which we pass through and intercept below. (LLM output is untrusted, so we
+  // must NOT disable sanitization wholesale — javascript: etc. stay blocked.)
+  const urlTransform = useCallback(
+    (url) => (String(url).startsWith(COMPANY_LINK) ? url : defaultUrlTransform(url)),
+    [],
+  )
+  // Markdown renderers: app://company/ links open the dashboard drill-in in
+  // place (and close the chat so the drill-in isn't hidden behind the panel);
+  // everything else opens safely in a new tab. Raw HTML never renders.
+  const mdComponents = useMemo(() => ({
+    // Destructure `node` only to keep react-markdown's AST node off the DOM element.
+    // eslint-disable-next-line no-unused-vars
+    a: ({ node, ...props }) => {
+      const href = String(props.href || '')
+      if (href.startsWith(COMPANY_LINK)) {
+        let name = ''
+        try { name = decodeURIComponent(href.slice(COMPANY_LINK.length)) } catch { /* keep '' */ }
+        return (
+          <a
+            {...props}
+            href="#"
+            className="asst-company-link"
+            title={`Open ${name} in the dashboard`}
+            onClick={(e) => { e.preventDefault(); if (name && onOpenCompany) { onOpenCompany(name); setOpen(false) } }}
+          />
+        )
+      }
+      return <a {...props} target="_blank" rel="noopener noreferrer" />
+    },
+  }), [onOpenCompany])
 
   useEffect(() => {
     if (open && inputRef.current) inputRef.current.focus()
@@ -123,7 +160,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
           patchAssistant(a => ({ ...a, content: text }))
         }
         t.raf = requestAnimationFrame(tick)
-      } else { t.raf = 0 }
+      } else { t.raf = 0; setRevealDone(true) } // fully typed out → chips may show
     }
     typerRef.current.raf = requestAnimationFrame(tick)
   }, [patchAssistant])
@@ -140,6 +177,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     stopTyper(true)
     typerRef.current = { target: '', shown: 0, raf: 0, acc: 0 }
     forceScrollRef.current = true // a fresh question always snaps to the bottom
+    setRevealDone(false) // gate follow-up chips until this answer finishes typing
     // Add the question + an empty assistant bubble the stream fills in place.
     setMessages(m => [...m, { role: 'user', content: question }, { role: 'assistant', content: '', steps: [] }])
     setBusy(true)
@@ -162,6 +200,8 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
         onProgress: (label) => { if (gotDraft || !label) return; patchAssistant(a => ({ ...a, steps: [...(a.steps || []), label] })) },
         // Today's question budget → footer counter.
         onUsage: (u) => setUsage(u),
+        // Follow-up chips for this answer (rendered under the latest bubble).
+        onSuggest: (items) => { if (!gotDraft) patchAssistant(a => ({ ...a, suggestions: items })) },
         // Model wants to file feedback → replace the placeholder with a review card.
         // Nothing is filed until the user taps "File it".
         onDraft: (draft) => { gotDraft = true; stopTyper(false); setMessages(m => {
@@ -187,6 +227,9 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
       })
     } finally {
       setBusy(false)
+      // Reduced-motion paints directly (no typer to flip revealDone) — and any
+      // path that produced no reveal loop should still allow chips once idle.
+      if (!typerRef.current.raf) setRevealDone(true)
     }
   }, [input, busy, messages, platform, windowLabel, tab, drilledCompany, patchAssistant, stopTyper, pumpTyper])
 
@@ -257,6 +300,9 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
               <span>Ask about this data</span>
             </div>
             <div className="asst-head-actions">
+              <button className="asst-icon-btn" onClick={() => send(BRIEF_PROMPT)} disabled={busy} aria-label="Compose the weekly brief" title="Weekly brief — meeting-ready OKR summary">
+                <ClipboardList size={15} />
+              </button>
               {messages.length > 0 && (
                 <button className="asst-icon-btn" onClick={reset} aria-label="Reset chat" title="Reset chat">
                   <RotateCcw size={15} />
@@ -294,7 +340,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
                   {m.draft?.title && <div className="asst-draft-title">{m.draft.title}</div>}
                   {m.draft?.body && (
                     <div className="asst-md asst-draft-body">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.draft.body}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents} urlTransform={urlTransform}>{m.draft.body}</ReactMarkdown>
                     </div>
                   )}
                   {m.draft?.verbatim && (
@@ -317,7 +363,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
                   <div className={`asst-msg asst-msg-${m.role}`} dir="auto">
                     {m.content
                       ? (m.role === 'assistant'
-                          ? <div className="asst-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{m.content}</ReactMarkdown></div>
+                          ? <div className="asst-md"><ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents} urlTransform={urlTransform}>{m.content}</ReactMarkdown></div>
                           : m.content)
                       : (m.role === 'assistant'
                           ? (m.steps && m.steps.length
@@ -339,6 +385,15 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
                           <Pencil size={13} />
                         </button>
                       )}
+                    </div>
+                  )}
+                  {/* Follow-up chips: only under the newest answer, and only once
+                      it has fully typed out (revealDone) so they don't pop in mid-reveal. */}
+                  {m.role === 'assistant' && !busy && revealDone && i === messages.length - 1 && m.content && m.suggestions?.length > 0 && (
+                    <div className="asst-followups">
+                      {m.suggestions.map((s, si) => (
+                        <button key={si} className="asst-suggest" onClick={() => send(s)}>{s}</button>
+                      ))}
                     </div>
                   )}
                 </div>
