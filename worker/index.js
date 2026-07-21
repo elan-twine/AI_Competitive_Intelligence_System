@@ -102,8 +102,12 @@ WHERE THINGS ARE IN THE APP (use this for "where do I find…" questions):
 
 HOW DATA FLOWS (so you can reason about freshness): posts are scraped daily per platform → LinkedIn posts land in a raw staging queue and are then LLM-attributed to a competitor (or NONE) and scored; X/Reddit/News are attributed inline as they're scraped → attributed posts feed the SOV board (recomputed daily). So a very recent post can be scraped but not yet processed/attributed — that's a queue question (system_status), not a "missing data" one.
 
-USING YOUR TOOLS (fetch first, then answer — you may chain up to ${MAX_STEPS} calls and should retry with different parameters if a result is empty or surprising). Reach for the highest-level tool that fits:
-- get_board — standings/ranking/movement questions ("who's #1", "top mover", "how did the board change"). Returns every direct competitor's SOV% AND its change vs. the prior period in one call. window_days 7 (default) / 30 / 0 (all-time).
+DIRECT vs INDIRECT COMPETITORS — a hard rule for every SOV answer:
+- DIRECT competitors form the board: their SOV%s sum to 100 and rankings/"who's winning" answers are about them ONLY.
+- INDIRECT competitors (adjacent players) are tracked and have relative-share numbers in the data, but they are NOT in the 100% pool. NEVER rank them on the board, count them as movers, or mix them into standings. Mention them ONLY when the user asks about them (by name, or "indirect competitors") — then clearly label their numbers as relative share, not rank. get_board and get_company label each company's type — trust those labels.
+
+USING YOUR TOOLS (fetch first, then answer — you may chain up to ${MAX_STEPS} calls and should retry with different parameters if a result is empty or surprising). When two fetches are independent (e.g. get_company for both sides of a comparison), request BOTH tools in the same turn — it halves the round-trips. Reach for the highest-level tool that fits:
+- get_board — standings/ranking/movement questions ("who's #1", "top mover", "how did the board change"). Returns DIRECT competitors (the ranked board) with each one's change vs. the prior period; set include_indirect only when the user explicitly asks about indirect competitors. window_days 7 (default) / 30 / 0 (all-time).
 - get_company — anything about ONE company ("why is X at Y%", "what's driving X", "how's X doing on LinkedIn", "tell me about X"). One call returns its current SOV%, a short trend, its per-platform impact split, avg sentiment, and its top posts with links. This is usually all you need for a single-company question — don't stitch query_data calls when this covers it.
 - query_data — the lower-level fallback for what the two above don't cover: individual mentions with filters ("all Cerby news in June", "most negative posts about Twine") via source 'posts'; raw week-by-week history via 'weekly_board'; AI-answer/GEO visibility ("how often does ChatGPT name us") via 'ai_visibility'. Answer ONLY from the rows returned; if empty, say so.
 - search_posts — SEMANTIC search by meaning/topic ("posts about passwordless", "complaints about pricing", "who's talking about agentic AI") when exact keywords would miss paraphrases. text_contains = exact words; search_posts = concepts. Treat similarity below ~0.35 as weak evidence, and verify anything load-bearing with query_data.
@@ -120,11 +124,12 @@ STYLE: Answer in clean, skimmable GitHub-flavored Markdown, rendered in a narrow
 // Tools in Anthropic format ({ name, description, input_schema }).
 const ASSISTANT_TOOLS = [{
   name: 'get_board',
-  description: 'The current SOV standings for all direct competitors WITH each company\'s change vs. the prior period — the fastest way to answer "who\'s winning / who\'s #1", "who\'s the top mover", "how did the board change this week". Cross-platform (the pooled board; direct competitors sum to ~100%). Prefer this over query_data for any standings/ranking/movement question.',
+  description: 'The current SOV standings for DIRECT competitors (the ranked 100% pool) WITH each company\'s change vs. the prior period — the fastest way to answer "who\'s winning / who\'s #1", "who\'s the top mover", "how did the board change this week". Indirect competitors are excluded by default (they are tracked but outside the 100% pool); set include_indirect ONLY when the user explicitly asks about them. Prefer this over query_data for any standings/ranking/movement question.',
   input_schema: {
     type: 'object',
     properties: {
       window_days: { type: 'integer', enum: [7, 30, 0], description: 'Board window: 7 = trailing week (default), 30 = trailing 30 days, 0 = all-time cumulative.' },
+      include_indirect: { type: 'boolean', description: 'Also return indirect competitors (as a separate, clearly-labeled list — their pct is a relative share, not a board rank). Only when the user asks about indirect competitors.' },
     },
     required: [],
   },
@@ -374,18 +379,42 @@ async function runSystemStatus(env, authToken) {
 const DAY_MS = 86400000
 const r1 = (n) => (n == null || isNaN(n)) ? null : Math.round(n * 10) / 10
 
-// get_board: current SOV standings for direct competitors + each company's change
-// vs. ~7 days earlier. Reads the frozen daily board (sov_daily) — no re-scoring.
+// Competitor roster: name → 'direct' | 'indirect'. The board's 100% pool is
+// DIRECT competitors only; indirect ones are tracked (and snapshotted with a
+// relative share) but excluded from the denominator. Fail-open: null on error.
+async function fetchCompetitorTypes(env, authToken) {
+  try {
+    const r = await fetch(env.SUPABASE_URL + '/rest/v1/competitors?select=name,type', {
+      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + authToken },
+    })
+    if (!r.ok) return null
+    const rows = await r.json().catch(() => null)
+    if (!Array.isArray(rows) || !rows.length) return null
+    const map = {}
+    for (const c of rows) map[c.name] = (c.type || 'direct')
+    return map
+  } catch { return null }
+}
+
+// get_board: current SOV standings + each company's change vs. ~7 days earlier.
+// Reads the frozen daily board (sov_daily) — no re-scoring. Returns DIRECT
+// competitors only (the ranked 100% pool) unless include_indirect is set; the
+// snapshot table also carries indirect competitors' relative shares, which must
+// never be presented as board rankings.
 async function runGetBoard(env, authToken, args) {
   if (!authToken || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return JSON.stringify({ error: 'data access unavailable' })
   const H = { apikey: env.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + authToken }
   const BASE = env.SUPABASE_URL + '/rest/v1'
   const wd = [7, 30, 0].includes(Number(args && args.window_days)) ? Number(args.window_days) : 7
-  let rows
+  let rows, types
   try {
-    const r = await fetch(BASE + '/sov_daily?select=company,snapshot_date,weighted_pct&window_days=eq.' + wd + '&order=snapshot_date.desc&limit=400', { headers: H })
-    if (!r.ok) return JSON.stringify({ error: `board query failed (${r.status})` })
-    rows = await r.json()
+    const [boardR, typesR] = await Promise.all([
+      fetch(BASE + '/sov_daily?select=company,snapshot_date,weighted_pct&window_days=eq.' + wd + '&order=snapshot_date.desc&limit=400', { headers: H }),
+      fetchCompetitorTypes(env, authToken),
+    ])
+    if (!boardR.ok) return JSON.stringify({ error: `board query failed (${boardR.status})` })
+    rows = await boardR.json()
+    types = typesR
   } catch { return JSON.stringify({ error: 'board query failed' }) }
   if (!Array.isArray(rows) || !rows.length) return JSON.stringify({ window_days: wd, count: 0, rows: [] })
 
@@ -404,10 +433,48 @@ async function runGetBoard(env, authToken, args) {
     if (d === current) curMap[x.company] = x.weighted_pct
     else if (d === prior) priorMap[x.company] = x.weighted_pct
   }
-  const board = Object.entries(curMap)
+  const all = Object.entries(curMap)
     .map(([company, pct]) => ({ company, sov_pct: r1(pct), delta: prior != null ? r1((pct || 0) - (priorMap[company] || 0)) : null }))
     .sort((a, b) => (b.sov_pct || 0) - (a.sov_pct || 0))
-  return JSON.stringify({ window_days: wd, current_date: current, prior_date: prior, note: 'delta = change vs prior_date (week-over-week); cross-platform pooled board', rows: board })
+
+  // Without a roster (competitors table unreadable) fail open: return everything,
+  // but say so, rather than silently presenting an unfiltered list as the board.
+  if (!types) {
+    return JSON.stringify({ window_days: wd, current_date: current, prior_date: prior, note: 'WARNING: could not load the competitor roster — this list mixes direct and indirect competitors; treat rankings with caution', rows: all })
+  }
+
+  // Case/whitespace-insensitive roster lookup: snapshot rows are frozen strings,
+  // so casing drift or a just-renamed competitor must not break the match.
+  const norm = (s) => String(s || '').trim().toLowerCase()
+  const typeByNorm = {}
+  for (const [n, t] of Object.entries(types)) typeByNorm[norm(n)] = t
+
+  const board = [], indirect = [], unclassified = []
+  for (const x of all) {
+    const t = typeByNorm[norm(x.company)]
+    if (t === 'direct') board.push(x)
+    else if (t) indirect.push(x)
+    else unclassified.push(x) // in the snapshot but not the roster (e.g. renamed) — surface, never drop
+  }
+  const out = {
+    window_days: wd,
+    current_date: current,
+    prior_date: prior,
+    note: 'DIRECT competitors only — the ranked board; sov_pct sums to ~100. delta = change vs prior_date (week-over-week).',
+    rows: board,
+    // The full tracked-indirect roster (independent of whether each has snapshot
+    // data), so "which indirect competitors do we track?" answers completely.
+    indirect_tracked: Object.entries(types).filter(([, t]) => t && t !== 'direct').map(([n]) => n),
+  }
+  if (unclassified.length) {
+    out.unclassified_rows = unclassified
+    out.warning = 'These companies are in the snapshot but not the competitor roster (likely renamed or removed) — their share is part of the pool but their direct/indirect status is unknown.'
+  }
+  if (args && args.include_indirect) {
+    out.indirect_rows = indirect
+    out.indirect_note = 'Indirect competitors — tracked, but EXCLUDED from the 100% pool; their pct is a relative share vs the direct pool, not a board ranking.'
+  }
+  return JSON.stringify(out)
 }
 
 // get_company: one company rolled up — current SOV, short trend, per-platform
@@ -426,11 +493,12 @@ async function runGetCompany(env, authToken, args) {
   const since = wd === 0 ? null : new Date(Date.now() - wd * DAY_MS).toISOString().slice(0, 10)
   const getJson = async (path, opts) => { try { const r = await fetch(BASE + path, opts || { headers: H }); return r.ok ? await r.json() : null } catch { return null } }
 
-  const [rollup, cfg, series, topStr] = await Promise.all([
+  const [rollup, cfg, series, topStr, types] = await Promise.all([
     getJson('/rpc/assistant_company_rollup', { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_company: name, p_since: since, p_until: null }) }),
     getJson('/sov_config?select=config&limit=1'),
     getJson('/sov_daily?select=snapshot_date,weighted_pct,sentiment_pct,posts_count&window_days=eq.' + wd + '&company=ilike.*' + enc(name) + '*&order=snapshot_date.desc&limit=14'),
     runDataQuery(env, authToken, { source: 'posts', company: name, sort: 'top_weight', since, limit: 6 }),
+    fetchCompetitorTypes(env, authToken),
   ])
 
   const mult = (cfg && cfg[0] && cfg[0].config && cfg[0].config.platformMultipliers) || { LinkedIn: 1, X: 1, Reddit: 1.5, 'Google News': 15 }
@@ -448,8 +516,26 @@ async function runGetCompany(env, authToken, args) {
   let top = []
   try { top = JSON.parse(topStr).rows || [] } catch { /* leave empty */ }
 
+  // Resolve the competitor's type from the roster. Exact (normalized) match
+  // first; otherwise a roster name that CONTAINS the input — the same direction
+  // as the data queries (`company ilike %input%`), so the annotation can never
+  // claim a match the data didn't make (e.g. input "Optiv" must NOT match
+  // roster "Opti"). Ambiguous substring (several roster names match) → null.
+  let ctype = null
+  if (types) {
+    const lower = name.trim().toLowerCase()
+    const entries = Object.entries(types)
+    const exact = entries.find(([n]) => n.trim().toLowerCase() === lower)
+    if (exact) ctype = exact[1]
+    else {
+      const subs = entries.filter(([n]) => n.toLowerCase().includes(lower))
+      if (subs.length === 1) ctype = subs[0][1]
+    }
+  }
+
   return JSON.stringify({
     company: name,
+    competitor_type: ctype,
     window_days: wd,
     since,
     current_sov_pct: ser.length ? ser[0].sov_pct : null,
@@ -457,7 +543,8 @@ async function runGetCompany(env, authToken, args) {
     platform_split: split,
     sov_trend: ser.slice(0, 8),
     top_posts: top,
-    note: 'platform_split.share_pct = share of THIS company\'s pooled impact by platform; sov_pct is its share of the whole board.',
+    note: 'platform_split.share_pct = share of THIS company\'s pooled impact by platform; sov_pct is its share of the whole board.'
+      + (ctype === 'indirect' ? ' NOTE: this is an INDIRECT competitor — excluded from the 100% board; its sov_pct is a relative share vs the direct pool, not a ranking.' : ''),
   })
 }
 
@@ -534,13 +621,18 @@ async function streamAnthropicTurn(env, system, messages, tools, onText) {
         'x-api-key': env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
       },
+      // Prompt caching: the tool definitions and the static system block are
+      // identical on every call (2–7 calls per question, plus every question in a
+      // 5-min window), so cache breakpoints on both cut those input tokens ~90%
+      // and speed time-to-first-token. `system` arrives as an array of blocks —
+      // [static (cache_control), dynamic UI-state] — built in handleAsk.
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 1024,
         system,
         messages,
         stream: true,
-        ...(tools ? { tools } : {}),
+        ...(tools ? { tools: tools.map((t, i) => i === tools.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t) } : {}),
       }),
       signal: ctl.signal,
     })
@@ -830,8 +922,13 @@ async function handleAsk(request, env) {
       const priorTurns = storedTurns.length >= history.length ? storedTurns : history
       const lastTools = (Array.isArray(session.last_tools) ? session.last_tools : [])
         .filter(t => t && typeof t === 'object' && typeof t.name === 'string').slice(-3)
-      const system = ASSISTANT_SYSTEM
-        + '\n\nUI STATE (what the user is currently looking at):\n' + JSON.stringify(uiState).slice(0, 1500)
+      // Two system blocks: the big static one carries a cache breakpoint (identical
+      // across every call and every question → ~90% cheaper after the first call);
+      // only the tiny UI-state block varies per question.
+      const system = [
+        { type: 'text', text: ASSISTANT_SYSTEM, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: 'UI STATE (what the user is currently looking at):\n' + JSON.stringify(uiState).slice(0, 1500) },
+      ]
 
       const usedHistory = normalizeHistory(priorTurns)
       // Earlier tool results ride along INSIDE the user turn (data, not authority):
