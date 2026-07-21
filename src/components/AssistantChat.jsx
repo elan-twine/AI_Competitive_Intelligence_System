@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, X, ArrowUp, RotateCcw, FileText, Copy, Check, Pencil } from 'lucide-react'
+import { Sparkles, X, ArrowUp, RotateCcw, FileText, Copy, Check, Pencil, Maximize2, Minimize2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { askAssistant, fileIssue } from '../lib/assistant'
 import './assistantChat.css'
 
@@ -27,6 +28,8 @@ const SUGGESTIONS = [
 
 export function AssistantChat({ platform = 'All', windowLabel = 'current', tab = null, drilledCompany = null }) {
   const [open, setOpen] = useState(false)
+  // Expanded = a roomier panel with larger type; remembered across sessions.
+  const [expanded, setExpanded] = usePersistedState('twinesov:asst:expanded', false)
   const [messages, setMessages] = useState([]) // { role:'user'|'assistant'|'error', content }
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -247,7 +250,7 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
       </button>
 
       {open && (
-        <div className="asst-panel" role="dialog" aria-label="Data assistant">
+        <div className={`asst-panel ${expanded ? 'expanded' : ''}`} role="dialog" aria-label="Data assistant">
           <div className="asst-head">
             <div className="asst-head-title">
               <Sparkles size={15} className="asst-head-spark" />
@@ -259,6 +262,14 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
                   <RotateCcw size={15} />
                 </button>
               )}
+              <button
+                className="asst-icon-btn"
+                onClick={() => setExpanded(e => !e)}
+                aria-label={expanded ? 'Shrink chat' : 'Expand chat'}
+                title={expanded ? 'Shrink chat' : 'Expand chat'}
+              >
+                {expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+              </button>
               <button className="asst-icon-btn" onClick={() => setOpen(false)} aria-label="Close">
                 <X size={16} />
               </button>

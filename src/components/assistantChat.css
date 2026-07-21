@@ -228,6 +228,24 @@
   .asst-panel { right: 12px; left: 12px; width: auto; bottom: 80px; height: calc(100vh - 140px); }
   .asst-fab { right: 16px; bottom: 16px; }
 }
+/* Expanded mode — a roomier panel with larger type (header toggle, persisted). */
+.asst-panel.expanded {
+  width: 680px;
+  height: calc(100vh - 130px);
+}
+.asst-panel.expanded .asst-msg { font-size: 15px; line-height: 1.6; max-width: 90%; }
+.asst-panel.expanded .asst-md h1, .asst-panel.expanded .asst-md h2,
+.asst-panel.expanded .asst-md h3, .asst-panel.expanded .asst-md h4 { font-size: 15px; }
+.asst-panel.expanded .asst-md table { font-size: 13.5px; }
+.asst-panel.expanded .asst-md pre code { font-size: 13.5px; }
+.asst-panel.expanded .asst-step { font-size: 13px; }
+.asst-panel.expanded .asst-input { font-size: 15px; }
+.asst-panel.expanded .asst-empty-lead,
+.asst-panel.expanded .asst-suggest { font-size: 14px; }
+.asst-panel.expanded .asst-draft-title { font-size: 15px; }
+.asst-panel.expanded .asst-draft-body,
+.asst-panel.expanded .asst-draft-verbatim { font-size: 13.5px; }
+
 @media (prefers-reduced-motion: reduce) {
   .asst-panel { animation: none; }
   .asst-fab { transition: none; }
