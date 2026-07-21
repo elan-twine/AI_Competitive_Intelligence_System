@@ -228,6 +228,12 @@
   .asst-panel { right: 12px; left: 12px; width: auto; bottom: 80px; height: calc(100vh - 140px); }
   .asst-fab { right: 16px; bottom: 16px; }
 }
+/* Follow-up chips under the newest answer. */
+.asst-followups { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 2px 0; }
+
+/* Company deep-links inside answers — open the drill-in, styled as in-app. */
+.asst-company-link { cursor: pointer; font-weight: 600; }
+
 /* Expanded mode — a roomier panel with larger type (header toggle, persisted). */
 .asst-panel.expanded {
   width: 680px;

@@ -518,6 +518,12 @@ function Dashboard({ onLogout, onNavigate }) {
         windowLabel={days === 7 ? '7d' : days === 30 ? '30d' : 'YTD'}
         tab={tab}
         drilledCompany={drilledCompany}
+        onOpenCompany={(name) => {
+          // Deep link from an assistant answer → open that company's drill-in.
+          // Only for names we actually track (case-insensitive match).
+          const match = (competitors || []).find(c => c.name.toLowerCase() === String(name).toLowerCase())
+          if (match) { setTab('overview'); setDrilledCompany(match.name) }
+        }}
       />
     </div>
   )

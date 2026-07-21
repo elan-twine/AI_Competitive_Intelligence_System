@@ -427,6 +427,35 @@ test('scheduled handler prunes then embeds via waitUntil (and never throws)', as
   assert.equal(rec.vectorInserts.length, 1)
 })
 
+// ---- follow-up suggestions (sentinel tail) ---------------------------------------
+
+test('followups: sentinel tail is stripped from the answer and emitted as a suggest frame', async () => {
+  // textTurn chunks by 6 chars, so the sentinel is guaranteed to split across
+  // stream deltas — the exact case the holdback buffer exists for.
+  const r = await ask('who leads?', {
+    session: {},
+    turn: () => textTurn('Linx leads at 40.4%.\n<<<FOLLOWUPS>>>["Why did Orchid drop?","Show Linx\'s top posts"]'),
+  }, { session_id: SESSION_ID })
+  assert.equal(r.answer, 'Linx leads at 40.4%.')
+  assert.ok(!r.answer.includes('FOLLOWUPS'))
+  const sugg = r.frames.find(f => f.t === 'suggest')
+  assert.deepEqual(sugg.items, ['Why did Orchid drop?', "Show Linx's top posts"])
+  // The persisted session stores the CLEAN answer, no sentinel.
+  assert.equal(rec.sessionPut.p_data.turns.at(-1).content, 'Linx leads at 40.4%.')
+})
+
+test('followups: malformed suggestion JSON is dropped silently, answer intact', async () => {
+  const r = await ask('hi', { turn: () => textTurn('Hello there.\n<<<FOLLOWUPS>>>[broken json') })
+  assert.equal(r.answer, 'Hello there.')
+  assert.equal(r.frames.find(f => f.t === 'suggest'), undefined)
+})
+
+test('followups: no sentinel → full answer, no suggest frame (holdback flushes)', async () => {
+  const r = await ask('hi', { turn: () => textTurn('A short answer with no suggestions at all.') })
+  assert.equal(r.answer, 'A short answer with no suggestions at all.')
+  assert.equal(r.frames.find(f => f.t === 'suggest'), undefined)
+})
+
 // ---- guards --------------------------------------------------------------------
 
 test('unauthorized without a valid user', async () => {

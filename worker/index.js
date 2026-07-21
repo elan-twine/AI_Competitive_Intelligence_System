@@ -119,7 +119,13 @@ FILING FEEDBACK: When the user reports something actionable that should change �
 
 LANGUAGE: Always reply in the same language the user's question is written in — if they write in Hebrew, answer in Hebrew (and write any GitHub issue in that language too). All formatting rules below apply in every language.
 
-STYLE: Answer in clean, skimmable GitHub-flavored Markdown, rendered in a narrow (~360px) chat panel. Keep it tight — usually 2–5 sentences or a short list. Lead with the direct answer in the first line. Use **bold** for key numbers, company names, and section names. When you enumerate multiple drivers, companies, or steps, use a short bullet list (one idea per bullet). Use \`inline code\` for exact tab/field names. Link a post or article as [short label](url) — never paste a bare URL. Avoid headings for short answers, avoid deeply nested lists, keep any table to 2–3 narrow columns, and never dump raw JSON. For "why" questions name the specific driver(s) + the number; for "where" questions name the exact tab/section and the path to it.`
+STYLE: Answer in clean, skimmable GitHub-flavored Markdown, rendered in a narrow (~360px) chat panel. Keep it tight — usually 2–5 sentences or a short list. Lead with the direct answer in the first line. Use **bold** for key numbers, company names, and section names. When you enumerate multiple drivers, companies, or steps, use a short bullet list (one idea per bullet). Use \`inline code\` for exact tab/field names. Link a post or article as [short label](url) — never paste a bare URL. Avoid headings for short answers, avoid deeply nested lists, keep any table to 2–3 narrow columns, and never dump raw JSON. For "why" questions name the specific driver(s) + the number; for "where" questions name the exact tab/section and the path to it.
+
+COMPANY LINKS: the FIRST time you name a tracked competitor in an answer, link it as [Exact Company Name](app://company/<URL-encoded exact name>) — clicking opens that company's drill-in right in the dashboard. Use the exact name as it appears in tool results (e.g. [Orchid Security](app://company/Orchid%20Security)). Later mentions in the same answer stay plain text; posts/articles keep their normal https links.
+
+WEEKLY BRIEF: when asked for "the weekly brief" / an OKR meeting summary, produce a meeting-ready markdown brief — the one case where headings and a longer answer are expected. Fetch fresh data first (batch what you can): get_board 7d for standings + movers; get_company on the 1–2 biggest movers for drivers; query_data ai_visibility for GEO highlights. Structure: **Board** (top 3 + Twine's position, with weekly deltas) · **Movers & why** (the driving posts, with links) · **AI visibility** (which engines name Twine, notable wins/misses) · **Watch items** (competitor moves worth knowing). Exact numbers throughout; keep it under ~250 words so it pastes cleanly into Slack.
+
+FOLLOW-UP SUGGESTIONS: after your final answer, append a line that is exactly <<<FOLLOWUPS>>> followed by a JSON array of 2–3 short follow-up questions the user would naturally ask next, phrased in the user's voice and language (e.g. ["Why did Cerby drop?","Show me Orchid's top posts"]). Make them specific to THIS answer (drill into a number you cited, a company you named, a comparison you implied) — never generic. Omit the line entirely for refusals, errors, or when drafting an issue. This line is stripped before display — never reference it in your answer.`
 
 // Tools in Anthropic format ({ name, description, input_schema }).
 const ASSISTANT_TOOLS = [{
@@ -942,8 +948,49 @@ async function handleAsk(request, env) {
       const messages = [...usedHistory, { role: 'user', content: toolContext + question }]
       // Live answer tokens stream straight to the client as they generate; also
       // accumulated so the exchange can be persisted to the session afterwards.
+      // The model appends follow-up suggestions after a sentinel line — that tail
+      // must never reach the visible answer, so emission holds back enough chars
+      // to cover a sentinel split across stream chunks, and stops at the sentinel.
+      const SUGG = '<<<FOLLOWUPS>>>'
+      const HOLD = SUGG.length + 8 // also covers the newline(s) preceding the sentinel
       let fullAnswer = ''
-      const onText = (t) => { fullAnswer += t; return send({ t: 'token', text: t }) }
+      let emitted = 0        // chars of fullAnswer already sent as token frames
+      let suppress = false   // sentinel seen — everything after it is suggestions
+      const onText = (t) => {
+        fullAnswer += t
+        if (suppress) return
+        const idx = fullAnswer.indexOf(SUGG)
+        if (idx >= 0) {
+          suppress = true
+          const chunk = fullAnswer.slice(emitted, idx).replace(/\s+$/, '')
+          emitted = idx
+          return chunk ? send({ t: 'token', text: chunk }) : undefined
+        }
+        const safeEnd = fullAnswer.length - HOLD
+        if (safeEnd > emitted) {
+          const chunk = fullAnswer.slice(emitted, safeEnd)
+          emitted = safeEnd
+          return send({ t: 'token', text: chunk })
+        }
+      }
+      // Flush the held-back tail, emit the suggestions frame, return the clean
+      // answer text (sentinel + suggestions stripped) for persistence/checks.
+      const finalizeAnswer = async () => {
+        const idx = fullAnswer.indexOf(SUGG)
+        const clean = (idx >= 0 ? fullAnswer.slice(0, idx) : fullAnswer).replace(/\s+$/, '')
+        if (clean.length > emitted) await send({ t: 'token', text: clean.slice(emitted, clean.length) })
+        emitted = Math.max(emitted, clean.length)
+        if (idx >= 0) {
+          try {
+            const items = JSON.parse(fullAnswer.slice(idx + SUGG.length).trim())
+            if (Array.isArray(items)) {
+              const chips = items.filter(x => typeof x === 'string' && x.trim()).slice(0, 3).map(s => s.trim().slice(0, 120))
+              if (chips.length) await send({ t: 'suggest', items: chips })
+            }
+          } catch { /* malformed suggestions — drop silently */ }
+        }
+        return clean
+      }
       // Persist the exchange (best-effort, before the stream closes). Seeds from
       // the turns actually used, so edited/fallback histories carry forward too.
       // The payload is bounded in BYTES (oldest turns dropped first) well under the
@@ -1030,9 +1077,11 @@ async function handleAsk(request, env) {
         }
       }
 
-      // Persist the exchange to the server-side session (before the stream closes,
-      // so the write isn't cancelled with the response). Best-effort.
-      if (fullAnswer.trim()) await persist(fullAnswer)
+      // Flush the held-back tail + emit suggestion chips, then persist the CLEAN
+      // answer (sentinel stripped) to the server-side session — before the stream
+      // closes, so the write isn't cancelled with the response. Best-effort.
+      const cleanAnswer = await finalizeAnswer()
+      if (cleanAnswer.trim()) await persist(cleanAnswer)
     } catch { try { await send({ t: 'error', message: 'Something went wrong. Please try again.' }) } catch { /* closed */ } }
     finally { try { await writer.close() } catch { /* already closed */ } }
   })()
