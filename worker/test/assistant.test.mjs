@@ -41,10 +41,14 @@ globalThis.fetch = async (url, opts = {}) => {
   if (u.includes('/rpc/assistant_system_status')) return json({ queue: { pending: 3 } })
   if (u.includes('/rpc/assistant_company_rollup')) return json(scenario.rollup ?? { company: 'X', total_posts: 12, platforms: { LinkedIn: { posts: 8, sum_weight: 30, avg_sentiment: 0.4 }, X: { posts: 4, sum_weight: 10, avg_sentiment: -0.1 } } })
   if (u.includes('/sov_config')) return json([{ config: { platformMultipliers: { LinkedIn: 1, X: 1, Reddit: 1.5, 'Google News': 15 } } }])
+  if (u.includes('/rest/v1/competitors')) return json(scenario.roster ?? [
+    { name: 'Linx', type: 'direct' }, { name: 'Orchid', type: 'direct' }, { name: 'BlinkOps', type: 'indirect' },
+  ])
   if (u.includes('/sov_daily')) {
     if (/company=ilike/.test(u)) return json([{ snapshot_date: '2026-07-20', weighted_pct: 19.3, sentiment_pct: 1.2, posts_count: 12 }])
-    return json([
+    return json(scenario.board ?? [
       { company: 'Linx', snapshot_date: '2026-07-20', weighted_pct: 40.4 }, { company: 'Orchid', snapshot_date: '2026-07-20', weighted_pct: 19.3 },
+      { company: 'BlinkOps', snapshot_date: '2026-07-20', weighted_pct: 25.7 },
       { company: 'Linx', snapshot_date: '2026-07-13', weighted_pct: 42.0 }, { company: 'Orchid', snapshot_date: '2026-07-13', weighted_pct: 15.0 },
     ])
   }
@@ -107,18 +111,67 @@ test('rate limit: friendly message, no model call', async () => {
 
 // ---- tools ---------------------------------------------------------------------
 
-test('get_board: ranking + week-over-week deltas from sov_daily', async () => {
+test('get_board: DIRECT-only ranking + week-over-week deltas; indirect listed by name only', async () => {
   const r = await ask('who leads?', { turn: (n) => n === 1 ? toolTurn('b', 'get_board', { window_days: 7 }) : textTurn('Linx leads at 40.4%.') })
   assert.equal(r.progress.length, 1)
   assert.equal(r.progress[0].tool, 'get_board')
   const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  // BlinkOps (indirect, 25.7 — would rank #2 raw) must NOT be in the board rows…
+  assert.equal(fed.rows.length, 2)
+  assert.ok(!fed.rows.some(x => x.company === 'BlinkOps'), 'indirect competitor leaked into the board')
   assert.equal(fed.rows[0].company, 'Linx')
   assert.equal(fed.rows[0].delta, -1.6) // 40.4 vs 42.0
   assert.equal(fed.rows.find(x => x.company === 'Orchid').delta, 4.3) // 19.3 vs 15.0
   assert.equal(fed.prior_date, '2026-07-13')
+  // …only named as tracked, with no numbers.
+  assert.deepEqual(fed.indirect_tracked, ['BlinkOps'])
+  assert.equal(fed.indirect_rows, undefined)
 })
 
-test('get_company: impact split applies live multipliers to the rollup', async () => {
+test('get_board include_indirect: indirect rows returned separately, clearly labeled', async () => {
+  await ask('how do the indirect competitors compare?', { turn: (n) => n === 1 ? toolTurn('b', 'get_board', { window_days: 7, include_indirect: true }) : textTurn('BlinkOps holds a 25.7% relative share.') })
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.equal(fed.rows.length, 2) // board still direct-only
+  assert.equal(fed.indirect_rows.length, 1)
+  assert.equal(fed.indirect_rows[0].company, 'BlinkOps')
+  assert.match(fed.indirect_note, /EXCLUDED from the 100% pool/)
+})
+
+test('get_board fails open with a warning when the roster is unreadable', async () => {
+  await ask('who leads?', { roster: [], turn: (n) => n === 1 ? toolTurn('b', 'get_board', {}) : textTurn('ok') })
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.match(fed.note, /WARNING/)
+  assert.equal(fed.rows.length, 3) // unfiltered, but flagged
+})
+
+test('get_board: roster matching is case/whitespace-insensitive; unmatched companies surface, never drop', async () => {
+  await ask('who leads?', {
+    board: [
+      { company: 'LINX ', snapshot_date: '2026-07-20', weighted_pct: 40.4 },      // casing+whitespace drift → still direct
+      { company: 'Ghost Co', snapshot_date: '2026-07-20', weighted_pct: 12.0 },   // renamed/removed — not in roster
+      { company: 'BlinkOps', snapshot_date: '2026-07-20', weighted_pct: 25.7 },
+    ],
+    turn: (n) => n === 1 ? toolTurn('b', 'get_board', {}) : textTurn('ok'),
+  })
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.equal(fed.rows.length, 1)
+  assert.equal(fed.rows[0].company, 'LINX ')
+  assert.equal(fed.unclassified_rows.length, 1)
+  assert.equal(fed.unclassified_rows[0].company, 'Ghost Co')
+  assert.match(fed.warning, /not the competitor roster/)
+})
+
+test('get_board: indirect_tracked lists the full roster, not just snapshotted companies', async () => {
+  await ask('which indirect competitors do we track?', {
+    roster: [{ name: 'Linx', type: 'direct' }, { name: 'BlinkOps', type: 'indirect' }, { name: '7AI', type: 'indirect' }],
+    board: [{ company: 'Linx', snapshot_date: '2026-07-20', weighted_pct: 100 }], // 7AI/BlinkOps have no snapshot rows
+    turn: (n) => n === 1 ? toolTurn('b', 'get_board', {}) : textTurn('ok'),
+  })
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.deepEqual(fed.indirect_tracked.sort(), ['7AI', 'BlinkOps'])
+})
+
+test('get_company: impact split applies live multipliers; competitor type annotated', async () => {
   const r = await ask('why is orchid at 19?', { turn: (n) => n === 1 ? toolTurn('c', 'get_company', { name: 'Orchid', window_days: 7 }) : textTurn('LinkedIn-driven.') })
   assert.equal(r.progress[0].tool, 'get_company')
   const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
@@ -126,6 +179,43 @@ test('get_company: impact split applies live multipliers to the rollup', async (
   assert.equal(fed.platform_split.LinkedIn.share_pct, 75) // 30 / 40
   assert.equal(fed.platform_split.X.share_pct, 25)
   assert.equal(fed.current_sov_pct, 19.3)
+  assert.equal(fed.competitor_type, 'direct')
+})
+
+test('get_company on an indirect competitor carries the not-a-ranking caveat', async () => {
+  await ask('how is blinkops doing?', { turn: (n) => n === 1 ? toolTurn('c', 'get_company', { name: 'BlinkOps' }) : textTurn('ok') })
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.equal(fed.competitor_type, 'indirect')
+  assert.match(fed.note, /INDIRECT competitor/)
+})
+
+test('get_company type match is one-directional: an untracked superstring must not match', async () => {
+  // Roster has "Orchid"; input "Orchidz" is NOT contained in any roster name →
+  // type must be null (the reverse direction would falsely stamp Orchid's type).
+  await ask('how is orchidz doing?', { turn: (n) => n === 1 ? toolTurn('c', 'get_company', { name: 'Orchidz' }) : textTurn('ok') })
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.equal(fed.competitor_type, null)
+})
+
+test('get_company type is null when the substring is ambiguous across roster names', async () => {
+  await ask('how is security doing?', {
+    roster: [{ name: 'Linx Security', type: 'direct' }, { name: 'Orchid Security', type: 'direct' }, { name: 'BlinkOps', type: 'indirect' }],
+    turn: (n) => n === 1 ? toolTurn('c', 'get_company', { name: 'Security' }) : textTurn('ok'),
+  })
+  const fed = JSON.parse(rec.anthropicBodies[1].messages.find(m => Array.isArray(m.content) && m.content[0]?.type === 'tool_result').content[0].content)
+  assert.equal(fed.competitor_type, null)
+})
+
+test('prompt caching: static system block + last tool carry cache_control', async () => {
+  await ask('hi', { turn: () => textTurn('Hello.') })
+  const body = rec.anthropicBodies[0]
+  assert.ok(Array.isArray(body.system) && body.system.length === 2)
+  assert.deepEqual(body.system[0].cache_control, { type: 'ephemeral' })
+  assert.equal(body.system[1].cache_control, undefined) // dynamic UI-state block uncached
+  assert.match(body.system[1].text, /UI STATE/)
+  const tools = body.tools
+  assert.deepEqual(tools[tools.length - 1].cache_control, { type: 'ephemeral' })
+  assert.equal(tools[0].cache_control, undefined)
 })
 
 test('query_data text_contains: or=() group over per-platform text columns, injection-safe', async () => {
@@ -223,7 +313,8 @@ test('stored tool results are user-role data, never in the system prompt', async
   }, { session_id: SESSION_ID })
   const body = rec.anthropicBodies[0]
   // Hostile scraped/stored text must NOT gain system-role authority…
-  assert.ok(!String(body.system).includes(hostile), 'hostile text leaked into the system prompt')
+  // (JSON.stringify — system is an array of blocks; String() would mask a leak.)
+  assert.ok(!JSON.stringify(body.system).includes(hostile), 'hostile text leaked into the system prompt')
   // …it rides inside the current user turn, explicitly marked as data.
   const lastMsg = body.messages[body.messages.length - 1]
   assert.match(lastMsg.content, /<earlier_tool_results>/)
