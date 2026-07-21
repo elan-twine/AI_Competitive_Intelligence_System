@@ -1,34 +1,43 @@
-import { WEEK_ANCHOR_DAY } from './metrics'
 import { ymd, fmtDateRange } from './dates'
 import { extractEngagement } from './engagement'
 
-// Competitive Review data model: weekly, per-competitor view of posts the
-// competitors themselves published (their company page + employees), with
-// LinkedIn engagement aggregates. `buildWeekly` + `weekRangeLabel` power the
-// Social Briefs page (SocialBriefs.jsx).
+// Competitive Review data model: per-competitor view of LinkedIn posts
+// attributed to each competitor, bucketed into BI-WEEKLY review periods.
+// `buildPeriods` + `periodRangeLabel` power the Social Briefs page
+// (SocialBriefs.jsx).
 //
 // Source: reuses the already-loaded `allPosts` (from useSOVData). LinkedIn rows
-// carry the raw engagement + author fields. Authorship is only reliably known on
-// LinkedIn for now, so "competitor-authored" filtering applies to LinkedIn; other
-// platforms are shown as attributed activity behind a toggle.
+// carry the raw engagement + author fields, plus `authorType`
+// ('company' | 'employee' | 'external') from the shared classifier — shown as a
+// badge per post. Other platforms are aggregated as attributed activity.
+//
+// Cadence: the review meeting moved to bi-weekly on 2026-07-21, so periods are
+// 14 days anchored to that date — the current period is Jul 21 – Aug 3, and the
+// grid extends backwards on the same 14-day rhythm (Jul 7–20, Jun 23–Jul 6, …).
+export const PERIOD_ANCHOR = '2026-07-21'
+export const PERIOD_DAYS = 14
+const DAY_MS = 86400000
 
-// Week-start label 'YYYY-MM-DD' for a date/timestamp, anchored to the shared
-// scrape-aligned anchor day (metrics.WEEK_ANCHOR_DAY — currently Thursday).
-function weekStartLabel(d) {
+// Period-start label 'YYYY-MM-DD' for a date/timestamp, snapped to the 14-day
+// grid. Uses Math.round for the day diff so a DST hour can't skew the bucket.
+function periodStartLabel(d) {
   const dt = new Date(d)
   if (isNaN(dt.getTime())) return null
-  const x = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
-  const day = (x.getDay() - WEEK_ANCHOR_DAY + 7) % 7
-  x.setDate(x.getDate() - day)
-  return ymd(x)
+  const day0 = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
+  const anchor = new Date(PERIOD_ANCHOR + 'T00:00:00')
+  const diffDays = Math.round((day0.getTime() - anchor.getTime()) / DAY_MS)
+  const idx = Math.floor(diffDays / PERIOD_DAYS)
+  const start = new Date(anchor)
+  start.setDate(anchor.getDate() + idx * PERIOD_DAYS)
+  return ymd(start)
 }
 
-// Human label for a week: "Jun 16 – Jun 22, 2026"
-export function weekRangeLabel(label) {
+// Human label for a period: "Jul 21 – Aug 3, 2026"
+export function periodRangeLabel(label) {
   if (!label) return '—'
   const start = new Date(label + 'T00:00:00')
   if (isNaN(start.getTime())) return label
-  const end = new Date(start); end.setDate(end.getDate() + 6)
+  const end = new Date(start); end.setDate(end.getDate() + PERIOD_DAYS - 1)
   return fmtDateRange(start, end, { withYear: true, collapseSameMonth: false })
 }
 
@@ -42,7 +51,7 @@ function linkedinEngagement(p) {
 }
 
 // Per-platform attributed counts + a coarse engagement number, for the
-// "all platforms" toggle. LinkedIn is handled separately (authored-only).
+// "all platforms" toggle. LinkedIn is handled separately (per-post rows).
 function platformActivity(p) {
   const e = extractEngagement(p)
   switch (p.platform) {
@@ -52,37 +61,35 @@ function platformActivity(p) {
   }
 }
 
-// Build the weekly model.
-//   weeks: ['YYYY-MM-DD', ...] sorted DESC (latest first)
-//   byWeek[label].companies[name] = {
+// Build the bi-weekly model.
+//   periods: ['YYYY-MM-DD', ...] sorted DESC (latest first)
+//   byPeriod[label].companies[name] = {
 //     linkedin: { count, reactions, comments, reshares, posts:[...] },
 //     other: { 'Google News': {count, engagement}, Reddit: {...}, X: {...} }
 //   }
-export function buildWeekly(posts) {
-  const byWeek = {}
-  const ensure = (wk, name) => {
-    if (!byWeek[wk]) byWeek[wk] = { companies: {} }
-    if (!byWeek[wk].companies[name]) byWeek[wk].companies[name] = {
+// LinkedIn includes ALL posts attributed to the competitor — the company page,
+// employees, and external voices — with `authorType` carried per post so the UI
+// can badge who's talking. Posts are sorted by total engagement (desc) within
+// each company, ties broken newest-first.
+export function buildPeriods(posts) {
+  const byPeriod = {}
+  const ensure = (pk, name) => {
+    if (!byPeriod[pk]) byPeriod[pk] = { companies: {} }
+    if (!byPeriod[pk].companies[name]) byPeriod[pk].companies[name] = {
       linkedin: { count: 0, reactions: 0, comments: 0, reshares: 0, posts: [] },
       other: {},
     }
-    return byWeek[wk].companies[name]
+    return byPeriod[pk].companies[name]
   }
 
   for (const p of posts || []) {
     const name = p.companyName
     if (!name) continue
-    const wk = weekStartLabel(p.ts)
-    if (!wk) continue
+    const pk = periodStartLabel(p.ts)
+    if (!pk) continue
 
     if (p.platform === 'LinkedIn') {
-      // Social Briefs = what the competitor puts out on its OWN account. Only
-      // company-account posts (authorType 'company' — author.profile_id is the
-      // company's URN). That INCLUDES a repost the company account made of an
-      // employee's post (the reposter is the company page). Standalone employee
-      // posts and external chatter are excluded.
-      if (p.authorType !== 'company') continue
-      const c = ensure(wk, name)
+      const c = ensure(pk, name)
       const e = linkedinEngagement(p)
       c.linkedin.count++
       c.linkedin.reactions += e.reactions
@@ -93,12 +100,13 @@ export function buildWeekly(posts) {
         text: p.text || p.title || '',
         url: p.post_url || p.url || '',
         author: (p.author && (p.author.name || p.author.full_name)) || name,
+        authorType: p.authorType || 'external',
         ts: p.ts,
         ...e,
       })
     } else {
       // other platforms: attributed activity (authorship not determinable yet)
-      const c = ensure(wk, name)
+      const c = ensure(pk, name)
       const plat = p.platform
       if (!c.other[plat]) c.other[plat] = { count: 0, engagement: 0 }
       c.other[plat].count++
@@ -106,15 +114,17 @@ export function buildWeekly(posts) {
     }
   }
 
-  // sort each company's posts newest-first
-  for (const wk of Object.keys(byWeek)) {
-    for (const name of Object.keys(byWeek[wk].companies)) {
-      byWeek[wk].companies[name].linkedin.posts.sort(
-        (a, b) => (new Date(b.ts).getTime() || 0) - (new Date(a.ts).getTime() || 0)
+  // Sort each company's posts by total engagement desc (the meeting reads the
+  // loudest posts first); ties → newest first.
+  const engOf = (p) => p.reactions + p.comments + p.reshares
+  for (const pk of Object.keys(byPeriod)) {
+    for (const name of Object.keys(byPeriod[pk].companies)) {
+      byPeriod[pk].companies[name].linkedin.posts.sort(
+        (a, b) => engOf(b) - engOf(a) || (new Date(b.ts).getTime() || 0) - (new Date(a.ts).getTime() || 0)
       )
     }
   }
 
-  const weeks = Object.keys(byWeek).sort().reverse() // latest first
-  return { weeks, byWeek }
+  const periods = Object.keys(byPeriod).sort().reverse() // latest first
+  return { periods, byPeriod }
 }
