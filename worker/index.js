@@ -923,6 +923,9 @@ async function handleAsk(request, env) {
       // carries scraped third-party text): shapes are validated, and tool results
       // are re-injected as user-role data, never into the system prompt.
       const session = sessionId ? await sessionGet(env, authToken, sessionId) : {}
+      // Title for the history drawer: set once from the first question, then
+      // carried forward so it never re-labels mid-conversation.
+      const priorTitle = typeof session.title === 'string' ? session.title : ''
       const storedTurns = (Array.isArray(session.turns) ? session.turns : [])
         .filter(t => t && typeof t === 'object' && t.content).slice(-20)
       const priorTurns = storedTurns.length >= history.length ? storedTurns : history
@@ -1018,6 +1021,7 @@ async function handleAsk(request, env) {
         if (!sessionId) return Promise.resolve()
         const bytes = (d) => enc.encode(JSON.stringify(d)).length
         let data = {
+          title: (priorTitle || question.replace(/\s+/g, ' ').trim().slice(0, 80)) || 'New chat',
           turns: [...usedHistory, { role: 'user', content: question.slice(0, 4000) }, { role: 'assistant', content: String(assistantContent).slice(0, 6000) }].slice(-20),
           last_tools: toolLog.slice(-3).map(t => ({ name: t.name, input: t.input, result: String(t.result || '').slice(0, 1200) })),
         }
