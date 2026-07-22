@@ -11,10 +11,10 @@ import { extractEngagement } from './engagement'
 // ('company' | 'employee' | 'external') from the shared classifier — shown as a
 // badge per post. Other platforms are aggregated as attributed activity.
 //
-// Cadence: the review meeting moved to bi-weekly on 2026-07-21, so periods are
-// 14 days anchored to that date — the current period is Jul 21 – Aug 3, and the
-// grid extends backwards on the same 14-day rhythm (Jul 7–20, Jun 23–Jul 6, …).
-export const PERIOD_ANCHOR = '2026-07-21'
+// Cadence: the review meeting is bi-weekly, so periods are 14 days anchored to
+// this date — the current period is Jul 22 – Aug 4, and the grid extends
+// backwards on the same 14-day rhythm (Jul 8–21, Jun 24–Jul 7, …).
+export const PERIOD_ANCHOR = '2026-07-22'
 export const PERIOD_DAYS = 14
 const DAY_MS = 86400000
 
