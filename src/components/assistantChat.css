@@ -258,3 +258,80 @@
   .asst-typing span { animation: none; opacity: 0.7; }
   .asst-step.active::before { animation: none; }
 }
+
+/* ── Chat history drawer + persistence UI ─────────────────────────────── */
+.asst-icon-btn.is-active { color: var(--text-primary); background: var(--inner-bg); }
+
+/* Overlay covering the panel below the header (panel is position:fixed → this
+   absolute child is positioned against it). */
+.asst-history {
+  position: absolute;
+  left: 0; right: 0;
+  top: 48px;   /* below the header */
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border-top: 1px solid var(--divider);
+  animation: asstIn 0.14s ease-out;
+}
+.asst-history-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px 6px; font-size: 12px; font-weight: 600;
+  color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.asst-history-clear {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 11px; text-transform: none; letter-spacing: 0;
+  padding: 2px 4px; border-radius: 5px;
+}
+.asst-history-clear:hover { color: var(--negative); background: var(--inner-bg); }
+.asst-history-new {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 12px 8px; padding: 8px 10px;
+  background: var(--inner-bg); border: 1px solid var(--divider); border-radius: 9px;
+  color: var(--text-primary); font-size: 13px; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.asst-history-new:hover { border-color: var(--glow-color-hover); }
+.asst-history-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.asst-history-empty { padding: 16px 12px; font-size: 13px; color: var(--text-muted); }
+.asst-history-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 10px; margin-bottom: 2px;
+  background: transparent; border: none; border-radius: 8px;
+  cursor: pointer; text-align: left; color: var(--text-primary);
+}
+.asst-history-item:hover { background: var(--inner-bg); }
+.asst-history-item.current { background: var(--inner-bg); box-shadow: inset 2px 0 0 var(--accent); }
+.asst-history-title {
+  flex: 1; min-width: 0; font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.asst-history-meta { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.asst-history-del {
+  display: inline-flex; align-items: center; color: var(--text-muted);
+  padding: 3px; border-radius: 5px; flex-shrink: 0; opacity: 0; cursor: pointer;
+}
+.asst-history-item:hover .asst-history-del { opacity: 1; }
+.asst-history-del:hover { color: var(--negative); background: var(--bg-card); }
+
+.asst-restoring { padding: 14px 4px; font-size: 13px; color: var(--text-muted); }
+
+/* "This chat is getting long" nudge above the input. */
+.asst-ctxfull {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 12px 6px; padding: 8px 10px;
+  font-size: 12px; color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 9px;
+}
+.asst-ctxfull-btn {
+  margin-left: auto; background: transparent; border: none; cursor: pointer;
+  color: var(--text-primary); font-size: 12px; font-weight: 600;
+  text-decoration: underline; text-decoration-color: var(--accent);
+  text-underline-offset: 2px; padding: 2px 4px; border-radius: 5px;
+}
+.asst-ctxfull-btn:hover { background: var(--inner-bg); }

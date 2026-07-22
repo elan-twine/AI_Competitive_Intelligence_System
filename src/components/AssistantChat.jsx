@@ -1,10 +1,28 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Sparkles, X, ArrowUp, RotateCcw, FileText, Copy, Check, Pencil, Maximize2, Minimize2, ClipboardList } from 'lucide-react'
+import { Sparkles, X, ArrowUp, FileText, Copy, Check, Pencil, Maximize2, Minimize2, ClipboardList, History, Plus, Trash2 } from 'lucide-react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { usePersistedState } from '../hooks/usePersistedState'
 import { askAssistant, fileIssue } from '../lib/assistant'
+import { listSessions, loadSession, deleteSession, clearAllSessions, ACTIVE_SESSION_KEY } from '../lib/assistantSessions'
 import './assistantChat.css'
+
+// Past this many turns a conversation is "getting long" — we nudge (a banner +
+// one-click new chat) rather than truncating, so nothing is lost silently. The
+// server already caps what the model sees, so this is purely a UX cue.
+const CONTEXT_FULL_TURNS = 40
+
+// Compact relative time for the history list ("2h", "3d", "just now").
+function relTime(ts) {
+  const t = new Date(ts).getTime()
+  if (!t) return ''
+  const s = Math.max(0, (Date.now() - t) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return Math.floor(s / 60) + 'm'
+  if (s < 86400) return Math.floor(s / 3600) + 'h'
+  if (s < 604800) return Math.floor(s / 86400) + 'd'
+  return Math.floor(s / 604800) + 'w'
+}
 
 // The deep-link scheme the model uses for tracked competitors — clicking one
 // opens that company's drill-in on the dashboard instead of leaving the app.
@@ -38,6 +56,10 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
   // True once the current answer has fully typed out — follow-up chips wait for
   // this so they don't pop in mid-reveal.
   const [revealDone, setRevealDone] = useState(true)
+  // History drawer: the list of past chats + whether the drawer is showing.
+  const [showHistory, setShowHistory] = useState(false)
+  const [sessions, setSessions] = useState([])
+  const [restoring, setRestoring] = useState(false)
   const inputRef = useRef(null)
   const scrollRef = useRef(null)
   // Server-side conversation id: the Worker remembers prior turns under it, so we
@@ -186,7 +208,10 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     try {
       // Thin UI-state header — deixis, not data. The agent fetches the rest itself.
       const context = { tab, window: windowLabel, platformFilter: platform, drilledCompany }
-      if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID()
+      if (!sessionIdRef.current) {
+        sessionIdRef.current = crypto.randomUUID()
+        try { localStorage.setItem(ACTIVE_SESSION_KEY, sessionIdRef.current) } catch { /* storage blocked */ }
+      }
       const out = await askAssistant({
         question, context, history, sessionId: sessionIdRef.current,
         // Buffer tokens and reveal via the typer (direct paint under reduced motion).
@@ -237,9 +262,76 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  // Clear the whole conversation: drop local messages AND rotate the server-side
-  // session id, so the next send starts a genuinely fresh conversation.
-  const reset = () => { stopTyper(false); setMessages([]); setInput(''); sessionIdRef.current = null; if (inputRef.current) inputRef.current.focus() }
+  // Start a NEW chat: drop local messages and forget the active session id, so
+  // the next send mints a fresh server conversation. The prior chat stays saved
+  // server-side and shows up in the history drawer.
+  const reset = useCallback(() => {
+    stopTyper(false); setMessages([]); setInput('')
+    sessionIdRef.current = null
+    try { localStorage.removeItem(ACTIVE_SESSION_KEY) } catch { /* storage blocked */ }
+    setShowHistory(false)
+    if (inputRef.current) inputRef.current.focus()
+  }, [stopTyper])
+
+  // Pull the list of past chats (newest first) for the history drawer.
+  const refreshSessions = useCallback(async () => {
+    setSessions(await listSessions())
+  }, [])
+
+  // Load a past chat into the panel: render its stored turns and point the
+  // session id at it so the next send continues that same server conversation.
+  const openSession = useCallback(async (id) => {
+    if (!id || busy) return
+    setShowHistory(false)
+    setRestoring(true)
+    stopTyper(false)
+    try {
+      const { turns } = await loadSession(id)
+      setMessages(turns.map(t => ({ role: t.role, content: t.content })))
+      sessionIdRef.current = id
+      try { localStorage.setItem(ACTIVE_SESSION_KEY, id) } catch { /* storage blocked */ }
+      setRevealDone(true)
+      forceScrollRef.current = true
+    } finally {
+      setRestoring(false)
+    }
+  }, [busy, stopTyper])
+
+  // Delete one saved chat; if it's the one on screen, fall back to a new chat.
+  const removeSession = useCallback(async (id, e) => {
+    if (e) e.stopPropagation()
+    await deleteSession(id)
+    if (sessionIdRef.current === id) reset()
+    setSessions(s => s.filter(x => x.session_id !== id))
+  }, [reset])
+
+  // Wipe all saved chats and start fresh.
+  const clearAll = useCallback(async () => {
+    await clearAllSessions()
+    setSessions([])
+    reset()
+  }, [reset])
+
+  // On first mount, resume the last active chat (survives a page reload).
+  useEffect(() => {
+    let live = true
+    let id = ''
+    try { id = localStorage.getItem(ACTIVE_SESSION_KEY) || '' } catch { /* storage blocked */ }
+    if (!id) return
+    ;(async () => {
+      const { turns } = await loadSession(id)
+      if (!live || turns.length === 0) return
+      setMessages(turns.map(t => ({ role: t.role, content: t.content })))
+      sessionIdRef.current = id
+      setRevealDone(true)
+    })()
+    return () => { live = false }
+  }, [])
+
+  // Refresh the history list whenever the drawer is opened.
+  useEffect(() => { if (showHistory) refreshSessions() }, [showHistory, refreshSessions])
+
+  const contextFull = messages.filter(m => m.role !== 'error').length >= CONTEXT_FULL_TURNS
 
   // Confirm a draft → actually file the issue, then swap the card for the result.
   const fileDraft = useCallback(async (idx, draft) => {
@@ -303,11 +395,17 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
               <button className="asst-icon-btn" onClick={() => send(BRIEF_PROMPT)} disabled={busy} aria-label="Compose the weekly brief" title="Weekly brief — meeting-ready OKR summary">
                 <ClipboardList size={15} />
               </button>
-              {messages.length > 0 && (
-                <button className="asst-icon-btn" onClick={reset} aria-label="Reset chat" title="Reset chat">
-                  <RotateCcw size={15} />
-                </button>
-              )}
+              <button className="asst-icon-btn" onClick={reset} disabled={busy} aria-label="New chat" title="New chat">
+                <Plus size={16} />
+              </button>
+              <button
+                className={`asst-icon-btn ${showHistory ? 'is-active' : ''}`}
+                onClick={() => setShowHistory(h => !h)}
+                aria-label="Chat history"
+                title="Chat history"
+              >
+                <History size={15} />
+              </button>
               <button
                 className="asst-icon-btn"
                 onClick={() => setExpanded(e => !e)}
@@ -322,8 +420,44 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
             </div>
           </div>
 
+          {showHistory && (
+            <div className="asst-history" role="dialog" aria-label="Chat history">
+              <div className="asst-history-head">
+                <span>Chats</span>
+                {sessions.length > 0 && (
+                  <button className="asst-history-clear" onClick={clearAll}>Clear all</button>
+                )}
+              </div>
+              <button className="asst-history-new" onClick={reset}><Plus size={14} /> New chat</button>
+              <div className="asst-history-list">
+                {sessions.length === 0 ? (
+                  <div className="asst-history-empty">No past chats yet.</div>
+                ) : sessions.map(s => (
+                  <button
+                    key={s.session_id}
+                    className={`asst-history-item ${s.session_id === sessionIdRef.current ? 'current' : ''}`}
+                    onClick={() => openSession(s.session_id)}
+                  >
+                    <span className="asst-history-title">{s.title}</span>
+                    <span className="asst-history-meta">{relTime(s.updated_at)}</span>
+                    <span
+                      className="asst-history-del"
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Delete chat"
+                      title="Delete chat"
+                      onClick={(e) => removeSession(s.session_id, e)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeSession(s.session_id, e) } }}
+                    ><Trash2 size={13} /></span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="asst-msgs" ref={scrollRef}>
-            {messages.length === 0 && (
+            {restoring && <div className="asst-restoring">Loading chat…</div>}
+            {messages.length === 0 && !restoring && (
               <div className="asst-empty">
                 <p className="asst-empty-lead">Ask why a number moved, or where to find something.</p>
                 <div className="asst-suggests">
@@ -400,6 +534,13 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
               )
             ))}
           </div>
+
+          {contextFull && !busy && (
+            <div className="asst-ctxfull">
+              This chat is getting long — answers may lose earlier context.
+              <button className="asst-ctxfull-btn" onClick={reset}>Start a new chat</button>
+            </div>
+          )}
 
           <div className="asst-input-row">
             <textarea
