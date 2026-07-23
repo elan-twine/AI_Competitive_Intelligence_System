@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer, ReferenceLine,
+  LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts'
 import { useWeeklySOV } from '../hooks/useWeeklySOV'
 import { useDailySOV } from '../hooks/useDailySOV'
@@ -55,6 +55,28 @@ function TrendTooltip({ active, payload, isDaily, isSentiment }) {
         </div>
       ))}
     </div>
+  )
+}
+
+// Clean horizontal tag drawn at the top of an event marker (single line OR the
+// center of a range band) — replaces the old rotated-vertical label that read
+// awkwardly. recharts hands us the marker's `viewBox` (x/y[/width]); we draw a
+// small bordered chip so the label stays legible over the grid and lines.
+function AnnotationTag({ viewBox, text, range }) {
+  if (!viewBox || viewBox.x == null) return null
+  const cx = range ? viewBox.x + (viewBox.width || 0) / 2 : viewBox.x
+  const yTop = (viewBox.y || 0) + 2
+  const label = String(text || '')
+  const shown = label.length > 26 ? label.slice(0, 25) + '…' : label
+  const fs = 10, padX = 5
+  const w = shown.length * 5.7 + padX * 2
+  return (
+    <g pointerEvents="none">
+      <rect x={cx - w / 2} y={yTop} width={w} height={fs + 6} rx={3}
+        fill="var(--bg-card)" stroke="var(--border)" strokeOpacity={0.7} />
+      <text x={cx} y={yTop + fs + 1} textAnchor="middle" fontSize={fs} fontWeight={600}
+        fill="var(--text-secondary)">{shown}</text>
+    </g>
   )
 }
 
@@ -427,13 +449,24 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
               label={{ value: 'live', position: 'insideTop', fill: 'var(--accent)', fontSize: 10, dx: -11, dy: 2 }} />
           )}
           {/* Event markers (campaign launches, funding, releases) — team-authored
-              annotations dropped on the timeline so moves are readable in context. */}
+              annotations dropped on the timeline so moves are readable in context.
+              A single date → a dashed vertical line; a date range → a shaded band
+              spanning start..end. Both carry a clean horizontal label tag on top. */}
           {annotations.map(a => {
-            const ts = new Date(String(a.event_date) + 'T12:00:00').getTime()
-            if (isNaN(ts)) return null
+            const startTs = new Date(String(a.event_date) + 'T12:00:00').getTime()
+            if (isNaN(startTs)) return null
+            const endRaw = a.end_date ? new Date(String(a.end_date) + 'T12:00:00').getTime() : NaN
+            const isRange = !isNaN(endRaw) && endRaw > startTs
+            if (isRange) {
+              return (
+                <ReferenceArea key={a.id} x1={startTs} x2={endRaw} ifOverflow="extendDomain"
+                  fill="var(--accent)" fillOpacity={0.08} stroke="var(--accent)" strokeOpacity={0.3} strokeDasharray="2 3"
+                  label={<AnnotationTag text={a.label} range />} />
+              )
+            }
             return (
-              <ReferenceLine key={a.id} x={ts} stroke="var(--text-secondary)" strokeOpacity={0.55} strokeDasharray="2 3"
-                label={{ value: a.label, position: 'insideTopLeft', fill: 'var(--text-secondary)', fontSize: 9.5, angle: -90, dy: 6, dx: 2 }} />
+              <ReferenceLine key={a.id} x={startTs} stroke="var(--text-secondary)" strokeOpacity={0.6} strokeDasharray="4 3"
+                label={<AnnotationTag text={a.label} />} />
             )
           })}
           <Tooltip content={<TrendTooltip isDaily={isDaily} isSentiment={isSentiment} />} />
