@@ -1144,6 +1144,60 @@ async function handleFileIssue(request, env) {
   return json(200, { message: res.message, number: res.number, url: res.url })
 }
 
+// Enrich a competitor from just a name (+ optional URL/domain): Claude returns
+// the meticulous tracking fields (definition, keywords, namesake collisions,
+// aliases, domain, x_handle, subreddits) that the workflows read from the
+// competitors table. Session-gated. The app fills a simple add form; a human can
+// review/edit the result in an expandable widget before saving. Returns JSON.
+async function handleEnrichCompetitor(request, env) {
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
+  const user = await verifyUser(request, env)
+  if (!user) return json(401, { error: 'unauthorized' })
+  if (!env.ANTHROPIC_API_KEY) return json(503, { error: 'enrichment not configured (missing API key)' })
+
+  const body = await request.json().catch(() => ({}))
+  const name = String((body && body.name) || '').trim().slice(0, 120)
+  const url = String((body && (body.url || body.linkedin_url)) || '').trim().slice(0, 300)
+  const domain = String((body && body.domain) || '').trim().slice(0, 120)
+  if (!name) return json(400, { error: 'name is required' })
+
+  const system = 'You enrich a competitor record for a cybersecurity / identity-security "Share of Voice" tracker. Given a company, return STRICT JSON (no prose, no code fences) with EXACTLY these fields: '
+    + 'definition (1-2 sentences: what the company actually is — product, category, and any distinctive funding/founders/customers — specific enough to tell it apart from same-named things), '
+    + 'keywords (array of 2-6 distinctive search phrases people use for it; prefer product/handle/quoted-name terms; OMIT the bare name when it is generic or collision-prone), '
+    + 'collision_terms (array of namesakes / wrong senses to REJECT — other companies, products, brands, tokens, or common words that share the name token), '
+    + 'aliases (array of alternate names/spellings), domain (best primary domain or ""), x_handle (best X/Twitter handle without @, or ""), subreddits (array of relevant subreddit names without r/, or []). '
+    + 'Use real knowledge; when unsure use conservative/empty values rather than guessing. Output ONLY the JSON object.'
+  const usr = `Company name: ${name}\nLinkedIn/URL: ${url || '(none)'}\nDomain hint: ${domain || '(none)'}`
+
+  let r
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: MODEL, max_tokens: 1024, system, messages: [{ role: 'user', content: usr }] }),
+    })
+  } catch {
+    return json(502, { error: 'could not reach the enrichment model' })
+  }
+  if (!r.ok) return json(502, { error: `enrichment model error (${r.status})` })
+  const data = await r.json().catch(() => null)
+  const text = ((data && data.content) || []).filter(b => b && b.type === 'text').map(b => b.text).join('')
+  const m = text.match(/\{[\s\S]*\}/)
+  let out
+  try { out = JSON.parse(m ? m[0] : text) } catch { return json(502, { error: 'enrichment returned unparseable output' }) }
+
+  const arr = (v) => Array.isArray(v) ? v.map(x => String(x || '').trim()).filter(Boolean).slice(0, 12) : []
+  return json(200, {
+    definition: String(out.definition || '').trim().slice(0, 800),
+    keywords: arr(out.keywords),
+    collision_terms: arr(out.collision_terms),
+    aliases: arr(out.aliases),
+    domain: String(out.domain || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').slice(0, 120),
+    x_handle: String(out.x_handle || '').trim().replace(/^@/, '').slice(0, 40),
+    subreddits: arr(out.subreddits).map(s => s.replace(/^\/?r\//i, '')),
+  })
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
@@ -1151,6 +1205,7 @@ export default {
     if (url.pathname === '/api/ask') return handleAsk(request, env)
     if (url.pathname === '/api/file-issue') return handleFileIssue(request, env)
     if (url.pathname === '/api/embed-posts') return handleEmbedPosts(request, env)
+    if (url.pathname === '/api/enrich-competitor') return handleEnrichCompetitor(request, env)
     // Non-API path → static assets / SPA fallback.
     return env.ASSETS.fetch(request)
   },

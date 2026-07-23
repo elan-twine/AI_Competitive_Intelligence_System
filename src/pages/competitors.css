@@ -514,3 +514,21 @@ a.comp-meta:hover {
 .comp-tile.is-editing .comp-edit-grid {
   animation: compDrawerIn 0.2s ease;
 }
+
+/* AI auto-fill + details fields (table-driven enrichment) */
+.comp-adv-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 0; }
+.comp-autofill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent); line-height: 1.3;
+}
+.comp-autofill:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.comp-autofill:disabled { opacity: 0.55; cursor: default; }
+.comp-field-wide { grid-column: 1 / -1; }
+.comp-field textarea {
+  font: inherit; background: var(--inner-bg); border: 1px solid var(--divider);
+  border-radius: 8px; padding: 8px 10px; color: var(--text-primary); resize: vertical;
+  width: 100%; box-sizing: border-box; min-height: 62px;
+}

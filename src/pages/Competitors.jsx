@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Plus, Pencil, Check, X, Trash2, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Pencil, Check, X, Trash2, RotateCcw, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
 import { useCompetitors } from '../hooks/useCompetitors'
+import { enrichCompetitor } from '../lib/enrichCompetitor'
 import '../App.css'
 import './competitors.css'
 
@@ -16,7 +17,20 @@ const slugFromUrl = (url) => (String(url).match(LI_COMPANY_RE)?.[1] || '').toLow
 const nameFromSlug = (slug) =>
   slug.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim()
 
-const EMPTY_ADV = { aliases: '', linkedin_urn: '', domain: '', x_handle: '', subreddits: '' }
+const EMPTY_ADV = { aliases: '', linkedin_urn: '', domain: '', x_handle: '', subreddits: '', definition: '', keywords: '', collision_terms: '' }
+
+// Merge an /api/enrich-competitor result into an advanced-fields form object.
+// Only fills blanks / replaces with non-empty AI values; never clobbers with ''.
+const mergeEnrichment = (prev, e) => ({
+  ...prev,
+  definition: e.definition || prev.definition,
+  keywords: e.keywords?.length ? e.keywords.join(', ') : prev.keywords,
+  collision_terms: e.collision_terms?.length ? e.collision_terms.join(', ') : prev.collision_terms,
+  aliases: e.aliases?.length ? e.aliases.join(', ') : prev.aliases,
+  domain: e.domain || prev.domain,
+  x_handle: e.x_handle || prev.x_handle,
+  subreddits: e.subreddits?.length ? e.subreddits.join(', ') : prev.subreddits,
+})
 
 export default function Competitors({ onLogout, onNavigate }) {
   const { competitors, loading, error, addCompetitor, updateCompetitor } = useCompetitors()
@@ -30,10 +44,12 @@ export default function Competitors({ onLogout, onNavigate }) {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState(null)
   const [addType, setAddType] = useState('direct')   // direct = counted in SOV ranking; indirect = tracked/analyzed only
+  const [enriching, setEnriching] = useState(false)   // add-form AI auto-fill in flight
+  const [editEnriching, setEditEnriching] = useState(false) // edit-drawer AI auto-fill in flight
 
   // List / edit
   const [editId, setEditId] = useState(null)
-  const [editForm, setEditForm] = useState({ name: '', aliases: '', linkedin_urn: '', linkedin_url: '', domain: '', x_handle: '', subreddits: '', type: 'direct' })
+  const [editForm, setEditForm] = useState({ name: '', aliases: '', linkedin_urn: '', linkedin_url: '', domain: '', x_handle: '', subreddits: '', type: 'direct', definition: '', keywords: '', collision_terms: '' })
   const [busyId, setBusyId] = useState(null)
 
   // Roster controls (net-new state)
@@ -53,6 +69,22 @@ export default function Competitors({ onLogout, onNavigate }) {
   const onNameChange = (e) => { setName(e.target.value); setNameAuto(false) }
   const onAdv = (e) => { const { name: n, value } = e.target; setAdv(p => ({ ...p, [n]: value })) }
 
+  // AI auto-fill for the add form: Claude generates definition/keywords/
+  // collisions (+ aliases/domain/handle/subreddits). Reveals the details so a
+  // human can review/edit before adding — never required.
+  const autoFillAdd = async () => {
+    const slug = slugFromUrl(url)
+    const finalName = (name || (slug ? nameFromSlug(slug) : '')).trim()
+    if (!finalName) { setAddError('Enter a name (or a LinkedIn URL) first, then auto-fill.'); return }
+    setEnriching(true); setAddError(null)
+    try {
+      const e = await enrichCompetitor({ name: finalName, url, domain: adv.domain })
+      setAdv(p => mergeEnrichment(p, e))
+      setShowAdv(true)
+    } catch (err) { setAddError(err.message || 'Auto-fill failed') }
+    finally { setEnriching(false) }
+  }
+
   const handleAdd = async (e) => {
     e.preventDefault()
     setAddError(null)
@@ -70,6 +102,9 @@ export default function Competitors({ onLogout, onNavigate }) {
         domain: adv.domain.trim() || null,
         x_handle: adv.x_handle.trim().replace(/^@/, '') || null,
         subreddits: toList(adv.subreddits),
+        keywords: toList(adv.keywords),
+        definition: adv.definition.trim() || null,
+        collision_terms: toList(adv.collision_terms),
         type: addType,
         is_self: false,
         active: true,
@@ -98,7 +133,20 @@ export default function Competitors({ onLogout, onNavigate }) {
       name: c.name || '', aliases: fromList(c.aliases), linkedin_urn: c.linkedin_urn || '',
       linkedin_url: c.linkedin_url || '', domain: c.domain || '', x_handle: c.x_handle || '',
       subreddits: fromList(c.subreddits), type: c.type || 'direct',
+      definition: c.definition || '', keywords: fromList(c.keywords), collision_terms: fromList(c.collision_terms),
     })
+  }
+
+  // AI auto-fill for the edit drawer — same enrichment, merged into editForm.
+  const autoFillEdit = async () => {
+    const nm = (editForm.name || '').trim()
+    if (!nm) { setEditError('Name is required to auto-fill.'); return }
+    setEditEnriching(true); setEditError(null)
+    try {
+      const e = await enrichCompetitor({ name: nm, url: editForm.linkedin_url, domain: editForm.domain })
+      setEditForm(p => mergeEnrichment(p, e))
+    } catch (err) { setEditError(err.message || 'Auto-fill failed') }
+    finally { setEditEnriching(false) }
   }
   const saveEdit = async (id) => {
     if (!editForm.name.trim()) { setEditError('Name is required'); return }
@@ -110,6 +158,8 @@ export default function Competitors({ onLogout, onNavigate }) {
         linkedin_urn: editForm.linkedin_urn.trim() || null, linkedin_url: editForm.linkedin_url.trim() || null,
         domain: editForm.domain.trim() || null, x_handle: editForm.x_handle.trim().replace(/^@/, '') || null,
         subreddits: toList(editForm.subreddits), type: editForm.type,
+        keywords: toList(editForm.keywords), definition: editForm.definition.trim() || null,
+        collision_terms: toList(editForm.collision_terms),
       })
       setEditId(null)
     } catch (err) { setRowError({ id, msg: err.message || 'Failed to save' }) }
@@ -173,11 +223,19 @@ export default function Competitors({ onLogout, onNavigate }) {
 
           <TypeChoice value={addType} onChange={setAddType} />
 
-          <button type="button" className="comp-adv-toggle" onClick={() => setShowAdv(s => !s)}>
-            {showAdv ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Advanced (aliases, domain, X, subreddits)
-          </button>
+          <div className="comp-adv-row">
+            <button type="button" className="comp-adv-toggle" onClick={() => setShowAdv(s => !s)}>
+              {showAdv ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Details (AI-generated — review or edit)
+            </button>
+            <button type="button" className="comp-autofill" onClick={autoFillAdd} disabled={enriching} title="Let AI fill the definition, keywords, and namesakes to reject">
+              <Sparkles size={13} /> {enriching ? 'Filling…' : 'Auto-fill with AI'}
+            </button>
+          </div>
           {showAdv && (
             <div className="comp-form-grid">
+              <TextArea label="Definition — what this company is (used for attribution)" name="definition" value={adv.definition} onChange={onAdv} placeholder="AI-generated on Auto-fill; edit if you like." />
+              <Field label="Keywords (comma-separated search terms)" name="keywords" value={adv.keywords} onChange={onAdv} placeholder="Orchid identity, orchid.security" />
+              <Field label="Collision terms to reject (comma-separated)" name="collision_terms" value={adv.collision_terms} onChange={onAdv} placeholder="Orchid VPN, orchid flower" />
               <Field label="Aliases (comma-separated)" name="aliases" value={adv.aliases} onChange={onAdv} placeholder="Orchid, Orchid Sec" />
               <Field label="Domain" name="domain" value={adv.domain} onChange={onAdv} placeholder="orchid.security" />
               <Field label="X handle" name="x_handle" value={adv.x_handle} onChange={onAdv} placeholder="orchidsec" />
@@ -237,6 +295,8 @@ export default function Competitors({ onLogout, onNavigate }) {
                 editForm={editForm}
                 setEditForm={setEditForm}
                 editError={editError}
+                onAutoFill={autoFillEdit}
+                enriching={editEnriching}
                 rowError={rowError && rowError.id === c.id ? rowError.msg : null}
                 onEdit={() => startEdit(c)}
                 onCancelEdit={() => { setEditId(null); setEditError(null) }}
@@ -283,6 +343,15 @@ function Field({ label, ...props }) {
     <label className="auth-field comp-field">
       <span>{label}</span>
       <input type="text" {...props} />
+    </label>
+  )
+}
+
+function TextArea({ label, ...props }) {
+  return (
+    <label className="auth-field comp-field comp-field-wide">
+      <span>{label}</span>
+      <textarea rows={3} {...props} />
     </label>
   )
 }
@@ -360,7 +429,7 @@ function GroupHeader({ kind, label, count, hint }) {
 
 function CompetitorTile({
   c, removedView, editing, isBusy, confirming,
-  editForm, setEditForm, editError, rowError,
+  editForm, setEditForm, editError, onAutoFill, enriching, rowError,
   onEdit, onCancelEdit, onSave, onAskRemove, onCancelRemove, onRemove, onReadd,
 }) {
   const setF = (k) => (e) => setEditForm(p => ({ ...p, [k]: e.target.value }))
@@ -404,10 +473,16 @@ function CompetitorTile({
           <Field label="Aliases (comma-separated)" value={editForm.aliases} onChange={setF('aliases')} placeholder="Orchid, Orchid Sec" />
           <Field label="Subreddits (comma-separated)" value={editForm.subreddits} onChange={setF('subreddits')} placeholder="cybersecurity, netsec" />
           <Field label="LinkedIn URN (optional — auto-resolved)" value={editForm.linkedin_urn} onChange={setF('linkedin_urn')} placeholder="1234567" />
+          <TextArea label="Definition — what this company is (used for attribution)" value={editForm.definition} onChange={setF('definition')} placeholder="AI-generated on Auto-fill; edit if you like." />
+          <Field label="Keywords (comma-separated)" value={editForm.keywords} onChange={setF('keywords')} placeholder="Orchid identity, orchid.security" />
+          <Field label="Collision terms to reject (comma-separated)" value={editForm.collision_terms} onChange={setF('collision_terms')} placeholder="Orchid VPN, orchid flower" />
         </div>
         {editError && <div className="auth-error">{editError}</div>}
         {rowError && <div className="auth-error">{rowError}</div>}
         <div className="comp-tile-actions">
+          <button className="icon-btn comp-autofill" title="Let AI fill definition, keywords, collisions" disabled={enriching || isBusy} onClick={onAutoFill}>
+            <Sparkles size={13} /> {enriching ? 'Filling…' : 'Auto-fill'}
+          </button>
           <button className="icon-btn" title="Save" disabled={isBusy} onClick={onSave}><Check size={14} /></button>
           <button className="icon-btn" title="Cancel" onClick={onCancelEdit}><X size={14} /></button>
         </div>
