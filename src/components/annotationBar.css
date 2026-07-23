@@ -31,3 +31,24 @@
 }
 .annot-range-toggle input { accent-color: var(--accent); cursor: pointer; }
 .annot-chip.is-range { border-style: dashed; }
+
+/* Clickable chip body (owned events → click to edit) */
+.annot-chip { padding: 0 2px 0 0; overflow: hidden; }
+.annot-chip-body {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-secondary); font: inherit; padding: 3px 6px 3px 9px; border-radius: 999px;
+}
+.annot-chip-body:not(.annot-chip-static):hover { background: var(--bg-card); }
+.annot-chip-static { cursor: default; }
+.annot-chip.is-editing { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.annot-editing-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 999px; padding: 2px 8px;
+}
+.annot-cancel {
+  font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid var(--divider); color: var(--text-secondary);
+}
+.annot-cancel:hover { color: var(--text-primary); border-color: var(--border); }

@@ -50,6 +50,26 @@ export function useAnnotations() {
     return {}
   }, [load])
 
+  // Edit one of your own markers. Same validation as add; RLS allows update only
+  // where created_by = auth.uid(), and a blocked update (not yours) returns 2xx
+  // with ZERO rows — so we .select() the updated rows and, if none came back,
+  // reload and report instead of a silent false success.
+  const update = useCallback(async (id, { event_date, end_date, label, note }) => {
+    const clean = {
+      event_date,
+      end_date: (end_date && String(end_date).trim()) ? String(end_date).trim() : null,
+      label: String(label || '').trim().slice(0, 80),
+      note: (note ? String(note).trim().slice(0, 400) : null),
+    }
+    if (!clean.event_date || !clean.label) return { error: 'A date and a label are required.' }
+    if (clean.end_date && clean.end_date < clean.event_date) return { error: 'The end date must be on or after the start date.' }
+    const { data, error } = await supabase.from('sov_annotations').update(clean).eq('id', id).select('id')
+    if (error) return { error: error.message }
+    if (!Array.isArray(data) || data.length === 0) { await load(); return { error: "That marker isn't yours to edit." } }
+    await load()
+    return {}
+  }, [load])
+
   // Delete a marker. RLS allows only your own, and a blocked delete returns 2xx
   // with ZERO rows (no error) — so we .select() the deleted rows and, if none
   // came back, reload to restore the chip and report it, instead of a silent
@@ -64,5 +84,5 @@ export function useAnnotations() {
     return {}
   }, [load])
 
-  return { annotations, userId, add, remove, error }
+  return { annotations, userId, add, update, remove, error }
 }
