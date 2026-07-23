@@ -20,7 +20,7 @@ export function useAnnotations() {
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('sov_annotations')
-      .select('id, event_date, label, note, created_by')
+      .select('id, event_date, end_date, label, note, created_by')
       .order('event_date', { ascending: true })
     if (error) { setError(error.message); return }
     setError(null)
@@ -34,9 +34,16 @@ export function useAnnotations() {
 
   // Add a marker (created_by defaults to auth.uid() server-side). Optimistic-ish:
   // re-loads on success so the id/created_by come from the row that landed.
-  const add = useCallback(async ({ event_date, label, note }) => {
-    const clean = { event_date, label: String(label || '').trim().slice(0, 80), note: (note ? String(note).trim().slice(0, 400) : null) }
+  const add = useCallback(async ({ event_date, end_date, label, note }) => {
+    const clean = {
+      event_date,
+      // NULL end_date = single-date event; else a range. Blank/invalid → single.
+      end_date: (end_date && String(end_date).trim()) ? String(end_date).trim() : null,
+      label: String(label || '').trim().slice(0, 80),
+      note: (note ? String(note).trim().slice(0, 400) : null),
+    }
     if (!clean.event_date || !clean.label) return { error: 'A date and a label are required.' }
+    if (clean.end_date && clean.end_date < clean.event_date) return { error: 'The end date must be on or after the start date.' }
     const { error } = await supabase.from('sov_annotations').insert(clean)
     if (error) return { error: error.message }
     await load()

@@ -24,3 +24,10 @@
 .annot-save { font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 8px; cursor: pointer; border: 1px solid #C4E600; background: var(--accent); color: #0B0D00; }
 .annot-save:disabled { opacity: 0.5; cursor: default; }
 .annot-err { font-size: 11.5px; color: var(--negative); flex-basis: 100%; }
+.annot-range-arrow { color: var(--text-muted); font-size: 13px; }
+.annot-range-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; color: var(--text-secondary); cursor: pointer; user-select: none;
+}
+.annot-range-toggle input { accent-color: var(--accent); cursor: pointer; }
+.annot-chip.is-range { border-style: dashed; }
