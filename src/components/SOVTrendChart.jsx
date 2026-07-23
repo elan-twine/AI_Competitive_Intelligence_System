@@ -311,6 +311,13 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
     if (!data.some(r => r.__fill)) return undefined
     return data.filter(r => r.__weekly || r.week === 'Now').map(r => r.t)
   }, [data])
+  // Time bounds of the plotted data — event markers are clamped/culled to this so
+  // a marker never sits off-axis and a range band never stretches the domain.
+  const xExtent = useMemo(() => {
+    let lo = Infinity, hi = -Infinity
+    for (const r of data) { if (r.t == null) continue; if (r.t < lo) lo = r.t; if (r.t > hi) hi = r.t }
+    return isFinite(lo) && isFinite(hi) ? [lo, hi] : null
+  }, [data])
   // Date formatter for the time x-axis ticks.
   const fmtTick = (t) => {
     const d = new Date(t)
@@ -452,18 +459,28 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
               annotations dropped on the timeline so moves are readable in context.
               A single date → a dashed vertical line; a date range → a shaded band
               spanning start..end. Both carry a clean horizontal label tag on top. */}
-          {annotations.map(a => {
-            const startTs = new Date(String(a.event_date) + 'T12:00:00').getTime()
+          {xExtent && annotations.map(a => {
+            // Midnight (matching the data points, which sit at 00:00 of their date)
+            // so a marker lands EXACTLY on its date — noon drifted it ~half a day
+            // right. Parsed local, same as the data timestamps, so no tz skew.
+            const startTs = new Date(String(a.event_date) + 'T00:00:00').getTime()
             if (isNaN(startTs)) return null
-            const endRaw = a.end_date ? new Date(String(a.end_date) + 'T12:00:00').getTime() : NaN
+            const endRaw = a.end_date ? new Date(String(a.end_date) + 'T00:00:00').getTime() : NaN
             const isRange = !isNaN(endRaw) && endRaw > startTs
+            const [xlo, xhi] = xExtent
             if (isRange) {
+              // Clamp the band to the plotted range so it can't stretch the axis
+              // (which would shift every line out of alignment).
+              const x1 = Math.max(startTs, xlo), x2 = Math.min(endRaw, xhi)
+              if (x2 <= x1) return null
               return (
-                <ReferenceArea key={a.id} x1={startTs} x2={endRaw} ifOverflow="extendDomain"
+                <ReferenceArea key={a.id} x1={x1} x2={x2}
                   fill="var(--accent)" fillOpacity={0.08} stroke="var(--accent)" strokeOpacity={0.3} strokeDasharray="2 3"
                   label={<AnnotationTag text={a.label} range />} />
               )
             }
+            // Single date outside the plotted window → off-chart, skip it.
+            if (startTs < xlo || startTs > xhi) return null
             return (
               <ReferenceLine key={a.id} x={startTs} stroke="var(--text-secondary)" strokeOpacity={0.6} strokeDasharray="4 3"
                 label={<AnnotationTag text={a.label} />} />
