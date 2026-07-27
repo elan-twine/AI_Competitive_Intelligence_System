@@ -3,6 +3,7 @@ import { Filter, Info, Download, RefreshCw } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
+import { useBoardAgg } from '../hooks/useBoardAgg'
 import { useLastUpdated } from '../hooks/useLastUpdated'
 import { usePersistedState } from '../hooks/usePersistedState'
 import { AppHeader } from '../components/AppHeader'
@@ -148,11 +149,35 @@ function Dashboard({ onLogout, onNavigate }) {
     [allPosts, selectedPlatforms, directNames]
   )
   const ranked = useMemo(() => rankings(directPosts, sovConfig), [directPosts, sovConfig])
+  // RPC-backed board (sov_board_agg): ~60 tiny rows computed in Postgres, so
+  // the ranking + stat cards no longer depend on the raw-post firehose — the
+  // payload is constant in post volume (the guard against the #139 timeout
+  // class). Sentiment stays posts-derived (external-only semantics live in
+  // JS), overlaid below; if the RPC fails we fall back to the posts board.
+  const agg = useBoardAgg(days, {
+    platforms: selectedPlatforms,
+    competitors,
+    multipliers: sovConfig?.platformMultipliers,
+  })
+  const postsRowByCompany = useMemo(
+    () => Object.fromEntries((ranked || []).map(r => [r.company, r])),
+    [ranked]
+  )
+  // The board the table + stat cards render: RPC numbers (verified to match
+  // the client math exactly — sov-tooling/parity_board.mjs), posts-derived
+  // sentiment merged in when the firehose has loaded (else shown as "—").
+  const boardRanked = useMemo(() => {
+    if (!agg.board) return ranked
+    return agg.board.direct.map(r => {
+      const p = postsRowByCompany[r.company]
+      return { ...r, avgSentiment: p ? p.avgSentiment : 0, sentimentCount: p ? p.sentimentCount : 0 }
+    })
+  }, [agg.board, ranked, postsRowByCompany])
   // Current live standing (same numbers as the ranking table) → fed to the trend
   // chart as its "Now" tip so the graph ends where the table says.
   const nowValues = useMemo(
-    () => Object.fromEntries((ranked || []).map(r => [r.company, r.weightedPct])),
-    [ranked]
+    () => Object.fromEntries((boardRanked || []).map(r => [r.company, r.weightedPct])),
+    [boardRanked]
   )
   // Same idea for the sentiment chart: its "Now" tip = the stat card's number
   // (avg external sentiment over the selected window, already on −3..+3), so the
@@ -169,14 +194,14 @@ function Dashboard({ onLogout, onNavigate }) {
   // The single global window drives the trend charts' resolution + labels too.
   const { windowDays, label: windowLabel } = windowMeta(days)
   const sortedRanked = useMemo(() => {
-    const arr = [...ranked]
+    const arr = [...boardRanked]
     arr.sort((a, b) => {
       const va = a[sortKey], vb = b[sortKey]
       if (typeof va === 'string') return va.localeCompare(vb)
       return (vb || 0) - (va || 0)
     })
     return arr
-  }, [ranked, sortKey])
+  }, [boardRanked, sortKey])
 
   // Seed compare pickers once companies arrive
   useEffect(() => {
@@ -192,7 +217,10 @@ function Dashboard({ onLogout, onNavigate }) {
       </div>
     )
   }
-  if (error) {
+  // The full-page error is now a last resort: if the raw-post fetch failed but
+  // the RPC board loaded, the ranking + stat cards still render (charts and the
+  // feed degrade) with an inline warning instead of a blank page.
+  if (error && !agg.board) {
     return (
       <div className="loading-screen">
         <p>Error: {error}</p>
@@ -200,9 +228,12 @@ function Dashboard({ onLogout, onNavigate }) {
       </div>
     )
   }
+  const degraded = error && agg.board
+    ? 'Post details failed to load (' + error + ') — standings are live, but charts, sentiment, and the feed may be incomplete.'
+    : null
 
-  const twineIdx = ranked.findIndex(r => isTwine(r.company))
-  const twineRow = twineIdx >= 0 ? ranked[twineIdx] : null
+  const twineIdx = boardRanked.findIndex(r => isTwine(r.company))
+  const twineRow = twineIdx >= 0 ? boardRanked[twineIdx] : null
   const twineRank = twineIdx >= 0 ? twineIdx + 1 : null
 
   const cmp = compareA && compareB ? compare(filtered, compareA, compareB, sovConfig) : null
@@ -223,6 +254,11 @@ function Dashboard({ onLogout, onNavigate }) {
 
       {view === 'sov' && (
       <>
+      {degraded && (
+        <div className="auth-error" style={{ margin: '0 0 14px' }}>
+          {degraded} <button className="refresh-btn" style={{ marginLeft: 8 }} onClick={refetch}>Retry</button>
+        </div>
+      )}
       {/* SOV-internal tabs */}
       <div className="tab-nav">
         <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
@@ -329,7 +365,7 @@ function Dashboard({ onLogout, onNavigate }) {
               {
                 label: 'Twine Rank',
                 value: twineRank ? `#${twineRank}` : '—',
-                sub: ranked.length ? `overall, of ${ranked.length}` : 'no data',
+                sub: boardRanked.length ? `overall, of ${boardRanked.length}` : 'no data',
                 color: twineRank === 1 ? 'var(--positive)' : undefined,
                 hint: 'Where Twine places among direct competitors, ranked by SOV % (higher = more of the conversation).',
               },
