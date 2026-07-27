@@ -49,29 +49,51 @@ export function useSOVData(competitorsArg) {
       { maxPages: 20, onError: 'partial', label: table }
     )
 
+    // Post tables: fetch ONLY attributed rows. Unattributed scrapes ('NONE' /
+    // null) are discarded a few lines below by the isTracked() filter, so pulling
+    // them was pure waste — and it had outgrown the timeout below. LinkedIn holds
+    // 8.6k rows but only ~900 attributed: `select('*')` was 23MB over 9 sequential
+    // pages, vs ~2.6MB in a single page now. This is a strict superset of what
+    // survives isTracked(), so the filtered set is behaviourally identical.
+    const attributedQuery = (table, orderCol) => fetchAllRows(
+      () => supabase.from(table).select('*')
+        .not('companyName', 'is', null)
+        .neq('companyName', 'NONE')
+        .order(orderCol, { ascending: false }),
+      { maxPages: 20, onError: 'partial', label: table }
+    )
+
     // Generous: pagination means up to a few sequential round-trips per table.
     const timeout = new Promise((resolve) => setTimeout(() => resolve('timeout'), 15000))
     const result = await Promise.race([
       Promise.all([
-        safeQuery('tweets', 'createdAt'),
-        safeQuery('reddit_posts', 'createdAt'),
-        safeQuery('googlenews', 'publishedAt'),
-        safeQuery('linkedin_posts', 'posted_at'),
+        attributedQuery('tweets', 'createdAt'),
+        attributedQuery('reddit_posts', 'createdAt'),
+        attributedQuery('googlenews', 'publishedAt'),
+        attributedQuery('linkedin_posts', 'posted_at'),
         // author-affiliation classifier cache (employee vs external). Public-read;
         // returns [] if the table isn't applied yet, so the heuristic still works.
+        // No companyName column here — never filter this one.
         safeQuery('author_affiliation', 'checked_at'),
       ]),
       timeout,
     ])
     if (result === 'timeout') {
-      console.warn('[SOV] fetch timed out after 15s — rendering empty state')
-      return { tweets: [], redditPosts: [], googleNews: [], linkedinPosts: [], authorAff: [] }
+      // THROW, never return empties: useCachedFetch writes whatever the fetcher
+      // resolves to into the 6h cache, so returning an empty set on a slow network
+      // poisoned the cache and the dashboard rendered a confident, permanent "no
+      // data for the current filters" until the TTL expired. Throwing leaves the
+      // cache untouched and surfaces a real error with a retry.
+      throw new Error('Timed out loading posts after 15s — check your connection and retry.')
     }
     const [tw, rd, gn, li, aff] = result
     return { tweets: tw, redditPosts: rd, googleNews: gn, linkedinPosts: li, authorAff: aff }
   }, [])
 
-  const { data, loading, error, refetch } = useCachedFetch('sov-raw', fetcher, { idb: true })
+  // Cache key bumped to -v2: the pre-fix build could cache an empty firehose (see
+  // the timeout branch above), and that poisoned entry would keep serving an empty
+  // dashboard for its full 6h TTL. A new key abandons it on first load post-deploy.
+  const { data, loading, error, refetch } = useCachedFetch('sov-raw-v2', fetcher, { idb: true })
 
   // Re-render when a mention is flagged misattributed from any item card, so it
   // drops out of the calculations below immediately (no refetch/loader).
