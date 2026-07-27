@@ -126,6 +126,23 @@
 .hs-check.st-crit { border-color: color-mix(in srgb, var(--hs-crit) 55%, transparent); }
 .hs-check.st-unknown .hs-check-icon { color: var(--hs-unknown); }
 .hs-check-main { display: flex; flex-direction: column; min-width: 0; }
-.hs-check-label { font-size: 12.5px; font-weight: 600; }
+.hs-check-label { font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .hs-check-detail { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hs-check-value { margin-left: auto; font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* "flapping" tag — a check whose status keeps changing across recent runs */
+.hs-flap {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+  color: var(--hs-warn); border: 1px solid color-mix(in srgb, var(--hs-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--hs-warn) 12%, transparent);
+  padding: 1px 6px; border-radius: 999px; line-height: 1.5;
+}
+
+/* per-check status timeline (oldest → newest), a compact row of dots */
+.hs-trend { display: inline-flex; gap: 2px; align-items: center; margin: 0 10px; flex-shrink: 0; }
+.hs-trend i { width: 4px; height: 12px; border-radius: 1.5px; background: var(--hs-unknown); opacity: 0.85; }
+.hs-trend i.st-ok, .hs-trend i.st-info { background: var(--hs-ok); }
+.hs-trend i.st-warn { background: var(--hs-warn); }
+.hs-trend i.st-crit { background: var(--hs-crit); }
+.hs-trend i.st-unknown { background: var(--hs-unknown); }
+@media (max-width: 1100px) { .hs-trend { display: none; } } /* narrow: drop the trend before the value wraps */
