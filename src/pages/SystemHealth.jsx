@@ -1,12 +1,32 @@
 import { useMemo, useState } from 'react'
-import { Activity, RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Database, Workflow, Server, ClipboardCopy } from 'lucide-react'
+import { Activity, RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Database, Workflow, Server, ClipboardCopy, Layers } from 'lucide-react'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
 import { SystemMap } from '../components/SystemMap'
+import { TechStack } from '../components/TechStack'
 import { useSystemHealth } from '../hooks/useSystemHealth'
 import { useHealthHistory } from '../hooks/useHealthHistory'
 import '../App.css'
 import './systemHealth.css'
+
+// Plain-English translation of what each check means when it is NOT healthy —
+// so a non-technical reader understands the impact without knowing the stack.
+// Keyed by check id; falls back to the check's own help text if absent.
+const PLAIN = {
+  'scrape-linkedin': "LinkedIn posts aren't being collected — the board will go stale for LinkedIn.",
+  'scrape-x': "X/Twitter posts aren't being collected.",
+  'scrape-news': "News articles aren't being collected.",
+  'scrape-reddit': "Reddit posts aren't being collected (Reddit runs weekly, so a few days is normal).",
+  queue: 'New LinkedIn posts are piling up faster than they can be processed — the newest ones may not appear yet.',
+  attribution: "Posts are coming in but aren't being matched to competitors — likely a stuck AI step.",
+  classifier: "Author labeling (employee vs. outsider) hasn't run recently.",
+  snapshot: "The daily scoreboard hasn't been recalculated — trends and briefs may be frozen.",
+  board: 'The competitor scoreboard looks empty or inconsistent.',
+  geo: "The AI-visibility check hasn't run recently.",
+  worker: "The app's backend service isn't responding — the assistant and some features may be down.",
+  db: 'The database is responding slowly.',
+  config: 'The scoring settings are missing or incomplete.',
+}
 
 // Attention-first: problems bubble to the top of each group.
 const SORT_RANK = { crit: 0, warn: 1, unknown: 2, ok: 3, info: 4 }
@@ -76,6 +96,15 @@ export default function SystemHealth({ onLogout, onNavigate }) {
   const overall = counts.crit ? 'crit' : counts.warn ? 'warn' : counts.unknown && !counts.ok ? 'unknown' : 'ok'
   const OverallIcon = STATUS_META[overall].Icon
 
+  // Everything that isn't plainly healthy, worst-first — the plain-language
+  // list a non-technical reader scans to see WHAT needs attention, no clicks.
+  const attention = useMemo(
+    () => (checks || [])
+      .filter(c => c.status === 'crit' || c.status === 'warn' || c.status === 'unknown')
+      .sort((a, b) => (SORT_RANK[a.status] ?? 9) - (SORT_RANK[b.status] ?? 9)),
+    [checks]
+  )
+
   const groups = useMemo(() => {
     const g = { Pipeline: [], Data: [], Serving: [] }
     for (const ch of checks || []) (g[ch.group] || g.Serving).push(ch)
@@ -136,6 +165,34 @@ export default function SystemHealth({ onLogout, onNavigate }) {
           </button>
         </div>
       </div>
+
+      {/* Needs-attention — the plain-language "what's wrong" a non-technical
+          coworker reads first, without clicking into the map or the checks. */}
+      {checks && (
+        attention.length ? (
+          <div className="hs-attention">
+            <div className="hs-attention-head">
+              <AlertTriangle size={16} />
+              {attention.length === 1 ? '1 thing needs attention' : `${attention.length} things need attention`}
+            </div>
+            {attention.map(c => (
+              <div key={c.id} className={`hs-att-row st-${c.status}`}>
+                <span className="hs-att-badge">{c.status === 'crit' ? 'Broken' : c.status === 'warn' ? 'Watch' : 'Unknown'}</span>
+                <div className="hs-att-body">
+                  <span className="hs-att-what">{c.label} <span className="hs-att-where">· {c.group}</span></span>
+                  <span className="hs-att-why">{PLAIN[c.id] || c.help}</span>
+                </div>
+                <span className="hs-att-value">{c.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="hs-allclear">
+            <CheckCircle2 size={18} />
+            <span>Everything is running. Nothing needs your attention right now.</span>
+          </div>
+        )
+      )}
 
       {/* the map */}
       <GlassCard className="card" intensity={4}>
@@ -212,6 +269,15 @@ export default function SystemHealth({ onLogout, onNavigate }) {
           )
         })}
       </div>
+
+      {/* Tech-stack diagram — what powers all of the above */}
+      <GlassCard className="card hs-stack-card" intensity={3}>
+        <div className="card-header">
+          <span className="card-title"><Layers size={15} style={{ verticalAlign: '-2px' }} /> Tech stack</span>
+        </div>
+        <p className="hs-help">The technologies behind the system, in the order data flows through them.</p>
+        <TechStack />
+      </GlassCard>
     </div>
   )
 }
