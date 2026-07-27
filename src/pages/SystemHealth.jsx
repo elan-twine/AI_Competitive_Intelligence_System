@@ -115,6 +115,42 @@ export default function SystemHealth({ onLogout, onNavigate }) {
     return g
   }, [checks])
 
+  // One group card (title + its check rows). Shared by the two-column layout.
+  const renderGroup = (group, items = []) => {
+    const GIcon = GROUP_ICON[group]
+    return (
+      <GlassCard className="card hs-group" intensity={3}>
+        <div className="card-header">
+          <span className="card-title"><GIcon size={14} style={{ verticalAlign: '-2px' }} /> {group}</span>
+        </div>
+        {!checks && <p className="hs-help">Running checks…</p>}
+        {items.map(c => {
+          const { Icon } = STATUS_META[c.status] || STATUS_META.unknown
+          const trend = demo ? [] : trendFor(c.id).slice(-16)
+          const flaps = demo ? 0 : flapCount(c.id)
+          return (
+            <div key={c.id} className={`hs-check st-${c.status}`} title={c.help}>
+              <Icon size={15} className="hs-check-icon" />
+              <div className="hs-check-main">
+                <span className="hs-check-label">
+                  {c.label}
+                  {flaps >= 3 && <span className="hs-flap" title={`Status changed ${flaps}× recently`}>flapping</span>}
+                </span>
+                <span className="hs-check-detail">{c.detail}</span>
+              </div>
+              {trend.length > 1 && (
+                <span className="hs-trend" title={`Last ${trend.length} checks (oldest → newest)`}>
+                  {trend.map((s, i) => <i key={i} className={`st-${s}`} />)}
+                </span>
+              )}
+              <span className="hs-check-value">{c.value}</span>
+            </div>
+          )
+        })}
+      </GlassCard>
+    )
+  }
+
   const copyReport = async () => {
     const text = buildReport(checks, overall, demo ? null : ranAt)
     let ok = false
@@ -232,42 +268,15 @@ export default function SystemHealth({ onLogout, onNavigate }) {
         )}
       </GlassCard>
 
-      {/* the checks, grouped */}
+      {/* the checks, grouped. Two columns: Pipeline (tallest — 7 rows) on the
+          left; Data + Serving stacked on the right so the third group can't
+          overflow the container as it did in a 3-across grid. */}
       <div className="hs-groups">
-        {Object.entries(groups).map(([group, items]) => {
-          const GIcon = GROUP_ICON[group]
-          return (
-            <GlassCard key={group} className="card hs-group" intensity={3}>
-              <div className="card-header">
-                <span className="card-title"><GIcon size={14} style={{ verticalAlign: '-2px' }} /> {group}</span>
-              </div>
-              {!checks && <p className="hs-help">Running checks…</p>}
-              {items.map(c => {
-                const { Icon } = STATUS_META[c.status] || STATUS_META.unknown
-                const trend = demo ? [] : trendFor(c.id).slice(-16)
-                const flaps = demo ? 0 : flapCount(c.id)
-                return (
-                  <div key={c.id} className={`hs-check st-${c.status}`} title={c.help}>
-                    <Icon size={15} className="hs-check-icon" />
-                    <div className="hs-check-main">
-                      <span className="hs-check-label">
-                        {c.label}
-                        {flaps >= 3 && <span className="hs-flap" title={`Status changed ${flaps}× recently`}>flapping</span>}
-                      </span>
-                      <span className="hs-check-detail">{c.detail}</span>
-                    </div>
-                    {trend.length > 1 && (
-                      <span className="hs-trend" title={`Last ${trend.length} checks (oldest → newest)`}>
-                        {trend.map((s, i) => <i key={i} className={`st-${s}`} />)}
-                      </span>
-                    )}
-                    <span className="hs-check-value">{c.value}</span>
-                  </div>
-                )
-              })}
-            </GlassCard>
-          )
-        })}
+        <div className="hs-col">{renderGroup('Pipeline', groups.Pipeline)}</div>
+        <div className="hs-col">
+          {renderGroup('Data', groups.Data)}
+          {renderGroup('Serving', groups.Serving)}
+        </div>
       </div>
 
       {/* Tech-stack diagram — what powers all of the above */}
