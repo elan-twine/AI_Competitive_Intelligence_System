@@ -59,6 +59,10 @@
   animation: smFlow 1.1s linear infinite;
 }
 .sm-edge.near { stroke: var(--accent); stroke-width: 2; }
+/* hovering a node: its edges light up, everything unrelated fades way back —
+   the tracing aid for a dense graph */
+.sm-svg.hovering .sm-edge:not(.near) { opacity: 0.22; }
+.sm-edge { transition: opacity 0.15s, stroke 0.15s; }
 @keyframes smFlow { to { stroke-dashoffset: -12; } }
 @media (prefers-reduced-motion: reduce) { .sm-edge { animation: none; } }
 
