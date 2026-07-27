@@ -1,11 +1,27 @@
 import { useMemo, useState } from 'react'
-import { Activity, RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Database, Workflow, Server } from 'lucide-react'
+import { Activity, RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Database, Workflow, Server, ClipboardCopy } from 'lucide-react'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
 import { SystemMap } from '../components/SystemMap'
 import { useSystemHealth } from '../hooks/useSystemHealth'
+import { useHealthHistory } from '../hooks/useHealthHistory'
 import '../App.css'
 import './systemHealth.css'
+
+// Attention-first: problems bubble to the top of each group.
+const SORT_RANK = { crit: 0, warn: 1, unknown: 2, ok: 3, info: 4 }
+
+// Build a paste-ready markdown snapshot of the whole console — for a ticket,
+// Slack, or handing to an agent.
+function buildReport(checks, overall, ranAt) {
+  const line = (c) => `- [${c.status.toUpperCase()}] ${c.label}: ${c.value}${c.detail ? ` — ${c.detail}` : ''}`
+  const groups = { Pipeline: [], Data: [], Serving: [] }
+  for (const c of checks || []) (groups[c.group] || groups.Serving).push(c)
+  const body = Object.entries(groups)
+    .map(([g, items]) => `### ${g}\n${items.map(line).join('\n')}`)
+    .join('\n\n')
+  return `# SOV system health — ${overall.toUpperCase()}\n_${ranAt ? new Date(ranAt).toISOString() : 'unknown time'}_\n\n${body}\n`
+}
 
 // Developer console for the whole system: every stage of the pipeline as a
 // live, color-coded architecture map + the underlying checks as tiles.
@@ -46,6 +62,11 @@ export default function SystemHealth({ onLogout, onNavigate }) {
   const { checks: liveChecks, ranAt, running, refresh } = useSystemHealth({ paused: demo })
   const checks = demo ? DEMO_CHECKS : liveChecks
   const [selected, setSelected] = useState(null)
+  const [copyState, setCopyState] = useState('') // '' | 'ok' | 'fail'
+
+  // Persisted run history → per-check trend + flap detection (demo runs, which
+  // have no ranAt, are never recorded, so they can't pollute real history).
+  const { runCount, trendFor, flapCount } = useHealthHistory(liveChecks, ranAt)
 
   const counts = useMemo(() => {
     const c = { ok: 0, warn: 0, crit: 0, unknown: 0, info: 0 }
@@ -58,8 +79,23 @@ export default function SystemHealth({ onLogout, onNavigate }) {
   const groups = useMemo(() => {
     const g = { Pipeline: [], Data: [], Serving: [] }
     for (const ch of checks || []) (g[ch.group] || g.Serving).push(ch)
+    // Attention-first within each group: crit → warn → unknown → ok/info.
+    for (const k of Object.keys(g)) {
+      g[k].sort((a, b) => (SORT_RANK[a.status] ?? 9) - (SORT_RANK[b.status] ?? 9))
+    }
     return g
   }, [checks])
+
+  const copyReport = async () => {
+    const text = buildReport(checks, overall, demo ? null : ranAt)
+    let ok = false
+    try {
+      await navigator.clipboard.writeText(text)
+      ok = true
+    } catch { /* clipboard blocked (insecure context / no gesture) */ }
+    setCopyState(ok ? 'ok' : 'fail')
+    setTimeout(() => setCopyState(''), 1800)
+  }
 
   const selectedChecks = selected
     ? (checks || []).filter(c => selected.checks.includes(c.id))
@@ -83,6 +119,7 @@ export default function SystemHealth({ onLogout, onNavigate }) {
             {counts.unknown ? ` · ${counts.unknown} unknown` : ''}
             {ranAt && !demo ? ` — checked ${new Date(ranAt).toLocaleTimeString()}` : ''}
             {demo ? ' — demo data' : ''}
+            {!demo && runCount > 1 ? ` · ${runCount} runs tracked` : ''}
           </span>
         </div>
         <div className="hs-banner-actions">
@@ -91,6 +128,9 @@ export default function SystemHealth({ onLogout, onNavigate }) {
               demo
             </button>
           )}
+          <button className="refresh-btn" onClick={copyReport} disabled={!checks} title="Copy a paste-ready health report to the clipboard">
+            <ClipboardCopy size={13} /> {copyState === 'ok' ? 'copied!' : copyState === 'fail' ? 'copy failed' : 'Copy report'}
+          </button>
           <button className="refresh-btn" onClick={refresh} disabled={running || demo} title="Re-run all checks now">
             <RefreshCw size={13} className={running ? 'spin' : ''} /> {running ? 'checking…' : 'Re-check'}
           </button>
@@ -147,13 +187,23 @@ export default function SystemHealth({ onLogout, onNavigate }) {
               {!checks && <p className="hs-help">Running checks…</p>}
               {items.map(c => {
                 const { Icon } = STATUS_META[c.status] || STATUS_META.unknown
+                const trend = demo ? [] : trendFor(c.id).slice(-16)
+                const flaps = demo ? 0 : flapCount(c.id)
                 return (
                   <div key={c.id} className={`hs-check st-${c.status}`} title={c.help}>
                     <Icon size={15} className="hs-check-icon" />
                     <div className="hs-check-main">
-                      <span className="hs-check-label">{c.label}</span>
+                      <span className="hs-check-label">
+                        {c.label}
+                        {flaps >= 3 && <span className="hs-flap" title={`Status changed ${flaps}× recently`}>flapping</span>}
+                      </span>
                       <span className="hs-check-detail">{c.detail}</span>
                     </div>
+                    {trend.length > 1 && (
+                      <span className="hs-trend" title={`Last ${trend.length} checks (oldest → newest)`}>
+                        {trend.map((s, i) => <i key={i} className={`st-${s}`} />)}
+                      </span>
+                    )}
                     <span className="hs-check-value">{c.value}</span>
                   </div>
                 )
