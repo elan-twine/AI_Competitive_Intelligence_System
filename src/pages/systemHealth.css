@@ -110,12 +110,14 @@
 
 /* ---------- grouped check tiles ---------- */
 .hs-groups {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 24px;
+  align-items: start;
 }
-@media (max-width: 900px) { .hs-groups { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .hs-groups { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 680px) { .hs-groups { grid-template-columns: 1fr; } }
 .hs-check {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 10px; border-radius: 10px; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: 10px; margin-bottom: 8px;
   border: 1px solid var(--divider); background: var(--inner-bg);
 }
 .hs-check-icon { flex-shrink: 0; }
@@ -146,3 +148,80 @@
 .hs-trend i.st-crit { background: var(--hs-crit); }
 .hs-trend i.st-unknown { background: var(--hs-unknown); }
 @media (max-width: 1100px) { .hs-trend { display: none; } } /* narrow: drop the trend before the value wraps */
+
+/* ============================================================
+   NEEDS-ATTENTION panel — plain-language "what's wrong", read first
+   ============================================================ */
+.hs-attention {
+  border: 1px solid color-mix(in srgb, var(--hs-crit) 45%, transparent);
+  background: color-mix(in srgb, var(--hs-crit) 6%, var(--bg-card));
+  border-radius: 14px; padding: 16px 18px; margin-bottom: 20px;
+}
+.hs-attention-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
+  color: var(--hs-crit); margin-bottom: 12px;
+}
+.hs-att-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0; border-top: 1px solid var(--divider);
+}
+.hs-att-badge {
+  flex-shrink: 0; width: 66px; text-align: center;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 4px 0; border-radius: 999px;
+}
+.hs-att-row.st-crit .hs-att-badge { color: var(--hs-crit); background: color-mix(in srgb, var(--hs-crit) 16%, transparent); border: 1px solid color-mix(in srgb, var(--hs-crit) 45%, transparent); }
+.hs-att-row.st-warn .hs-att-badge { color: var(--hs-warn); background: color-mix(in srgb, var(--hs-warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--hs-warn) 45%, transparent); }
+.hs-att-row.st-unknown .hs-att-badge { color: var(--hs-unknown); background: var(--inner-bg); border: 1px solid var(--divider); }
+.hs-att-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.hs-att-what { font-size: 14px; font-weight: 650; color: var(--text-primary); }
+.hs-att-where { font-weight: 400; color: var(--text-muted); font-size: 12px; }
+.hs-att-why { font-size: 13px; color: var(--text-secondary); }
+.hs-att-value { margin-left: auto; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-secondary); }
+
+.hs-allclear {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--hs-ok) 40%, transparent);
+  background: color-mix(in srgb, var(--hs-ok) 7%, var(--bg-card));
+  color: var(--hs-ok); border-radius: 14px; padding: 16px 18px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 600;
+}
+.hs-allclear span { color: var(--text-primary); font-weight: 500; }
+
+/* ============================================================
+   TECH-STACK diagram — logo-forward, flow-ordered lanes
+   ============================================================ */
+.hs-stack-card { margin-top: 24px; }
+.ts-flow { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ts-lane { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ts-lane-label {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
+  color: var(--text-muted); align-self: flex-start; margin-left: 4px;
+}
+.ts-lane-items { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; width: 100%; }
+.ts-tile {
+  display: flex; align-items: center; gap: 14px;
+  min-width: 260px; flex: 0 1 340px;
+  padding: 14px 16px; border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--divider));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--brand) 12%, transparent), transparent 70%), var(--inner-bg);
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.ts-tile:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--brand) 60%, transparent);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--brand) 22%, transparent);
+}
+.ts-emblem {
+  flex-shrink: 0; width: 44px; height: 44px; border-radius: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent);
+}
+.ts-emblem svg { width: 26px; height: 26px; }
+.ts-tile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ts-name { font-size: 14.5px; font-weight: 700; color: var(--text-primary); }
+.ts-role { font-size: 12px; color: var(--text-secondary); }
+.ts-arrow { color: var(--text-muted); font-size: 16px; line-height: 1; opacity: 0.55; margin: 2px 0; }
