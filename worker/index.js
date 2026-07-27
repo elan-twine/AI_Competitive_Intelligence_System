@@ -1206,6 +1206,13 @@ export default {
     if (url.pathname === '/api/file-issue') return handleFileIssue(request, env)
     if (url.pathname === '/api/embed-posts') return handleEmbedPosts(request, env)
     if (url.pathname === '/api/enrich-competitor') return handleEnrichCompetitor(request, env)
+    // Shallow liveness probe for the System Health console. Deliberately
+    // public and secret-free: proves the Worker is deployed and answering.
+    if (url.pathname === '/api/health') {
+      return new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      })
+    }
     // Non-API path → static assets / SPA fallback.
     return env.ASSETS.fetch(request)
   },

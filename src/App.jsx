@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import Competitors from './pages/Competitors'
 import Equations from './pages/Equations'
 import About from './pages/About'
+import SystemHealth from './pages/SystemHealth'
 import { getSession, onAuthChange, signOut } from './lib/auth'
 import './App.css'
 
@@ -17,11 +18,12 @@ function getHashView() {
   if (hash === 'competitors') return 'competitors'
   if (hash === 'methodology') return 'methodology'
   if (hash === 'about') return 'about'
+  if (hash === 'health') return 'health'
   return 'landing'
 }
 
 // Views that require a live Supabase session.
-const GATED_VIEWS = new Set(['dashboard', 'competitors'])
+const GATED_VIEWS = new Set(['dashboard', 'competitors', 'health'])
 
 function App() {
   const [view, setView] = useState(getHashView)
@@ -119,6 +121,7 @@ function App() {
   if (effectiveView === 'competitors') return <Competitors onLogout={handleLogout} onNavigate={navigate} />
   if (effectiveView === 'methodology') return <Equations onLogout={handleLogout} onNavigate={navigate} />
   if (effectiveView === 'about') return <About onLogout={handleLogout} onNavigate={navigate} />
+  if (effectiveView === 'health') return <SystemHealth onLogout={handleLogout} onNavigate={navigate} />
 
   return <Landing onLoginSuccess={handleLoginSuccess} />
 }

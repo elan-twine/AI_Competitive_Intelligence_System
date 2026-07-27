@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Info, Brain, Users, LayoutDashboard, Sun, Moon, LogOut } from 'lucide-react'
+import { Info, Brain, Users, LayoutDashboard, Sun, Moon, LogOut, Activity } from 'lucide-react'
 
 // Shared top bar for every authed page (Dashboard, About, Methodology,
 // Competitors). One place owns the light/dark toggle — single source of truth is
@@ -30,6 +30,7 @@ export function AppHeader({ page, onNavigate, onLogout, view, onViewChange }) {
     { key: 'about', label: 'About — what this measures', Icon: Info, show: !!onNavigate && page !== 'About' },
     { key: 'methodology', label: 'Methodology — the math', Icon: Brain, show: !!onNavigate && page !== 'Methodology' },
     { key: 'competitors', label: 'Manage competitors', Icon: Users, show: !!onNavigate && page !== 'Competitors' },
+    { key: 'health', label: 'System health — pipeline & data console', Icon: Activity, show: !!onNavigate && page !== 'System health' },
   ]
 
   return (
