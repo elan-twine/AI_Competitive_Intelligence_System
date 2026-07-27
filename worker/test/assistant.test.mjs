@@ -209,10 +209,15 @@ test('get_company type is null when the substring is ambiguous across roster nam
 test('prompt caching: static system block + last tool carry cache_control', async () => {
   await ask('hi', { turn: () => textTurn('Hello.') })
   const body = rec.anthropicBodies[0]
-  assert.ok(Array.isArray(body.system) && body.system.length === 2)
+  // 3 blocks: [0] cached static prompt, [1] per-request date context, [2] UI state.
+  assert.ok(Array.isArray(body.system) && body.system.length === 3)
   assert.deepEqual(body.system[0].cache_control, { type: 'ephemeral' })
-  assert.equal(body.system[1].cache_control, undefined) // dynamic UI-state block uncached
-  assert.match(body.system[1].text, /UI STATE/)
+  assert.equal(body.system[1].cache_control, undefined) // dynamic date block uncached
+  assert.match(body.system[1].text, /DATE CONTEXT/)
+  assert.match(body.system[1].text, /Today is .+\d{4}-\d{2}-\d{2}/) // a real ISO date is injected
+  assert.match(body.system[1].text, /Q[1-4] = \d{4}-\d{2}-\d{2}/)   // quarter → date-range mapping present
+  assert.equal(body.system[2].cache_control, undefined) // dynamic UI-state block uncached
+  assert.match(body.system[2].text, /UI STATE/)
   const tools = body.tools
   assert.deepEqual(tools[tools.length - 1].cache_control, { type: 'ephemeral' })
   assert.equal(tools[0].cache_control, undefined)
