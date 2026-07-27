@@ -3,6 +3,13 @@ import { useRef, useCallback } from 'react'
 // Glass tilt + glare on mouse move. Pass `disabled: true` to keep the glare but
 // skip the 3D rotation/scale — used on panels with clickable children so hovering
 // controls doesn't shift the whole card around.
+// Tilt is deliberately SUBTLE: callers pass intensity 3–5 (a relative knob),
+// but we damp it hard and hard-cap the peak angle so even the biggest panels
+// only whisper a tilt rather than swinging. Raising these two makes the effect
+// more pronounced across the whole app; lowering them flattens it further.
+const TILT_DAMP = 0.3     // scales intensity → degrees
+const MAX_TILT_DEG = 1.6  // absolute ceiling on rotateX/rotateY, any intensity
+
 export function useGlassTilt({ intensity = 5, glareOpacity = 0.12, disabled = false } = {}) {
   const ref = useRef(null)
   // Whether we've already applied a tilt since the pointer engaged this card.
@@ -30,9 +37,12 @@ export function useGlassTilt({ intensity = 5, glareOpacity = 0.12, disabled = fa
       }
       const centerX = rect.width / 2
       const centerY = rect.height / 2
-      const rotateX = ((y - centerY) / centerY) * -intensity
-      const rotateY = ((x - centerX) / centerX) * intensity
-      el.style.transform = `perspective(800px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.01, 1.01, 1.01)`
+      const clamp = (v) => Math.max(-MAX_TILT_DEG, Math.min(MAX_TILT_DEG, v))
+      const rotateX = clamp(((y - centerY) / centerY) * -intensity * TILT_DAMP)
+      const rotateY = clamp(((x - centerX) / centerX) * intensity * TILT_DAMP)
+      // Softer perspective + barely-there scale so the tilt reads as a subtle
+      // shift of light, not a swinging panel.
+      el.style.transform = `perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.004, 1.004, 1.004)`
     }
 
     el.style.setProperty('--glare-x', `${glareX}%`)
