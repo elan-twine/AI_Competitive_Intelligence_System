@@ -931,11 +931,31 @@ async function handleAsk(request, env) {
       const priorTurns = storedTurns.length >= history.length ? storedTurns : history
       const lastTools = (Array.isArray(session.last_tools) ? session.last_tools : [])
         .filter(t => t && typeof t === 'object' && typeof t.name === 'string').slice(-3)
-      // Two system blocks: the big static one carries a cache breakpoint (identical
-      // across every call and every question → ~90% cheaper after the first call);
-      // only the tiny UI-state block varies per question.
+      // Date context so the model can resolve relative periods ("Q3", "last
+      // month", "this quarter", "YTD"). MUST live in a per-request block, never in
+      // the cached ASSISTANT_SYSTEM block — a date baked into the cached prefix
+      // would either poison the cache or go stale. All UTC (pipeline runs Israel
+      // time, but that's a sub-day skew irrelevant to date-range resolution).
+      const now = new Date()
+      const y = now.getUTCFullYear()
+      const mo = now.getUTCMonth() + 1
+      const qtr = Math.floor((mo - 1) / 3) + 1
+      const qStartMo = (qtr - 1) * 3 + 1
+      const pad = (n) => String(n).padStart(2, '0')
+      const qStart = `${y}-${pad(qStartMo)}-01`
+      const qEnd = `${y}-${pad(qStartMo + 2)}-${pad(new Date(Date.UTC(y, qStartMo + 2, 0)).getUTCDate())}`
+      const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getUTCDay()]
+      const dateContext = `DATE CONTEXT (today — use this to resolve any relative or calendar time period):
+- Today is ${weekday}, ${now.toISOString().slice(0, 10)} (UTC). We are currently in Q${qtr} ${y}.
+- Quarters (of ${y} unless the user names another year): Q1 = ${y}-01-01…${y}-03-31, Q2 = ${y}-04-01…${y}-06-30, Q3 = ${y}-07-01…${y}-09-30, Q4 = ${y}-10-01…${y}-12-31. The current quarter Q${qtr} is ${qStart}…${qEnd} but is IN PROGRESS — data only exists through today, so cap "until" at today and say so if the period isn't over.
+- To pull a specific period, resolve it to explicit since/until (YYYY-MM-DD) and pass them to query_data or search_posts. NEVER guess the year — derive it from today above. The get_board/get_company windows are only trailing 7/30/all — for a named calendar range (a quarter, a month, "since June"), use query_data with since/until, not those.`
+
+      // Three system blocks: the big static one carries the cache breakpoint
+      // (identical across every call → ~90% cheaper after the first). The date +
+      // UI-state blocks vary per question and sit after the breakpoint (uncached).
       const system = [
         { type: 'text', text: ASSISTANT_SYSTEM, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: dateContext },
         { type: 'text', text: 'UI STATE (what the user is currently looking at):\n' + JSON.stringify(uiState).slice(0, 1500) },
       ]
 
