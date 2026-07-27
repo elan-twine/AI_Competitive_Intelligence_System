@@ -480,7 +480,7 @@ function CompetitorTile({
         {editError && <div className="auth-error">{editError}</div>}
         {rowError && <div className="auth-error">{rowError}</div>}
         <div className="comp-tile-actions">
-          <button className="icon-btn comp-autofill" title="Let AI fill definition, keywords, collisions" disabled={enriching || isBusy} onClick={onAutoFill}>
+          <button className="comp-autofill" title="Let AI fill definition, keywords, collisions" disabled={enriching || isBusy} onClick={onAutoFill}>
             <Sparkles size={13} /> {enriching ? 'Filling…' : 'Auto-fill'}
           </button>
           <button className="icon-btn" title="Save" disabled={isBusy} onClick={onSave}><Check size={14} /></button>
