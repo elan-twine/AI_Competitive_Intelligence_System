@@ -44,7 +44,11 @@ const SUGGESTIONS = [
   'Report a data or weighting error',
 ]
 
-export function AssistantChat({ platform = 'All', windowLabel = 'current', tab = null, drilledCompany = null, onOpenCompany = null }) {
+// `pendingPrompt`: a one-shot prompt handed in by the host page (e.g. the
+// System Health page's "Ask assistant" button ships its health report here).
+// When it arrives the panel opens and the prompt is sent as if typed;
+// onPendingConsumed fires so the host can clear its state.
+export function AssistantChat({ platform = 'All', windowLabel = 'current', tab = null, drilledCompany = null, onOpenCompany = null, pendingPrompt = null, onPendingConsumed = null }) {
   const [open, setOpen] = useState(false)
   // Expanded = a roomier panel with larger type; remembered across sessions.
   const [expanded, setExpanded] = usePersistedState('twinesov:asst:expanded', false)
@@ -261,6 +265,18 @@ export function AssistantChat({ platform = 'All', windowLabel = 'current', tab =
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
+
+  // One-shot host-provided prompt (see prop doc above). Ref-guarded so the
+  // same prompt object can never double-send across re-renders; consuming it
+  // clears the host's state via onPendingConsumed.
+  const consumedPromptRef = useRef(null)
+  useEffect(() => {
+    if (!pendingPrompt || consumedPromptRef.current === pendingPrompt || busy) return
+    consumedPromptRef.current = pendingPrompt
+    setOpen(true)
+    send(pendingPrompt)
+    if (onPendingConsumed) onPendingConsumed()
+  }, [pendingPrompt, busy, send, onPendingConsumed])
 
   // Start a NEW chat: drop local messages and forget the active session id, so
   // the next send mints a fresh server conversation. The prior chat stays saved
