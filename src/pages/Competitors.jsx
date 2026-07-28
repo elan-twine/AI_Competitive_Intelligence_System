@@ -20,16 +20,20 @@ const nameFromSlug = (slug) =>
 const EMPTY_ADV = { aliases: '', linkedin_urn: '', domain: '', x_handle: '', subreddits: '', definition: '', keywords: '', collision_terms: '' }
 
 // Merge an /api/enrich-competitor result into an advanced-fields form object.
-// Only fills blanks / replaces with non-empty AI values; never clobbers with ''.
+// EXISTING VALUES ALWAYS WIN: Auto-fill only fills fields that are still
+// blank. The AI guesses (it once replaced a correct, human-entered X handle
+// with a hallucinated one), so it must never clobber anything a person typed
+// — clear a field first if you want the AI's suggestion for it.
+const keep = (prevVal, aiVal) => (String(prevVal || '').trim() ? prevVal : aiVal)
 const mergeEnrichment = (prev, e) => ({
   ...prev,
-  definition: e.definition || prev.definition,
-  keywords: e.keywords?.length ? e.keywords.join(', ') : prev.keywords,
-  collision_terms: e.collision_terms?.length ? e.collision_terms.join(', ') : prev.collision_terms,
-  aliases: e.aliases?.length ? e.aliases.join(', ') : prev.aliases,
-  domain: e.domain || prev.domain,
-  x_handle: e.x_handle || prev.x_handle,
-  subreddits: e.subreddits?.length ? e.subreddits.join(', ') : prev.subreddits,
+  definition: keep(prev.definition, e.definition || ''),
+  keywords: keep(prev.keywords, e.keywords?.length ? e.keywords.join(', ') : ''),
+  collision_terms: keep(prev.collision_terms, e.collision_terms?.length ? e.collision_terms.join(', ') : ''),
+  aliases: keep(prev.aliases, e.aliases?.length ? e.aliases.join(', ') : ''),
+  domain: keep(prev.domain, e.domain || ''),
+  x_handle: keep(prev.x_handle, e.x_handle || ''),
+  subreddits: keep(prev.subreddits, e.subreddits?.length ? e.subreddits.join(', ') : ''),
 })
 
 export default function Competitors({ onLogout, onNavigate }) {
