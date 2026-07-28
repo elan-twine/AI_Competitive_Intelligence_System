@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Activity, RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Database, Workflow, Server, ClipboardCopy, Layers } from 'lucide-react'
+import { Activity, RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Database, Workflow, Server, ClipboardCopy, Layers, MessageCircleQuestion } from 'lucide-react'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
 import { SystemMap } from '../components/SystemMap'
 import { TechStack } from '../components/TechStack'
+import { AssistantChat } from '../components/AssistantChat'
 import { useSystemHealth } from '../hooks/useSystemHealth'
 import { useHealthHistory } from '../hooks/useHealthHistory'
 import '../App.css'
@@ -162,6 +163,18 @@ export default function SystemHealth({ onLogout, onNavigate }) {
     setTimeout(() => setCopyState(''), 1800)
   }
 
+  // Ship the same report into the assistant and ask the question a
+  // non-technical reader would ask. The report rides in the user turn (data,
+  // not authority) and the assistant can verify with its own tools.
+  const [askPrompt, setAskPrompt] = useState(null)
+  const askAssistant = () => {
+    const report = buildReport(checks, overall, demo ? null : ranAt)
+    setAskPrompt(
+      "Here is the dashboard's current system health report:\n\n" + report +
+      "\nWhat's wrong or broken right now? Explain what each problem means in plain language, how urgent it is, and what to check or do next. If everything is healthy, just say so briefly."
+    )
+  }
+
   const selectedChecks = selected
     ? (checks || []).filter(c => selected.checks.includes(c.id))
     : null
@@ -193,6 +206,9 @@ export default function SystemHealth({ onLogout, onNavigate }) {
               demo
             </button>
           )}
+          <button className="refresh-btn" onClick={askAssistant} disabled={!checks} title="Send this health report to the assistant and ask what's wrong">
+            <MessageCircleQuestion size={13} /> Ask assistant
+          </button>
           <button className="refresh-btn" onClick={copyReport} disabled={!checks} title="Copy a paste-ready health report to the clipboard">
             <ClipboardCopy size={13} /> {copyState === 'ok' ? 'copied!' : copyState === 'fail' ? 'copy failed' : 'Copy report'}
           </button>
@@ -287,6 +303,10 @@ export default function SystemHealth({ onLogout, onNavigate }) {
         <p className="hs-help">The technologies behind the system, in the order data flows through them.</p>
         <TechStack />
       </GlassCard>
+
+      {/* Floating assistant — same one as the dashboard, so "Ask assistant"
+          can hand it the health report ("what's wrong/broken?"). */}
+      <AssistantChat tab="health" pendingPrompt={askPrompt} onPendingConsumed={() => setAskPrompt(null)} />
     </div>
   )
 }
