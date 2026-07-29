@@ -59,45 +59,32 @@
 }
 
 /* Rotating gradient border — always faintly visible, intensifies on hover */
+/* Restrained premium edge: a static 1px hairline (theme-aware), lit subtly
+   from the top. Replaces the always-rotating rainbow conic-gradient, which was
+   the loudest AI-UI tell on the app. No animation, no lime. */
 .glass-card::before {
   content: '';
   position: absolute;
-  inset: -1px;
+  inset: 0;
   border-radius: inherit;
-  padding: 2.5px;
-  background: conic-gradient(
-    from var(--border-angle, 0deg),
-    transparent 0%,
-    var(--glow-color) 12%,
-    transparent 25%,
-    transparent 50%,
-    var(--glow-color) 62%,
-    transparent 75%,
-    transparent 100%
-  );
+  padding: 1px;
+  background: linear-gradient(155deg,
+    color-mix(in srgb, var(--text-primary) 16%, transparent),
+    var(--border) 45%,
+    transparent 85%);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
-  opacity: var(--border-idle-opacity);
+  opacity: 1;
   transition: opacity 0.3s ease;
-  animation: rotateBorder 8s linear infinite;
 }
 
 .glass-card:hover::before {
-  opacity: 1;
-  background: conic-gradient(
-    from var(--border-angle, 0deg),
-    transparent 0%,
-    var(--glow-color) 10%,
-    var(--glow-color-hover) 20%,
-    transparent 30%,
-    transparent 50%,
-    var(--glow-color) 60%,
-    var(--glow-color-hover) 70%,
-    transparent 80%,
-    transparent 100%
-  );
+  background: linear-gradient(155deg,
+    color-mix(in srgb, var(--text-primary) 26%, transparent),
+    var(--border) 50%,
+    transparent 90%);
 }
 
 @keyframes rotateBorder {
@@ -114,7 +101,7 @@
 
 .glass-card:hover {
   background: var(--bg-card-hover);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15), 0 0 30px var(--glow-color);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.28);
 }
 
 .glass-glare {
@@ -261,25 +248,30 @@
 }
 
 .stat-card {
-  padding: 24px;
-  text-align: center;
+  padding: 22px 22px 20px;
+  text-align: left;
 }
 
 .stat-card .label {
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
+  letter-spacing: 1.4px;
   color: var(--text-muted);
-  margin-bottom: 10px;
-  text-align: center;
+  margin-bottom: 14px;
+  text-align: left;
 }
 
+/* Elevated+ finish: larger, lighter, tabular numerals, left-aligned — reads
+   more premium than the old centered 36/700 and removes the centered-everything
+   look. Accent (SOV %) stays lime; sentiment keeps its semantic color. */
 .stat-card .value {
-  font-size: 36px;
-  font-weight: 700;
-  letter-spacing: -1.5px;
+  font-size: 42px;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1;
   color: var(--text-primary);
-  text-align: center;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-card .value.accent {
@@ -296,8 +288,8 @@
 .stat-card .sub {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 6px;
-  text-align: center;
+  margin-top: 10px;
+  text-align: left;
 }
 
 /* ---- Main Grid ---- */
@@ -842,10 +834,11 @@
 }
 
 .breakdown-table tbody td {
-  padding: 10px 12px;
+  padding: 12px 12px;
   text-align: right;
   border-bottom: 1px solid var(--divider);
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .breakdown-table tbody tr:last-child td {
@@ -1227,8 +1220,8 @@
 
 .cr-post.sb-post { display: flex; align-items: flex-start; gap: 14px; padding: 6px 0; }
 .sb-post .cr-post-main { flex: 1; min-width: 0; }
-.sb-rated-up { border-left: 3px solid var(--positive); padding-left: 10px; }
-.sb-rated-down { border-left: 3px solid var(--negative); padding-left: 10px; opacity: 0.68; }
+.sb-rated-up { padding-left: 10px; border-radius: 7px; background: linear-gradient(90deg, color-mix(in srgb, var(--positive) 11%, transparent), transparent 55%); }
+.sb-rated-down { padding-left: 10px; opacity: 0.68; border-radius: 7px; background: linear-gradient(90deg, color-mix(in srgb, var(--negative) 11%, transparent), transparent 55%); }
 
 .sb-vote { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 .sb-vote-btn {
@@ -1302,7 +1295,7 @@
   font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); background: var(--bg-card);
   border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums;
 }
-.poi-co-items { display: flex; flex-direction: column; gap: 8px; padding-left: 18px; border-left: 2px solid var(--border); }
+.poi-co-items { display: flex; flex-direction: column; gap: 8px; padding-left: 18px; border-left: 1px solid var(--divider); }
 
 .poi-row {
   display: flex; flex-direction: column; gap: 5px; text-decoration: none;
