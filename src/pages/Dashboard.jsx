@@ -235,6 +235,11 @@ function Dashboard({ onLogout, onNavigate }) {
   const twineIdx = boardRanked.findIndex(r => isTwine(r.company))
   const twineRow = twineIdx >= 0 ? boardRanked[twineIdx] : null
   const twineRank = twineIdx >= 0 ? twineIdx + 1 : null
+  // Top SOV in the current board — scales the leaderboard share-bars.
+  const boardMax = boardRanked.length ? Math.max(...boardRanked.map(r => r.weightedPct || 0), 1) : 1
+  // Points Twine trails the #3 slot by (the OKR target) — null when already top-3.
+  const gapToTop3 = (twineRank && twineRank > 3 && boardRanked.length >= 3 && twineRow)
+    ? (boardRanked[2].weightedPct - twineRow.weightedPct) : null
 
   const cmp = compareA && compareB ? compare(filtered, compareA, compareB, sovConfig) : null
 
@@ -365,13 +370,18 @@ function Dashboard({ onLogout, onNavigate }) {
               {
                 label: 'Twine Rank',
                 value: twineRank ? `#${twineRank}` : '—',
-                sub: boardRanked.length ? `overall, of ${boardRanked.length}` : 'no data',
+                unit: twineRank && boardRanked.length ? `/ ${boardRanked.length}` : '',
+                // OKR: top-3 on SOV. Chip flags on/off target; sub shows the gap.
+                chip: twineRank ? (twineRank <= 3 ? { text: '✓ in top 3', tone: 'up' } : { text: '⚠ target top 3', tone: 'warn' }) : null,
+                alert: !!(twineRank && twineRank > 3),
+                sub: gapToTop3 != null ? `${gapToTop3.toFixed(1)} pts to #3` : (boardRanked.length ? `of ${boardRanked.length} direct` : 'no data'),
                 color: twineRank === 1 ? 'var(--positive)' : undefined,
-                hint: 'Where Twine places among direct competitors, ranked by SOV % (higher = more of the conversation).',
+                hint: 'Where Twine places among direct competitors, ranked by SOV % (higher = more of the conversation). OKR: reach the top 3.',
               },
               {
                 label: 'Twine SOV %',
-                value: twineRow ? `${twineRow.overall.toFixed(1)}%` : '—',
+                value: twineRow ? twineRow.overall.toFixed(1) : '—',
+                unit: twineRow ? '%' : '',
                 sub: twineRow ? `${twineRow.postCount} items` : 'not in filter',
                 accent: true,
                 hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors.',
@@ -382,8 +392,8 @@ function Dashboard({ onLogout, onNavigate }) {
                   ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(2)}`
                   : '—',
                 sub: twineRow && twineRow.sentimentCount
-                  ? `Scale: -3 to +3 · ${twineRow.sentimentCount} rated item${twineRow.sentimentCount === 1 ? '' : 's'}`
-                  : 'no rated external items in this window',
+                  ? `−3 to +3 · ${twineRow.sentimentCount} rated`
+                  : 'no rated external items',
                 color: twineRow && twineRow.sentimentCount
                   ? (twineRow.avgSentiment > 0 ? 'var(--positive)' : twineRow.avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)')
                   : undefined,
@@ -391,17 +401,20 @@ function Dashboard({ onLogout, onNavigate }) {
               },
               {
                 label: 'Twine Items',
-                value: twineRow ? twineRow.postCount : '—',
-                sub: twineRow ? (twineRow.postCount === 1 ? 'item in current view' : 'items in current view') : 'not in filter',
+                value: twineRow ? String(twineRow.postCount) : '—',
+                sub: twineRow ? `attributed · ${windowLabel}` : 'not in filter',
                 hint: 'Number of items attributed to Twine in the current view.',
               },
             ].map((stat, i) => (
-              <GlassCard key={i} className="stat-card" intensity={10} title={stat.hint}>
+              <GlassCard key={i} className={`stat-card ${stat.alert ? 'alert' : ''}`} intensity={10} title={stat.hint}>
                 <div className="label">{stat.label}</div>
                 <div className={`value ${stat.accent ? 'accent' : ''}`} style={stat.color ? { color: stat.color } : {}}>
-                  {stat.value}
+                  {stat.value}{stat.unit ? <span className="unit">{stat.unit}</span> : null}
                 </div>
-                <div className="sub">{stat.sub}</div>
+                <div className="sub">
+                  {stat.chip ? <span className={`kpi-chip ${stat.chip.tone}`}>{stat.chip.text}</span> : null}
+                  {stat.sub ? <span>{stat.sub}</span> : null}
+                </div>
               </GlassCard>
             ))}
           </div>
@@ -473,7 +486,10 @@ function Dashboard({ onLogout, onNavigate }) {
                         onClick={() => setDrilledCompany(r.company)}
                         title={`Why is ${r.company}'s SOV ${r.weightedPct.toFixed(1)}%? — click to drill in`}
                       >
-                        <td className="col-company">{r.company}</td>
+                        <td className="col-company">
+                          <span className="bt-name">{r.company}</span>
+                          <span className="bt-meter"><i style={{ width: `${Math.max(2, (r.weightedPct / boardMax) * 100)}%` }} /></span>
+                        </td>
                         <td>{r.postCount}</td>
                         <td><strong style={{ color: 'var(--accent)' }}>{r.weightedPct.toFixed(1)}%</strong></td>
                         <td

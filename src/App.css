@@ -290,6 +290,27 @@
   color: var(--text-muted);
   margin-top: 10px;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* smaller, muted unit inside a KPI value (%, / N) */
+.stat-card .value .unit { font-size: 0.46em; color: var(--text-muted); font-weight: 500; letter-spacing: 0; margin-left: 3px; }
+
+/* status chip beside a KPI caption (e.g. OKR flag) */
+.kpi-chip { font-size: 11px; font-weight: 650; padding: 2px 9px; border-radius: 999px; line-height: 1.5; white-space: nowrap; }
+.kpi-chip.up   { color: var(--positive); background: color-mix(in srgb, var(--positive) 14%, transparent); }
+.kpi-chip.dn   { color: var(--negative); background: color-mix(in srgb, var(--negative) 14%, transparent); }
+.kpi-chip.warn { color: #f0b53e; background: rgba(245, 181, 68, 0.14); }
+[data-theme="light"] .kpi-chip.warn { color: #8a5d00; background: rgba(245, 181, 68, 0.22); }
+
+/* OKR cards flagged with a subtle amber top rail */
+.stat-card.alert::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  border-radius: var(--radius) var(--radius) 0 0; z-index: 2;
+  background: linear-gradient(90deg, #f0b53e, transparent 72%);
 }
 
 /* ---- Main Grid ---- */
@@ -852,6 +873,19 @@
 .breakdown-table .col-company {
   text-align: left;
   font-weight: 500;
+}
+/* share-of-voice bar under each company name (the artifact's meter leaderboard) */
+.breakdown-table .col-company .bt-name { display: block; }
+.breakdown-table .col-company .bt-meter {
+  display: block; height: 5px; max-width: 220px; margin-top: 7px;
+  border-radius: 3px; background: var(--inner-bg); overflow: hidden;
+}
+.breakdown-table .col-company .bt-meter i {
+  display: block; height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 38%, var(--border)), color-mix(in srgb, var(--accent) 78%, transparent));
+}
+.breakdown-table tr.is-twine .col-company .bt-meter i {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent));
 }
 
 .breakdown-table td.positive { color: var(--positive); }
