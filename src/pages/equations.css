@@ -157,7 +157,7 @@
   flex: 0 0 auto;
 }
 .eq-formula {
-  font-family: 'Space Grotesk', monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 14px;
   letter-spacing: -0.3px;
   color: var(--text-primary);
@@ -173,7 +173,7 @@
   font-style: italic;
 }
 .eq-inline {
-  font-family: 'Space Grotesk', monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   background: var(--inner-bg);
   border: 1px solid var(--divider);
   border-radius: 5px;
@@ -184,9 +184,9 @@
 
 /* ---- Callout ---- */
 .meth-callout {
-  background: var(--inner-bg);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: color-mix(in srgb, var(--accent) 7%, var(--inner-bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+  border-radius: var(--radius-sm);
   padding: 11px 14px;
   font-size: 13px;
   line-height: 1.55;
@@ -278,10 +278,10 @@
 /* ================================================================== */
 .hero-wrap { margin: 8px 0 4px; }
 .hero-svg { display: block; }
-.hero-node-text { font-size: 10.5px; font-weight: 600; font-family: 'Space Grotesk', sans-serif; }
+.hero-node-text { font-size: 10.5px; font-weight: 600; font-family: -apple-system, system-ui, sans-serif; }
 .hero-disc-text { font-size: 14px; font-weight: 700; }
 .hero-disc-sub { font-size: 10px; font-weight: 600; }
-.hero-mini { font-size: 9.5px; font-weight: 600; font-family: 'Space Grotesk', sans-serif; }
+.hero-mini { font-size: 9.5px; font-weight: 600; font-family: -apple-system, system-ui, sans-serif; }
 .hero-caption {
   font-size: 11.5px;
   color: var(--text-muted);
@@ -295,8 +295,8 @@
 .eng-bars { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 12px 0; }
 .eng-set-name { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
 .eng-svg { display: block; }
-.eng-term { font-size: 10px; fill: var(--text-muted); font-family: 'Space Grotesk', monospace; }
-.eng-coef { font-size: 10px; fill: var(--text-secondary); font-weight: 600; font-family: 'Space Grotesk', monospace; }
+.eng-term { font-size: 10px; fill: var(--text-muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.eng-coef { font-size: 10px; fill: var(--text-secondary); font-weight: 600; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 
 /* ================================================================== */
 /*  Charts — clip wrapper (glass-card is overflow:visible)            */
@@ -328,7 +328,7 @@
 /*  sentMult ramp                                                     */
 /* ================================================================== */
 .ramp-wrap { margin: 14px 0 4px; overflow: visible; }
-.ramp-tick { font-size: 10px; fill: var(--text-muted); font-family: 'Space Grotesk', monospace; }
+.ramp-tick { font-size: 10px; fill: var(--text-muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 .ramp-out { font-size: 11px; fill: var(--text-secondary); font-weight: 600; }
 .ramp-mark { font-size: 10px; fill: var(--accent); font-weight: 700; }
 
@@ -343,7 +343,7 @@
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 12.5px;
-  font-family: 'Space Grotesk', monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--text-primary);
 }
 .bus-core { display: inline-flex; align-items: center; gap: 8px; padding: 5px; border: 1px dashed var(--accent); border-radius: 10px; }
