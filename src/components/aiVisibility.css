@@ -93,10 +93,10 @@
 .geo-prompt-topic-name .geo-topic-meta { margin-left: auto; }
 .geo-prompt-row {
   display: flex; gap: 12px; padding: 10px 12px; margin-bottom: 6px;
-  border: 1px solid var(--border); border-left: 3px solid var(--positive);
-  border-radius: 8px; background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px; background: color-mix(in srgb, var(--positive) 7%, var(--bg-card));
 }
-.geo-prompt-row.miss { border-left-color: var(--negative); background: color-mix(in srgb, var(--negative) 6%, transparent); }
+.geo-prompt-row.miss { background: color-mix(in srgb, var(--negative) 7%, transparent); }
 .geo-prompt-status { flex: 0 0 auto; font-weight: 800; font-size: 0.9rem; line-height: 1.5; }
 .geo-prompt-status.hit { color: var(--positive); }
 .geo-prompt-status.miss { color: var(--negative); }
