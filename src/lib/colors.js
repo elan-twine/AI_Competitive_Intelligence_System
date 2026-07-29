@@ -15,32 +15,35 @@
 // stroke handled at the call site.
 
 // Distinct line colors for competitors. Twine is handled separately (accent
-// token #DBFE02 chartreuse — no yellow-greens near the top of this list), so
-// this palette is for everyone else. ORDER MATTERS: roster slots are assigned
+// token #DBFE02 chartreuse — no yellow-greens anywhere in this list so lime
+// stays exclusively Twine's), and this palette is for everyone else. MUTED by
+// design (premium finish, 2026-07-29): ~40-50% saturation, mid lightness, so
+// eleven simultaneous lines read as a calm field with Twine's lime as the
+// protagonist — not a rainbow. ORDER MATTERS: roster slots are assigned
 // front-to-back, so the first ~13 hues are tuned for maximum mutual
-// separation; the tail is headroom for roster growth. Mid-saturation /
-// mid-lightness so each reads on BOTH the light and dark themes.
+// separation; the tail is headroom for roster growth. Each survives BOTH the
+// light and dark themes (darker than the dark-only mock pastels on purpose).
 export const LINE_COLORS = [
-  '#E6194B', // red
-  '#3CB44B', // green
-  '#4363D8', // blue
-  '#F58231', // orange
-  '#911EB4', // purple
-  '#00A5CF', // sky/cyan
-  '#F032E6', // magenta
-  '#808000', // olive
-  '#008080', // teal
-  '#E377C2', // pink
-  '#9A6324', // brown
-  '#6A00FF', // indigo/violet
-  '#708090', // slate
-  '#D45500', // burnt orange
-  '#C7A500', // dark gold
-  '#469990', // deep cyan-teal
-  '#A0522D', // sienna
-  '#556B2F', // dark olive-green
-  '#B8478F', // plum/berry
-  '#2F4F4F', // dark slate teal
+  '#7C9BE6', // soft blue
+  '#B48FD9', // lavender
+  '#56B79F', // teal
+  '#DD9A62', // sand orange
+  '#D98BA8', // rose
+  '#8B95A7', // slate
+  '#5FA8CC', // sky
+  '#C08472', // terracotta
+  '#7FAF7C', // sage
+  '#C2A05F', // camel
+  '#9A8FE0', // periwinkle
+  '#D9857A', // coral
+  '#6FB5AD', // aqua
+  '#B786BD', // orchid
+  '#8598D9', // cornflower
+  '#C99270', // caramel
+  '#74AE9A', // pine
+  '#B08D9E', // mauve
+  '#98A6C4', // powder slate
+  '#C4907F', // clay
 ]
 
 export const isTwine = (name) => /twine/i.test(name || '')

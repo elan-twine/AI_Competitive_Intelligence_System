@@ -419,7 +419,8 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
       )}
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.25} vertical={false} />
+          {/* Solid faint hairlines (not dashes) — the calmer grid of the approved mock. */}
+          <CartesianGrid stroke="var(--border)" opacity={0.22} vertical={false} />
           <XAxis
             dataKey="t"
             type="number"
@@ -427,7 +428,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
             domain={['dataMin', 'dataMax']}
             ticks={xTicks}
             tickFormatter={fmtTick}
-            tick={{ fill: 'var(--text-secondary)', fontSize: 12 }}
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
             tickLine={false}
             axisLine={{ stroke: 'var(--border)', opacity: 0.4 }}
             minTickGap={28}
@@ -436,7 +437,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
             domain={yDomain}
             allowDecimals={isSentiment}
             ticks={sentimentTicks}
-            tick={{ fill: 'var(--text-secondary)', fontSize: 12 }}
+            tick={{ fill: 'var(--text-muted)', fontSize: 10.5, fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace' }}
             tickLine={false}
             axisLine={false}
             label={{
@@ -492,14 +493,26 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
             onClick={(o) => toggle(o.dataKey || o.value)}
             onMouseEnter={(o) => setActive(o.dataKey || o.value)}
             onMouseLeave={() => setActive(null)}
-            formatter={(value) => (
-              <span style={{
-                color: hidden.has(value) ? 'var(--text-tertiary, #888)' : 'var(--text-secondary)',
-                opacity: hidden.has(value) ? 0.4 : 1,
-                textDecoration: hidden.has(value) ? 'line-through' : 'none',
-                cursor: 'pointer',
-              }}>{value}</span>
-            )}
+            formatter={(value) => {
+              // The mock's legend carries each company's current value — shown on
+              // the SOV chart when the live standings ("Now" tip) are available.
+              const nv = metric === 'overall' && nowValues ? nowValues[value] : null
+              return (
+                <span style={{
+                  color: hidden.has(value) ? 'var(--text-tertiary, #888)' : 'var(--text-secondary)',
+                  opacity: hidden.has(value) ? 0.4 : 1,
+                  textDecoration: hidden.has(value) ? 'line-through' : 'none',
+                  cursor: 'pointer',
+                }}>
+                  {value}
+                  {nv != null && !isNaN(nv) ? (
+                    <span style={{ color: 'var(--text-muted)', marginLeft: 5, fontVariantNumeric: 'tabular-nums' }}>
+                      {Number(nv).toFixed(1)}%
+                    </span>
+                  ) : null}
+                </span>
+              )
+            }}
           />
           {lines.map(name => {
             const twine = isTwine(name)
@@ -512,8 +525,10 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
                 dataKey={name}
                 name={name}
                 stroke={color}
-                strokeWidth={active === name ? (twine ? 4.5 : 3) : (twine ? 3.25 : 1.75)}
-                strokeOpacity={dim ? 0.16 : 1}
+                // Mock treatment: Twine's lime line is the bold protagonist; the
+                // field sits at a calmer weight + opacity so 11 lines stay readable.
+                strokeWidth={active === name ? (twine ? 4 : 3) : (twine ? 3 : 1.8)}
+                strokeOpacity={dim ? 0.14 : (twine || active === name ? 1 : 0.75)}
                 hide={hidden.has(name)}
                 dot={(props) => {
                   const { cx, cy, payload, index } = props
@@ -521,7 +536,10 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
                   if (payload.__fill) return null // daily-cumulative value: on the line, not drawn
                   const real = payload.__weekly || payload.week === 'Now' || payload.__inProgress
                   if (!real && data.length > 16) return null // dense daily/rolling views stay clean
-                  return <circle key={`${name}-${index}`} cx={cx} cy={cy} r={twine ? 3 : 2} fill={color} />
+                  // Emphasized endpoint at the live tip (the mock's terminal dot).
+                  const tip = payload.week === 'Now' || payload.__inProgress
+                  const r = tip ? (twine ? 4 : 2.6) : (twine ? 3 : 2)
+                  return <circle key={`${name}-${index}`} cx={cx} cy={cy} r={r} fill={color} />
                 }}
                 activeDot={{ r: twine ? 6 : 4 }}
                 connectNulls
