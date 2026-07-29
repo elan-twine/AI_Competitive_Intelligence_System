@@ -38,11 +38,29 @@
 }
 
 body {
-  font-family: 'Space Grotesk', -apple-system, sans-serif;
+  /* Premium native UI face (SF Pro on macOS) — replaces Space Grotesk, which
+     the audit flagged as the "safe / AI-default" display font. Tighter, cleaner,
+     more expensive-feeling. Methodology's formula labels keep Space Grotesk. */
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+  letter-spacing: -0.01em;
   background: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+}
+
+/* App-wide accessibility baseline (audit P1 items) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;        /* kill decorative/looping motion */
+    transition-duration: 0.12s !important; /* keep quick state feedback, drop long moves */
+    scroll-behavior: auto !important;
+  }
 }
 
 #root {
