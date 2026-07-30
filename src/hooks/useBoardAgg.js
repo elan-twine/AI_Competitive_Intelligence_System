@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { boardFromAgg } from '../lib/boardAgg'
+import { getCache, setCache } from '../lib/cache'
 
 // RPC-backed board: fetches sov_board_agg (per-company/platform weight sums —
 // ~60 tiny rows computed in Postgres) and derives the ranked board. This is
@@ -20,16 +21,34 @@ export function useBoardAgg(windowDays, { platforms, competitors, multipliers } 
 
   const wd = windowDays == null || windowDays <= 0 ? null : Math.round(windowDays)
 
-  // Stale-while-revalidate: on a window change the previous rows stay rendered
-  // while the new window fetches (~300ms), then swap — no flicker. All state
-  // updates happen in async continuations (react-hooks/set-state-in-effect).
+  // Stale-while-revalidate, cache-first: the cached RPC rows (tiny) paint the
+  // board instantly on reload — the CORRECT numbers, so the posts-computed
+  // fallback never flashes a slightly-different value first (it counts
+  // multi-company posts once and can't exclude misattributed ones the way the
+  // RPC does). The network response then swaps in and refreshes the cache.
+  // On a window change the previous rows stay rendered while the new window
+  // fetches (~300ms), then swap — no flicker. All state updates happen in
+  // async continuations (react-hooks/set-state-in-effect).
   useEffect(() => {
     let alive = true
+    const key = `board_agg_${wd == null ? 'all' : wd}`
+    if (tick === 0) {
+      getCache(key)
+        .then((c) => {
+          // Never overwrite rows the network (or another window) already set.
+          if (alive && c && Array.isArray(c.data)) { setRows(prev => prev ?? c.data); setLoading(false) }
+        })
+        .catch(() => { /* cache miss/parse error — network path below covers it */ })
+    }
     supabase.rpc('sov_board_agg', { window_days: wd })
       .then(({ data, error: err }) => {
         if (!alive) return
         if (err) { setError(err.message || 'board query failed') }
-        else { setRows(Array.isArray(data) ? data : []); setError(null) }
+        else {
+          const rowsNow = Array.isArray(data) ? data : []
+          setRows(rowsNow); setError(null)
+          setCache(key, rowsNow).catch(() => { /* quota/disabled — next load refetches */ })
+        }
         setLoading(false)
       })
       .catch((e) => { if (alive) { setError(e?.message || String(e)); setLoading(false) } })
