@@ -247,26 +247,33 @@
   margin-bottom: 32px;
 }
 
+/* Mock density: compact 16/18 padding, tight 3-row stack. overflow hidden so
+   the OKR rail hugs the rounded top edge exactly like the mock. */
 .stat-card {
-  padding: 22px 22px 20px;
+  padding: 16px 18px 14px;
   text-align: left;
+  overflow: hidden;
 }
 
 .stat-card .label {
   font-size: 11px;
+  font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 1.4px;
   color: var(--text-muted);
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   text-align: left;
 }
+/* Mock hierarchy: labels + captions sit at FAINT (darker than muted) in dark
+   mode, so the numerals carry the card. */
+[data-theme="dark"] .stat-card .label { color: #5e6474; }
 
 /* Elevated+ finish: larger, lighter, tabular numerals, left-aligned — reads
    more premium than the old centered 36/700 and removes the centered-everything
    look. Accent (SOV %) stays lime; sentiment keeps its semantic color. */
 .stat-card .value {
-  font-size: 42px;
-  font-weight: 500;
+  font-size: 44px;
+  font-weight: 560;
   letter-spacing: -0.035em;
   line-height: 1;
   color: var(--text-primary);
@@ -275,8 +282,7 @@
 }
 
 .stat-card .value.accent {
-  color: var(--accent);
-  text-shadow: 0 0 18px rgba(219, 254, 2, 0.35);
+  color: var(--accent);   /* crisp lime, no glow — the mock's haze-free treatment */
 }
 
 [data-theme="light"] .stat-card .value.accent {
@@ -288,9 +294,37 @@
 .stat-card .sub {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 10px;
+  margin-top: 8px;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
+[data-theme="dark"] .stat-card .sub { color: #6a7183; }
+
+/* smaller, muted unit inside a KPI value (%, / N) — mock's .42em/600 */
+.stat-card .value .unit { font-size: 0.42em; color: var(--text-muted); font-weight: 600; letter-spacing: 0; margin-left: 3px; }
+
+/* status chip beside a KPI caption (e.g. OKR flag) */
+.kpi-chip { font-size: 11px; font-weight: 650; padding: 2px 9px; border-radius: 999px; line-height: 1.5; white-space: nowrap; }
+.kpi-chip.up   { color: var(--positive); background: color-mix(in srgb, var(--positive) 14%, transparent); }
+.kpi-chip.dn   { color: var(--negative); background: color-mix(in srgb, var(--negative) 14%, transparent); }
+.kpi-chip.warn { color: #f6c14e; background: rgba(246, 193, 78, 0.14); }
+[data-theme="light"] .kpi-chip.warn { color: #8a5d00; background: rgba(245, 181, 68, 0.22); }
+.kpi-chip.fl   { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 12%, transparent); }
+
+/* Week-over-week rail across the top of every KPI card — green: improved vs
+   last week, red: declined, amber: roughly unchanged. Flush to the top edge,
+   fading fully across (the card's overflow:hidden rounds its corners). */
+.stat-card.rail-up::after,
+.stat-card.rail-dn::after,
+.stat-card.rail-fl::after {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; z-index: 2;
+}
+.stat-card.rail-up::after { background: linear-gradient(90deg, var(--positive), transparent); }
+.stat-card.rail-dn::after { background: linear-gradient(90deg, var(--negative), transparent); }
+.stat-card.rail-fl::after { background: linear-gradient(90deg, #f6c14e, transparent); }
 
 /* ---- Main Grid ---- */
 .main-grid {
@@ -766,13 +800,20 @@
   font-weight: 700;
 }
 
+/* Twine's row — the mock's treatment: a lime tint that fades across the row,
+   framed by hairline lime rules (borders live on the cells; a <tr> can't carry
+   its own border with collapsed tables). */
+.breakdown-table tr.is-twine {
+  background: linear-gradient(90deg, rgba(219, 254, 2, 0.09), rgba(219, 254, 2, 0.02));
+}
 .breakdown-table tr.is-twine td {
-  background: var(--accent-dim);
+  border-top: 1px solid rgba(219, 254, 2, 0.22);
+  border-bottom: 1px solid rgba(219, 254, 2, 0.22);
 }
 
 .breakdown-table tr.is-twine .col-company {
   color: var(--accent);
-  font-weight: 700;
+  font-weight: 660;
 }
 
 /* ---- Light-mode green text readability ---- */
@@ -808,16 +849,20 @@
 }
 
 .breakdown-table thead th {
-  font-size: 11px;
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 1.2px;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 650;
   padding: 8px 12px;
   text-align: right;
   border-bottom: 1px solid var(--divider);
   white-space: nowrap;
 }
+/* mock hierarchy: column captions sit at faint in dark mode */
+[data-theme="dark"] .breakdown-table thead th { color: #5e6474; }
+[data-theme="dark"] .breakdown-table thead th.sortable:hover { color: var(--text-secondary); }
+[data-theme="dark"] .breakdown-table thead th.sortable.active { color: var(--accent); }
 
 .breakdown-table thead th.sortable {
   cursor: pointer;
@@ -834,7 +879,7 @@
 }
 
 .breakdown-table tbody td {
-  padding: 12px 12px;
+  padding: 11px 12px;
   text-align: right;
   border-bottom: 1px solid var(--divider);
   color: var(--text-primary);
@@ -851,8 +896,42 @@
 
 .breakdown-table .col-company {
   text-align: left;
-  font-weight: 500;
+  font-weight: 540;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+/* rank column — quiet fixed gutter (each company's SOV rank, sort-independent) */
+.breakdown-table .col-rank {
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.breakdown-table thead th.col-rank { cursor: default; }
+
+/* Share of Voice cell — the mock's meter leaderboard: bar + percent side by side */
+.breakdown-table .col-share { text-align: left; }
+.breakdown-table .share-cell { display: flex; align-items: center; gap: 12px; }
+.breakdown-table .bt-meter {
+  flex: 1 1 auto; min-width: 70px; height: 6px;
+  border-radius: 4px; background: rgba(0, 0, 0, 0.08); overflow: hidden;
+}
+[data-theme="dark"] .breakdown-table .bt-meter { background: rgba(255, 255, 255, 0.07); }
+.breakdown-table .bt-meter i {
+  display: block; height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 38%, var(--border)), color-mix(in srgb, var(--accent) 78%, transparent));
+}
+.breakdown-table tr.is-twine .bt-meter i {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent));
+}
+/* Lime is reserved for Twine — everyone else's percent stays ink (mock treatment). */
+.breakdown-table .bt-pct {
+  font-weight: 700; font-size: 14px; min-width: 56px;
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.breakdown-table tr.is-twine .bt-pct { color: var(--accent); }
+[data-theme="light"] .breakdown-table tr.is-twine .bt-pct { color: #3f4a00; }
 
 .breakdown-table td.positive { color: var(--positive); }
 .breakdown-table td.negative { color: var(--negative); }
