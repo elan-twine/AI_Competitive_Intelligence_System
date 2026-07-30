@@ -304,7 +304,14 @@ function Dashboard({ onLogout, onNavigate }) {
     if (companies.length > 1 && !compareB) setCompareB(companies[1])
   }, [companies, compareA, compareB])
 
-  if (loading) {
+  // Hold the spinner until BOTH the posts and the RPC board have settled:
+  // painting the posts-computed fallback while the RPC is still in flight
+  // flashed slightly different numbers (the fallback counts multi-company
+  // posts once and can't exclude misattributed ones), then "corrected" itself
+  // half a second later. With the RPC rows now cached this gate only bites on
+  // a truly cold first visit; if the RPC errors, agg.loading settles false and
+  // the fallback renders as before.
+  if (loading || (agg.loading && !agg.board)) {
     return (
       <div className="loading-screen">
         <div className="spinner" />
