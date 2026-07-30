@@ -855,7 +855,7 @@
 .breakdown-table thead th {
   font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 1.1px;
+  letter-spacing: 1.2px;
   color: var(--text-muted);
   font-weight: 650;
   padding: 8px 12px;
@@ -863,6 +863,10 @@
   border-bottom: 1px solid var(--divider);
   white-space: nowrap;
 }
+/* mock hierarchy: column captions sit at faint in dark mode */
+[data-theme="dark"] .breakdown-table thead th { color: #5e6474; }
+[data-theme="dark"] .breakdown-table thead th.sortable:hover { color: var(--text-secondary); }
+[data-theme="dark"] .breakdown-table thead th.sortable.active { color: var(--accent); }
 
 .breakdown-table thead th.sortable {
   cursor: pointer;
@@ -879,7 +883,7 @@
 }
 
 .breakdown-table tbody td {
-  padding: 12px 12px;
+  padding: 11px 12px;
   text-align: right;
   border-bottom: 1px solid var(--divider);
   color: var(--text-primary);
@@ -926,7 +930,7 @@
 }
 /* Lime is reserved for Twine — everyone else's percent stays ink (mock treatment). */
 .breakdown-table .bt-pct {
-  font-weight: 700; font-size: 13.5px; min-width: 54px;
+  font-weight: 700; font-size: 14px; min-width: 56px;
   text-align: right; font-variant-numeric: tabular-nums;
 }
 .breakdown-table tr.is-twine .bt-pct { color: var(--accent); }
