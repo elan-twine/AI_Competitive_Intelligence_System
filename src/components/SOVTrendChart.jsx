@@ -353,15 +353,14 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
     return s
   })
 
+  // Mock's toggle2: a dark inset segmented control — the active segment is a
+  // RAISED pill (no lime; lime stays reserved for Twine + true accents).
   const pill = {
-    fontSize: 11, padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
-    background: 'transparent', fontWeight: 600, lineHeight: 1.4,
-    // longhand (not the `border` shorthand) so activePill's borderColor never
-    // conflicts — React logs a styling error when the two mix on rerender.
-    borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border)',
-    color: 'var(--text-secondary)',
+    fontSize: 12, padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
+    background: 'transparent', border: 'none', fontWeight: 600, lineHeight: 1.4,
+    color: 'var(--text-muted)',
   }
-  const activePill = { borderColor: 'var(--accent)', color: 'var(--accent)' }
+  const activePill = { background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }
 
   return (
     <div className="trend-chart-wrap">
@@ -376,7 +375,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
             </span>
           )}
           {modeApplies && (
-            <>
+            <span style={{ display: 'inline-flex', gap: 2, background: 'var(--bg-secondary)', border: '1px solid var(--divider)', borderRadius: 9, padding: 3 }}>
               <button
                 onClick={() => !live && setMode('total')}
                 disabled={live}
@@ -394,7 +393,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
               >
                 Week by week
               </button>
-            </>
+            </span>
           )}
         </div>
         {(isDaily || metric !== 'overall') && (
