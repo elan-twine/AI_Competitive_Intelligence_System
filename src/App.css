@@ -56,7 +56,9 @@
   -webkit-backdrop-filter: blur(16px) saturate(140%) brightness(1.05);
   border: none;
   border-radius: var(--radius);
-  box-shadow: var(--glass-shadow), inset 1px 1px 1px rgba(255, 255, 255, 0.08);
+  /* the 1px corner glint lives in the LIGHT theme's --glass-shadow only — the
+     mock's dark panels carry a full-width top inset instead (in the dark token) */
+  box-shadow: var(--glass-shadow);
   transition: transform 0.15s ease-out, box-shadow 0.3s ease;
   overflow: visible;
   will-change: transform;
@@ -254,9 +256,12 @@
   margin-bottom: 32px;
 }
 
+/* Mock density: compact 16/18 padding, tight 3-row stack. overflow hidden so
+   the OKR rail hugs the rounded top edge exactly like the mock. */
 .stat-card {
-  padding: 22px 22px 20px;
+  padding: 16px 18px 14px;
   text-align: left;
+  overflow: hidden;
 }
 
 .stat-card .label {
@@ -265,9 +270,12 @@
   text-transform: uppercase;
   letter-spacing: 1.4px;
   color: var(--text-muted);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   text-align: left;
 }
+/* Mock hierarchy: labels + captions sit at FAINT (darker than muted) in dark
+   mode, so the numerals carry the card. */
+[data-theme="dark"] .stat-card .label { color: #5e6474; }
 
 /* Elevated+ finish: larger, lighter, tabular numerals, left-aligned — reads
    more premium than the old centered 36/700 and removes the centered-everything
@@ -295,30 +303,31 @@
 .stat-card .sub {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 10px;
+  margin-top: 8px;
   text-align: left;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
+[data-theme="dark"] .stat-card .sub { color: #6a7183; }
 
-/* smaller, muted unit inside a KPI value (%, / N) */
-.stat-card .value .unit { font-size: 0.46em; color: var(--text-muted); font-weight: 500; letter-spacing: 0; margin-left: 3px; }
+/* smaller, muted unit inside a KPI value (%, / N) — mock's .42em/600 */
+.stat-card .value .unit { font-size: 0.42em; color: var(--text-muted); font-weight: 600; letter-spacing: 0; margin-left: 3px; }
 
 /* status chip beside a KPI caption (e.g. OKR flag) */
 .kpi-chip { font-size: 11px; font-weight: 650; padding: 2px 9px; border-radius: 999px; line-height: 1.5; white-space: nowrap; }
 .kpi-chip.up   { color: var(--positive); background: color-mix(in srgb, var(--positive) 14%, transparent); }
 .kpi-chip.dn   { color: var(--negative); background: color-mix(in srgb, var(--negative) 14%, transparent); }
-.kpi-chip.warn { color: #f0b53e; background: rgba(245, 181, 68, 0.14); }
+.kpi-chip.warn { color: #f6c14e; background: rgba(246, 193, 78, 0.14); }
 [data-theme="light"] .kpi-chip.warn { color: #8a5d00; background: rgba(245, 181, 68, 0.22); }
 .kpi-chip.fl   { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 12%, transparent); }
 
-/* OKR cards flagged with a subtle amber top rail */
+/* OKR cards flagged with a subtle amber top rail — flush to the top edge,
+   fading fully across (the card's overflow:hidden rounds its corners). */
 .stat-card.alert::after {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  border-radius: var(--radius) var(--radius) 0 0; z-index: 2;
-  background: linear-gradient(90deg, #f0b53e, transparent 72%);
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; z-index: 2;
+  background: linear-gradient(90deg, #f6c14e, transparent);
 }
 
 /* ---- Main Grid ---- */

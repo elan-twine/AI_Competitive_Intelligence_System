@@ -445,7 +445,7 @@ function Dashboard({ onLogout, onNavigate }) {
                 hint: 'Where Twine places among direct competitors, ranked by SOV % (higher = more of the conversation). OKR: reach the top 3.',
               },
               {
-                label: 'Twine SOV %',
+                label: 'Twine SOV',
                 value: twineRow ? twineRow.overall.toFixed(1) : '—',
                 unit: twineRow ? '%' : '',
                 // WoW chip (the mock's "−0.3 pts vs last week") — delta vs the
@@ -456,12 +456,12 @@ function Dashboard({ onLogout, onNavigate }) {
                 hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors. The chip is the change vs last week\'s snapshot.',
               },
               {
-                label: 'Twine Sentiment',
+                label: 'Sentiment · External',
                 value: twineRow && twineRow.sentimentCount
-                  ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(2)}`
+                  ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(1)}`
                   : '—',
                 sub: twineRow && twineRow.sentimentCount
-                  ? `−3 to +3 · ${twineRow.sentimentCount} rated`
+                  ? `scale −3…+3 · ${twineRow.sentimentCount} rated`
                   : 'no rated external items',
                 color: twineRow && twineRow.sentimentCount
                   ? (twineRow.avgSentiment > 0 ? 'var(--positive)' : twineRow.avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)')
@@ -477,7 +477,7 @@ function Dashboard({ onLogout, onNavigate }) {
                   ? { text: `${twineMentions.cur > twineMentions.prev ? '+' : twineMentions.cur < twineMentions.prev ? '−' : ''}${Math.abs(twineMentions.cur - twineMentions.prev)}`, tone: wowTone(twineMentions.cur - twineMentions.prev) }
                   : null,
                 alert: !error && allPosts.length > 0 && twineMentions.cur < twineMentions.prev,
-                sub: 'all platforms · OKR',
+                sub: 'all platforms · OKR metric',
                 hint: 'Twine mentions across every platform in the past 7 days — the OKR metric ("number of mentions, all platforms, past week"). Fixed gauge: ignores the platform/time filters. The chip compares the prior 7 days.',
               },
             ].map((stat, i) => (

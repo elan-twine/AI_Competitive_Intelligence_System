@@ -23,7 +23,7 @@
   --linkedin-color: #0A66C2;
   --radius: 16px;
   --radius-sm: 10px;
-  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.04), inset 1px 1px 1px rgba(255, 255, 255, 0.08);
   --glow-color: rgba(180, 210, 0, 0.45);
   --glow-color-hover: rgba(180, 210, 0, 0.7);
   --border-idle-opacity: 0.6;
