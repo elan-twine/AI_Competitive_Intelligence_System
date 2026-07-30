@@ -86,7 +86,12 @@ function wowFromSeries(series) {
   return out
 }
 // ±x.x with a true minus sign; '—' when there's no prior week to compare.
-const fmtWow = (d) => d == null ? '—' : `${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d).toFixed(1)}`
+// Deltas that round to zero display as an unsigned "0.0" (no "−0.0").
+const fmtWow = (d) => {
+  if (d == null) return '—'
+  if (Math.abs(d) < 0.05) return '0.0'
+  return `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}`
+}
 // Tone for a delta — sub-±0.05 pt noise stays neutral instead of flashing color.
 const wowTone = (d) => d == null ? 'fl' : d > 0.05 ? 'up' : d < -0.05 ? 'dn' : 'fl'
 
