@@ -553,8 +553,10 @@ function Dashboard({ onLogout, onNavigate }) {
                     <col />
                     <col style={{ width: 72 }} />
                     <col style={{ width: '32%' }} />
-                    <col style={{ width: 100 }} />
-                    <col style={{ width: 92 }} />
+                    <col style={{ width: 104 }} />
+                    {/* wide enough for the label + sort arrow — 92px made the arrow
+                        poke past the wrap edge and summon a phantom scrollbar */}
+                    <col style={{ width: 102 }} />
                   </colgroup>
                   <thead>
                     <tr>

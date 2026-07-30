@@ -276,8 +276,7 @@
 }
 
 .stat-card .value.accent {
-  color: var(--accent);
-  text-shadow: 0 0 18px rgba(219, 254, 2, 0.35);
+  color: var(--accent);   /* crisp lime, no glow — the mock's haze-free treatment */
 }
 
 [data-theme="light"] .stat-card .value.accent {
@@ -789,13 +788,20 @@
   font-weight: 700;
 }
 
+/* Twine's row — the mock's treatment: a lime tint that fades across the row,
+   framed by hairline lime rules (borders live on the cells; a <tr> can't carry
+   its own border with collapsed tables). */
+.breakdown-table tr.is-twine {
+  background: linear-gradient(90deg, rgba(219, 254, 2, 0.09), rgba(219, 254, 2, 0.02));
+}
 .breakdown-table tr.is-twine td {
-  background: var(--accent-dim);
+  border-top: 1px solid rgba(219, 254, 2, 0.22);
+  border-bottom: 1px solid rgba(219, 254, 2, 0.22);
 }
 
 .breakdown-table tr.is-twine .col-company {
   color: var(--accent);
-  font-weight: 700;
+  font-weight: 660;
 }
 
 /* ---- Light-mode green text readability ---- */

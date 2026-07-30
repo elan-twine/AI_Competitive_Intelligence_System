@@ -418,7 +418,7 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
         </p>
       )}
       <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
+        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 14, left: 4 }}>
           {/* Solid faint hairlines (not dashes) — the calmer grid of the approved mock. */}
           <CartesianGrid stroke="var(--border)" opacity={0.22} vertical={false} />
           <XAxis
@@ -440,13 +440,15 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
             tick={{ fill: 'var(--text-muted)', fontSize: 10.5, fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace' }}
             tickLine={false}
             axisLine={false}
-            label={{
+            // Mock treatment: the SOV chart carries no rotated axis label (the card
+            // title already says what it is); sentiment keeps its scale label.
+            label={isSentiment ? {
               value: yLabel,
               angle: -90,
               position: 'insideLeft',
               offset: 22,   // pull the rotated label inward so it isn't clipped off the SVG's left edge
               style: { fill: 'var(--text-secondary)', fontSize: 12 },
-            }}
+            } : undefined}
           />
           {neutralVisible && (
             <ReferenceLine y={0} stroke="var(--text-secondary)" strokeOpacity={0.5} strokeDasharray="4 4"
@@ -489,7 +491,10 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
           })}
           <Tooltip content={<TrendTooltip isDaily={isDaily} isSentiment={isSentiment} />} />
           <Legend
-            wrapperStyle={{ fontSize: 12, paddingTop: 6 }}
+            align="left"
+            iconType="plainline"
+            iconSize={14}
+            wrapperStyle={{ fontSize: 12.5, paddingTop: 8, paddingLeft: 8 }}
             onClick={(o) => toggle(o.dataKey || o.value)}
             onMouseEnter={(o) => setActive(o.dataKey || o.value)}
             onMouseLeave={() => setActive(null)}
@@ -527,19 +532,18 @@ export function SOVTrendChart({ competitors = [], metric = 'overall', yLabel = '
                 stroke={color}
                 // Mock treatment: Twine's lime line is the bold protagonist; the
                 // field sits at a calmer weight + opacity so 11 lines stay readable.
-                strokeWidth={active === name ? (twine ? 4 : 3) : (twine ? 3 : 1.8)}
+                strokeWidth={active === name ? (twine ? 4 : 3) : (twine ? 3 : 2)}
                 strokeOpacity={dim ? 0.14 : (twine || active === name ? 1 : 0.75)}
                 hide={hidden.has(name)}
                 dot={(props) => {
+                  // Mock treatment: a single emphasized dot at each line's live tip —
+                  // no per-point markers (hover still surfaces every real point via
+                  // the activeDot + tooltip).
                   const { cx, cy, payload, index } = props
                   if (cx == null || cy == null || !payload) return null
-                  if (payload.__fill) return null // daily-cumulative value: on the line, not drawn
-                  const real = payload.__weekly || payload.week === 'Now' || payload.__inProgress
-                  if (!real && data.length > 16) return null // dense daily/rolling views stay clean
-                  // Emphasized endpoint at the live tip (the mock's terminal dot).
-                  const tip = payload.week === 'Now' || payload.__inProgress
-                  const r = tip ? (twine ? 4 : 2.6) : (twine ? 3 : 2)
-                  return <circle key={`${name}-${index}`} cx={cx} cy={cy} r={r} fill={color} />
+                  const tip = payload.week === 'Now' || payload.__inProgress || index === data.length - 1
+                  if (!tip) return null
+                  return <circle key={`${name}-${index}`} cx={cx} cy={cy} r={twine ? 4 : 2.6} fill={color} fillOpacity={twine ? 1 : 0.85} />
                 }}
                 activeDot={{ r: twine ? 6 : 4 }}
                 connectNulls
