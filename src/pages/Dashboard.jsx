@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { useSOVData } from '../hooks/useSOVData'
 import { useSOVConfig } from '../hooks/useSOVConfig'
 import { useBoardAgg } from '../hooks/useBoardAgg'
+import { useWeeklySOV } from '../hooks/useWeeklySOV'
 import { useLastUpdated } from '../hooks/useLastUpdated'
 import { usePersistedState } from '../hooks/usePersistedState'
 import { AppHeader } from '../components/AppHeader'
@@ -69,6 +70,40 @@ function CustomTooltip({ active, payload }) {
 function fmtSent(s) {
   const n = Number(s || 0)
   return `${n > 0 ? '+' : ''}${n.toFixed(2)}`
+}
+
+// Last two rows of a weekly series → per-company week-over-week delta (pts).
+// The Snapshot workflow re-derives the current week's row daily, so
+// "last − previous" reads as "this week's standing vs last completed week".
+function wowFromSeries(series) {
+  if (!series || series.length < 2) return null
+  const last = series[series.length - 1], prev = series[series.length - 2]
+  const out = {}
+  for (const k of Object.keys(last)) {
+    if (k === 'week' || k === 't') continue
+    if (last[k] != null && prev[k] != null) out[k] = last[k] - prev[k]
+  }
+  return out
+}
+// ±x.x with a true minus sign; '—' when there's no prior week to compare.
+// Deltas that round to zero display as an unsigned "0.0" (no "−0.0").
+const fmtWow = (d) => {
+  if (d == null) return '—'
+  if (Math.abs(d) < 0.05) return '0.0'
+  return `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}`
+}
+// Tone for a delta — sub-±0.05 pt noise stays neutral instead of flashing color.
+const wowTone = (d) => d == null ? 'fl' : d > 0.05 ? 'up' : d < -0.05 ? 'dn' : 'fl'
+// Rail tone for a KPI card's week-over-week change: green improved / red
+// declined / amber roughly unchanged (per-metric epsilon); null hides the rail.
+const railTone = (d, eps) => d == null ? null : d > eps ? 'up' : d < -eps ? 'dn' : 'fl'
+// A company's rank within one weekly-series row (values sorted high→low).
+function rankInRow(row, name) {
+  const vals = Object.entries(row)
+    .filter(([k, v]) => k !== 'week' && k !== 't' && v != null)
+    .sort((a, b) => b[1] - a[1])
+  const i = vals.findIndex(([k]) => k === name)
+  return i < 0 ? null : i + 1
 }
 
 function Dashboard({ onLogout, onNavigate }) {
@@ -193,15 +228,75 @@ function Dashboard({ onLogout, onNavigate }) {
   const platformScopeLabel = platformFiltered ? selectedPlatforms.join(' + ') : null
   // The single global window drives the trend charts' resolution + labels too.
   const { windowDays, label: windowLabel } = windowMeta(days)
+  // --- Week-over-week + weekly-volume enrichment (the mock's Δwk / weekly-items fields) ---
+  // WoW deltas come from the frozen weekly snapshots (sov_weekly) — cross-platform
+  // by nature (the frozen board can't be sliced by platform). Two metrics because
+  // the KPI card displays `overall` while the ranking column displays `weightedPct`;
+  // each delta must match the number it sits next to. Same cached fetch under both.
+  const { series: weeklyOverallSeries } = useWeeklySOV('overall')
+  const { series: weeklyWeightedSeries } = useWeeklySOV('weighted_pct')
+  const wowOverall = useMemo(() => wowFromSeries(weeklyOverallSeries), [weeklyOverallSeries])
+  const wowWeighted = useMemo(() => wowFromSeries(weeklyWeightedSeries), [weeklyWeightedSeries])
+  const twineWow = useMemo(() => {
+    if (!wowOverall) return null
+    const k = Object.keys(wowOverall).find(n => isTwine(n))
+    return k != null ? wowOverall[k] : null
+  }, [wowOverall])
+  // Twine's sentiment change vs last week (stored 0..100 index — only the sign
+  // and rough magnitude matter here, they drive the rail color).
+  const { series: weeklySentSeries } = useWeeklySOV('sentiment_pct')
+  const twineSentWow = useMemo(() => {
+    const w = wowFromSeries(weeklySentSeries)
+    if (!w) return null
+    const k = Object.keys(w).find(n => isTwine(n))
+    return k != null ? w[k] : null
+  }, [weeklySentSeries])
+  // Twine's rank change vs last week (+ = climbed places, − = dropped).
+  const twineRankWow = useMemo(() => {
+    const s = weeklyOverallSeries
+    if (!s || s.length < 2) return null
+    const tw = Object.keys(s[s.length - 1]).find(n => isTwine(n))
+    if (!tw) return null
+    const cur = rankInRow(s[s.length - 1], tw), prev = rankInRow(s[s.length - 2], tw)
+    return cur != null && prev != null ? prev - cur : null
+  }, [weeklyOverallSeries])
+  // Items per company over the last 7 days (fixed week, independent of the global
+  // time window; respects the platform filter like the rest of the table).
+  const weekItemsByCompany = useMemo(() => {
+    const m = {}
+    for (const p of applyFilters(allPosts, { platforms: selectedPlatforms, days: 7 })) {
+      if (p.companyName) m[p.companyName] = (m[p.companyName] || 0) + 1
+    }
+    return m
+  }, [allPosts, selectedPlatforms])
+  // OKR gauge: Twine mentions across ALL platforms in the past week — the OKR is
+  // platform-unfiltered by definition — plus the prior 7 days for the WoW chip.
+  const twineMentions = useMemo(() => {
+    const isT = (p) => isTwine(p.companyName)
+    const cur = applyFilters(allPosts, { days: 7 }).filter(isT).length
+    const prev = applyFilters(allPosts, { days: 14 }).filter(isT).length - cur
+    return { cur, prev }
+  }, [allPosts])
+  const enrichedRanked = useMemo(() => boardRanked.map(r => ({
+    ...r,
+    wowDelta: wowWeighted ? (wowWeighted[r.company] ?? null) : null,
+    weekItems: weekItemsByCompany[r.company] || 0,
+  })), [boardRanked, wowWeighted, weekItemsByCompany])
+  // SOV rank per company — fixed by board order (SOV desc), so the # column
+  // keeps showing each company's true rank even when the table is re-sorted.
+  const rankByCompany = useMemo(
+    () => Object.fromEntries(boardRanked.map((r, i) => [r.company, i + 1])),
+    [boardRanked]
+  )
   const sortedRanked = useMemo(() => {
-    const arr = [...boardRanked]
+    const arr = [...enrichedRanked]
     arr.sort((a, b) => {
       const va = a[sortKey], vb = b[sortKey]
       if (typeof va === 'string') return va.localeCompare(vb)
       return (vb || 0) - (va || 0)
     })
     return arr
-  }, [boardRanked, sortKey])
+  }, [enrichedRanked, sortKey])
 
   // Seed compare pickers once companies arrive
   useEffect(() => {
@@ -235,6 +330,11 @@ function Dashboard({ onLogout, onNavigate }) {
   const twineIdx = boardRanked.findIndex(r => isTwine(r.company))
   const twineRow = twineIdx >= 0 ? boardRanked[twineIdx] : null
   const twineRank = twineIdx >= 0 ? twineIdx + 1 : null
+  // Top SOV in the current board — scales the leaderboard share-bars.
+  const boardMax = boardRanked.length ? Math.max(...boardRanked.map(r => r.weightedPct || 0), 1) : 1
+  // Points Twine trails the #3 slot by (the OKR target) — null when already top-3.
+  const gapToTop3 = (twineRank && twineRank > 3 && boardRanked.length >= 3 && twineRow)
+    ? (boardRanked[2].weightedPct - twineRow.weightedPct) : null
 
   const cmp = compareA && compareB ? compare(filtered, compareA, compareB, sovConfig) : null
 
@@ -365,43 +465,66 @@ function Dashboard({ onLogout, onNavigate }) {
               {
                 label: 'Twine Rank',
                 value: twineRank ? `#${twineRank}` : '—',
-                sub: boardRanked.length ? `overall, of ${boardRanked.length}` : 'no data',
+                unit: twineRank && boardRanked.length ? `/ ${boardRanked.length}` : '',
+                // OKR: top-3 on SOV. Chip flags on/off target; sub shows the gap.
+                chip: twineRank ? (twineRank <= 3 ? { text: '✓ in top 3', tone: 'up' } : { text: '⚠ target top 3', tone: 'warn' }) : null,
+                rail: railTone(twineRankWow, 0),
+                // The gap is real SOV math (#3's share − Twine's share), so show
+                // the underlying number subtly alongside it.
+                sub: gapToTop3 != null
+                  ? `${gapToTop3.toFixed(1)} pts to #3 (#3: ${boardRanked[2].weightedPct.toFixed(1)}%)`
+                  : (boardRanked.length ? `of ${boardRanked.length} direct` : 'no data'),
                 color: twineRank === 1 ? 'var(--positive)' : undefined,
-                hint: 'Where Twine places among direct competitors, ranked by SOV % (higher = more of the conversation).',
+                hint: 'Where Twine places among direct competitors, ranked by SOV % (higher = more of the conversation). OKR: reach the top 3.',
               },
               {
-                label: 'Twine SOV %',
-                value: twineRow ? `${twineRow.overall.toFixed(1)}%` : '—',
-                sub: twineRow ? `${twineRow.postCount} items` : 'not in filter',
+                label: 'Twine SOV',
+                value: twineRow ? twineRow.overall.toFixed(1) : '—',
+                unit: twineRow ? '%' : '',
+                // WoW chip (the mock's "−0.3 pts vs last week") — delta vs the
+                // previous frozen weekly snapshot, same composite metric as the value.
+                chip: twineRow && twineWow != null ? { text: `${fmtWow(twineWow)} pts`, tone: wowTone(twineWow) } : null,
+                rail: railTone(twineWow, 0.05),
+                sub: twineRow ? (twineWow != null ? 'vs last week' : `${twineRow.postCount} items`) : 'not in filter',
                 accent: true,
-                hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors.',
+                hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors. The chip is the change vs last week\'s snapshot.',
               },
               {
-                label: 'Twine Sentiment',
+                label: 'Sentiment · External',
                 value: twineRow && twineRow.sentimentCount
-                  ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(2)}`
+                  ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(1)}`
                   : '—',
+                rail: twineRow && twineRow.sentimentCount ? railTone(twineSentWow, 1) : null,
                 sub: twineRow && twineRow.sentimentCount
-                  ? `Scale: -3 to +3 · ${twineRow.sentimentCount} rated item${twineRow.sentimentCount === 1 ? '' : 's'}`
-                  : 'no rated external items in this window',
+                  ? `scale −3…+3 · ${twineRow.sentimentCount} rated`
+                  : 'no rated external items',
                 color: twineRow && twineRow.sentimentCount
                   ? (twineRow.avgSentiment > 0 ? 'var(--positive)' : twineRow.avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)')
                   : undefined,
                 hint: 'Average tone of external items about Twine, on a -3 (very negative) to +3 (very positive) per-item scale. Twine\'s own posts don\'t count — only what others say.',
               },
               {
-                label: 'Twine Items',
-                value: twineRow ? twineRow.postCount : '—',
-                sub: twineRow ? (twineRow.postCount === 1 ? 'item in current view' : 'items in current view') : 'not in filter',
-                hint: 'Number of items attributed to Twine in the current view.',
+                // OKR: number of mentions, all platforms, past week (owner: Justin).
+                // Deliberately ignores the platform/time filters — it's a fixed gauge.
+                label: 'Mentions This Week',
+                value: error ? '—' : String(twineMentions.cur),
+                chip: !error && allPosts.length
+                  ? { text: `${twineMentions.cur > twineMentions.prev ? '+' : twineMentions.cur < twineMentions.prev ? '−' : ''}${Math.abs(twineMentions.cur - twineMentions.prev)}`, tone: wowTone(twineMentions.cur - twineMentions.prev) }
+                  : null,
+                rail: !error && allPosts.length > 0 ? railTone(twineMentions.cur - twineMentions.prev, 0.5) : null,
+                sub: 'all platforms',
+                hint: 'Twine mentions across every platform in the past 7 days — the OKR metric ("number of mentions, all platforms, past week"). Fixed gauge: ignores the platform/time filters. The chip compares the prior 7 days.',
               },
             ].map((stat, i) => (
-              <GlassCard key={i} className="stat-card" intensity={10} title={stat.hint}>
+              <GlassCard key={i} className={`stat-card ${stat.rail ? `rail-${stat.rail}` : ''}`} intensity={10} title={stat.hint}>
                 <div className="label">{stat.label}</div>
                 <div className={`value ${stat.accent ? 'accent' : ''}`} style={stat.color ? { color: stat.color } : {}}>
-                  {stat.value}
+                  {stat.value}{stat.unit ? <span className="unit">{stat.unit}</span> : null}
                 </div>
-                <div className="sub">{stat.sub}</div>
+                <div className="sub">
+                  {stat.chip ? <span className={`kpi-chip ${stat.chip.tone}`}>{stat.chip.text}</span> : null}
+                  {stat.sub ? <span>{stat.sub}</span> : null}
+                </div>
               </GlassCard>
             ))}
           </div>
@@ -442,9 +565,12 @@ function Dashboard({ onLogout, onNavigate }) {
                   `sov-ranking-${windowLabel.replace(/\s+/g, '-')}`,
                   sortedRanked,
                   [
+                    { key: r => rankByCompany[r.company] ?? '', label: 'rank' },
                     { key: 'company', label: 'company' },
                     { key: 'postCount', label: 'items' },
                     { key: r => (r.weightedPct ?? 0).toFixed(2), label: 'sov_pct' },
+                    { key: r => r.wowDelta != null ? r.wowDelta.toFixed(2) : '', label: 'sov_wow_pts' },
+                    { key: 'weekItems', label: 'items_7d' },
                     { key: r => r.sentimentCount ? (r.avgSentiment ?? 0).toFixed(2) : '', label: 'avg_sentiment' },
                   ]
                 )}
@@ -457,12 +583,24 @@ function Dashboard({ onLogout, onNavigate }) {
             ) : (
               <div className="table-wrap">
                 <table className="breakdown-table">
+                  <colgroup>
+                    <col style={{ width: 44 }} />
+                    <col />
+                    <col style={{ width: 72 }} />
+                    <col style={{ width: '32%' }} />
+                    <col style={{ width: 104 }} />
+                    {/* wide enough for the label + sort arrow — 92px made the arrow
+                        poke past the wrap edge and summon a phantom scrollbar */}
+                    <col style={{ width: 102 }} />
+                  </colgroup>
                   <thead>
                     <tr>
+                      <th className="col-rank" title="SOV rank (by share, high to low)">#</th>
                       <SortHeader label="Company" field="company" sortKey={sortKey} setSortKey={setSortKey} align="left" />
                       <SortHeader label="Items" field="postCount" sortKey={sortKey} setSortKey={setSortKey} />
-                      <SortHeader label="SOV %" field="weightedPct" sortKey={sortKey} setSortKey={setSortKey} />
-                      <SortHeader label="Avg Sentiment" field="avgSentiment" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label="Share of Voice" field="weightedPct" sortKey={sortKey} setSortKey={setSortKey} align="left" />
+                      <SortHeader label="Δ SOV (wk)" field="wowDelta" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label="Items (wk)" field="weekItems" sortKey={sortKey} setSortKey={setSortKey} />
                     </tr>
                   </thead>
                   <tbody>
@@ -473,14 +611,23 @@ function Dashboard({ onLogout, onNavigate }) {
                         onClick={() => setDrilledCompany(r.company)}
                         title={`Why is ${r.company}'s SOV ${r.weightedPct.toFixed(1)}%? — click to drill in`}
                       >
+                        <td className="col-rank">{rankByCompany[r.company]}</td>
                         <td className="col-company">{r.company}</td>
                         <td>{r.postCount}</td>
-                        <td><strong style={{ color: 'var(--accent)' }}>{r.weightedPct.toFixed(1)}%</strong></td>
+                        <td className="col-share">
+                          <span className="share-cell">
+                            <span className="bt-meter"><i style={{ width: `${Math.max(2, (r.weightedPct / boardMax) * 100)}%` }} /></span>
+                            <span className="bt-pct">{r.weightedPct.toFixed(1)}%</span>
+                          </span>
+                        </td>
                         <td
-                          className={r.sentimentCount ? (r.avgSentiment > 0 ? 'positive' : r.avgSentiment < 0 ? 'negative' : 'neutral') : 'neutral'}
-                          title={r.sentimentCount ? `${r.sentimentCount} rated external item${r.sentimentCount === 1 ? '' : 's'}` : 'No rated external items in this window'}
+                          className={r.wowDelta == null ? 'neutral' : wowTone(r.wowDelta) === 'up' ? 'positive' : wowTone(r.wowDelta) === 'dn' ? 'negative' : 'neutral'}
+                          title="Change in SOV points vs the previous weekly snapshot (cross-platform)"
                         >
-                          {r.sentimentCount ? fmtSent(r.avgSentiment) : '—'}
+                          {fmtWow(r.wowDelta)}
+                        </td>
+                        <td className="col-wkitems" title="Items attributed in the last 7 days">
+                          {error ? '—' : r.weekItems}
                         </td>
                       </tr>
                     ))}
