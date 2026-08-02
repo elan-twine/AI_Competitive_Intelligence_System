@@ -6,6 +6,7 @@ import { useSOVConfig } from '../hooks/useSOVConfig'
 import { useBoardAgg } from '../hooks/useBoardAgg'
 import { useWeeklySOV } from '../hooks/useWeeklySOV'
 import { useLastUpdated } from '../hooks/useLastUpdated'
+import { useLinkedInEngagement } from '../hooks/useLinkedInEngagement'
 import { usePersistedState } from '../hooks/usePersistedState'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
@@ -121,6 +122,7 @@ function Dashboard({ onLogout, onNavigate }) {
   }
   const { config: sovConfig } = useSOVConfig()
   const lastUpdated = useLastUpdated()
+  const linkedInEng = useLinkedInEngagement()  // OKR KR-21 weekly engagement % (Supabase)
   const { annotations, userId: annotationUserId, add: addAnnotation, update: updateAnnotation, remove: removeAnnotation } = useAnnotations()
 
   // Give every tracked company its own unique chart color (sorted-roster slot
@@ -497,18 +499,15 @@ function Dashboard({ onLogout, onNavigate }) {
                 hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors. The chip is the change vs last week\'s snapshot.',
               },
               {
-                label: 'Sentiment · External',
-                value: twineRow && twineRow.sentimentCount
-                  ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(1)}`
-                  : '—',
-                rail: twineRow && twineRow.sentimentCount ? railTone(twineSentWow, 1) : null,
-                sub: twineRow && twineRow.sentimentCount
-                  ? `scale −3…+3 · ${twineRow.sentimentCount} rated`
-                  : 'no rated external items',
-                color: twineRow && twineRow.sentimentCount
-                  ? (twineRow.avgSentiment > 0 ? 'var(--positive)' : twineRow.avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)')
-                  : undefined,
-                hint: 'Average tone of external items about Twine, on a -3 (very negative) to +3 (very positive) per-item scale. Twine\'s own posts don\'t count — only what others say.',
+                // OKR KR-21 (owner: Twine/company). % of staff engaging with company
+                // LinkedIn posts this week. Written weekly by the n8n engagement pipeline
+                // into Supabase `linkedin_engagement`; sentiment moved down to its chart.
+                label: 'LinkedIn Engagement',
+                value: linkedInEng && linkedInEng.pct != null ? `${Math.round(linkedInEng.pct)}%` : '—',
+                sub: linkedInEng && linkedInEng.pct != null
+                  ? `staff on company posts${linkedInEng.headcount ? ` · ${linkedInEng.headcount} roster` : ''}`
+                  : 'no data yet',
+                hint: 'Share of Twine staff (of the ~38-person roster) who liked, commented on, or reposted the company\'s LinkedIn posts this week. Source: the weekly LinkedIn engagement pipeline (OKR KR-21).',
               },
               {
                 // OKR: number of mentions, all platforms, past week (owner: Justin).
@@ -656,8 +655,25 @@ function Dashboard({ onLogout, onNavigate }) {
               </span>
             </div>
             <p className="cr-sub" style={{ marginTop: -8 }}>
-              How people are talking about each company — average tone of external mentions on the −3 to +3 scale (0 = neutral), the same scale as the stat card above.
+              How people are talking about each company — average tone of external mentions on the −3 to +3 scale (0 = neutral), same scale as the Twine sentiment card here.
             </p>
+            {twineRow && (
+              <GlassCard
+                className={`stat-card ${twineRow.sentimentCount && railTone(twineSentWow, 1) ? `rail-${railTone(twineSentWow, 1)}` : ''}`}
+                intensity={10}
+                style={{ maxWidth: 300, marginBottom: 16 }}
+                title="Average tone of external items about Twine, on a -3 (very negative) to +3 (very positive) per-item scale. Twine's own posts don't count — only what others say."
+              >
+                <div className="label">Sentiment · External (Twine)</div>
+                <div
+                  className="value"
+                  style={twineRow.sentimentCount ? { color: twineRow.avgSentiment > 0 ? 'var(--positive)' : twineRow.avgSentiment < 0 ? 'var(--negative)' : 'var(--neutral)' } : {}}
+                >
+                  {twineRow.sentimentCount ? `${twineRow.avgSentiment > 0 ? '+' : ''}${twineRow.avgSentiment.toFixed(1)}` : '—'}
+                </div>
+                <div className="sub">{twineRow.sentimentCount ? `scale −3…+3 · ${twineRow.sentimentCount} rated` : 'no rated external items'}</div>
+              </GlassCard>
+            )}
             <SOVTrendChart
               competitors={competitors}
               metric="sentiment_pct"
