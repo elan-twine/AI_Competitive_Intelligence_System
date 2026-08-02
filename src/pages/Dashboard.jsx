@@ -503,11 +503,20 @@ function Dashboard({ onLogout, onNavigate }) {
                 // LinkedIn posts this week. Written weekly by the n8n engagement pipeline
                 // into Supabase `linkedin_engagement`; sentiment moved down to its chart.
                 label: 'LinkedIn Engagement',
-                value: linkedInEng && linkedInEng.pct != null ? `${Math.round(linkedInEng.pct)}%` : '—',
+                value: linkedInEng && linkedInEng.pct != null ? `${Math.round(linkedInEng.pct)}` : '—',
+                unit: linkedInEng && linkedInEng.pct != null ? '%' : '',
+                // WoW chip + rail like the neighbors (higher engagement = green).
+                // pts of engagement %; null until a second weekly row exists.
+                chip: linkedInEng && linkedInEng.wowDelta != null
+                  ? { text: `${fmtWow(linkedInEng.wowDelta)} pts`, tone: wowTone(linkedInEng.wowDelta) }
+                  : null,
+                rail: linkedInEng && linkedInEng.wowDelta != null ? railTone(linkedInEng.wowDelta, 0.5) : null,
                 sub: linkedInEng && linkedInEng.pct != null
-                  ? `staff on company posts${linkedInEng.headcount ? ` · ${linkedInEng.headcount} roster` : ''}`
+                  ? (linkedInEng.wowDelta != null
+                    ? 'vs last week'
+                    : `staff on company posts${linkedInEng.headcount ? ` · ${linkedInEng.headcount} roster` : ''}`)
                   : 'no data yet',
-                hint: 'Share of Twine staff (of the ~38-person roster) who liked, commented on, or reposted the company\'s LinkedIn posts this week. Source: the weekly LinkedIn engagement pipeline (OKR KR-21).',
+                hint: 'Share of Twine staff (of the ~38-person roster) who liked, commented on, or reposted the company\'s LinkedIn posts this week. Source: the weekly LinkedIn engagement pipeline (OKR KR-21). The chip is the change in percentage points vs last week.',
               },
               {
                 // OKR: number of mentions, all platforms, past week (owner: Justin).
