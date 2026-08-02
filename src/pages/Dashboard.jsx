@@ -7,6 +7,8 @@ import { useBoardAgg } from '../hooks/useBoardAgg'
 import { useWeeklySOV } from '../hooks/useWeeklySOV'
 import { useLastUpdated } from '../hooks/useLastUpdated'
 import { useLinkedInEngagement } from '../hooks/useLinkedInEngagement'
+import { useLinkedInRosterConfig } from '../hooks/useLinkedInRosterConfig'
+import { LinkedInRosterSettings } from '../components/LinkedInRosterSettings'
 import { usePersistedState } from '../hooks/usePersistedState'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
@@ -123,6 +125,8 @@ function Dashboard({ onLogout, onNavigate }) {
   const { config: sovConfig } = useSOVConfig()
   const lastUpdated = useLastUpdated()
   const linkedInEng = useLinkedInEngagement()  // OKR KR-21 weekly engagement % (Supabase)
+  const rosterCfg = useLinkedInRosterConfig()  // editable headcount + roster for KR-21
+  const [rosterOpen, setRosterOpen] = useState(false)
   const { annotations, userId: annotationUserId, add: addAnnotation, update: updateAnnotation, remove: removeAnnotation } = useAnnotations()
 
   // Give every tracked company its own unique chart color (sorted-roster slot
@@ -514,9 +518,11 @@ function Dashboard({ onLogout, onNavigate }) {
                 sub: linkedInEng && linkedInEng.pct != null
                   ? (linkedInEng.wowDelta != null
                     ? 'vs last week'
-                    : `staff on company posts${linkedInEng.headcount ? ` · ${linkedInEng.headcount} roster` : ''}`)
+                    : `staff on company posts${rosterCfg.config?.headcount ? ` · ${rosterCfg.config.headcount} staff` : ''}`)
                   : 'no data yet',
-                hint: 'Share of Twine staff (of the ~38-person roster) who liked, commented on, or reposted the company\'s LinkedIn posts this week. Source: the weekly LinkedIn engagement pipeline (OKR KR-21). The chip is the change in percentage points vs last week.',
+                hint: `Share of Twine staff (of the ${rosterCfg.config?.headcount ?? 40}-person headcount) who liked, commented on, or reposted the company's LinkedIn posts this week. Source: the weekly LinkedIn engagement pipeline (OKR KR-21). The chip is the change in percentage points vs last week.`,
+                // Signed-in users can edit the headcount + roster the pipeline uses.
+                action: rosterCfg.canEdit ? { label: 'Edit', onClick: () => setRosterOpen(true) } : null,
               },
               {
                 // OKR: number of mentions, all platforms, past week (owner: Justin).
@@ -539,10 +545,23 @@ function Dashboard({ onLogout, onNavigate }) {
                 <div className="sub">
                   {stat.chip ? <span className={`kpi-chip ${stat.chip.tone}`}>{stat.chip.text}</span> : null}
                   {stat.sub ? <span>{stat.sub}</span> : null}
+                  {stat.action ? (
+                    <button className="lir-edit-trigger" onClick={stat.action.onClick}>✎ {stat.action.label}</button>
+                  ) : null}
                 </div>
               </GlassCard>
             ))}
           </div>
+
+          {rosterOpen && (
+            <LinkedInRosterSettings
+              config={rosterCfg.config}
+              saving={rosterCfg.saving}
+              error={rosterCfg.error}
+              onSave={rosterCfg.save}
+              onClose={() => setRosterOpen(false)}
+            />
+          )}
 
           {/* Weekly Share-of-Voice trend — competitors over time. When a platform
               is selected, this reflects it (live series); otherwise the frozen board. */}

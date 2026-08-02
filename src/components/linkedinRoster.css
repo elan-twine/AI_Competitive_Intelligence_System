@@ -1,0 +1,159 @@
+/* LinkedIn engagement config editor (headcount + roster). Uses the app's design
+   tokens so it themes with light/dark automatically. */
+
+.lir-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.lir-modal {
+  width: 100%;
+  max-width: 460px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  padding: 22px 24px;
+  color: var(--text-primary);
+}
+
+.lir-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.lir-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.lir-x {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.lir-x:hover { color: var(--text-primary); }
+
+.lir-note {
+  margin: 0 0 16px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.lir-field {
+  display: block;
+  margin-bottom: 16px;
+}
+.lir-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.lir-count {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.lir-input,
+.lir-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--inner-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 9px 11px;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+.lir-input:focus,
+.lir-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.lir-textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.lir-hint {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.lir-error {
+  background: color-mix(in srgb, var(--negative) 12%, transparent);
+  border: 1px solid var(--negative);
+  color: var(--negative);
+  border-radius: var(--radius-sm);
+  padding: 8px 11px;
+  font-size: 0.8rem;
+  margin-bottom: 14px;
+}
+
+.lir-meta {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.lir-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.lir-btn {
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.lir-btn:disabled { opacity: 0.6; cursor: default; }
+.lir-btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+.lir-btn.ghost:hover:not(:disabled) { border-color: var(--border-hover); color: var(--text-primary); }
+.lir-btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+.lir-btn.primary:hover:not(:disabled) { background: var(--accent-dark); }
+
+/* The small pencil/edit trigger sitting on the LinkedIn KPI card. */
+.lir-edit-trigger {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.lir-edit-trigger:hover { color: var(--accent); }
