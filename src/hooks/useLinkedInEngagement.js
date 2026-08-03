@@ -1,29 +1,38 @@
 import { useCachedFetch } from './useCachedFetch'
 import { supabase } from '../lib/supabase'
+import { isoWeekStart } from '../lib/metrics'
 
-// Latest weekly LinkedIn company-engagement % (OKR KR-21). Written each week by
-// the n8n "LinkedIn Employee Engagement" workflow into public.linkedin_engagement
-// (public-read RLS). Cached (default 6h TTL, cache-first / stale-while-revalidate)
-// exactly like the other dashboard OKR metrics.
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// Weekly LinkedIn company-engagement % (OKR KR-21), keyed to the SOV default
+// week: Thursday 00:00 → Wednesday 23:59 (all SOV metrics use this week unless
+// explicitly specified otherwise). The n8n pipeline runs Thursdays 12:00,
+// measures the just-COMPLETED week, and stamps `week_start` — including a 0%
+// row for weeks with no company posts. Rows without week_start (legacy,
+// trailing-window measurements) are ignored.
 //
-// Returns { ...latestRow, wowDelta } where wowDelta = this week's pct − the
-// previous week's pct (percentage points), or null until a second week exists —
-// so the KPI card can show a week-over-week chip + rail like its neighbors.
-// `null` when the table is empty.
+// Cached (default 6h TTL, cache-first / stale-while-revalidate) like the other
+// dashboard OKR metrics. Returns:
+//   current — the CURRENT Thu-week's row (normally absent until Thursday noon)
+//   prev    — the most recent completed week's row before the current week
+//   wow     — current.pct − prev.pct (points), when both exist
 export function useLinkedInEngagement() {
-  const { data } = useCachedFetch('linkedin_engagement', async () => {
+  const { data } = useCachedFetch('linkedin_engagement_v2', async () => {
     const { data: rows, error } = await supabase
       .from('linkedin_engagement')
-      .select('pct,members,headcount,post_count,captured_at')
-      .order('captured_at', { ascending: false })
-      .limit(2)
+      .select('pct,members,headcount,post_count,captured_at,week_start')
+      .not('week_start', 'is', null)
+      .order('week_start', { ascending: false })
+      .limit(4)
     if (error) throw error
-    if (!rows || !rows.length) return null
-    const [cur, prev] = rows
-    const wowDelta = (prev && cur.pct != null && prev.pct != null)
-      ? Number(cur.pct) - Number(prev.pct)
-      : null
-    return { ...cur, wowDelta }
+    return rows || []
   }, {})
-  return data
+  const rows = data || []
+  const curKey = ymd(isoWeekStart(new Date()))
+  const current = rows.find(r => r.week_start === curKey) || null
+  const prev = rows.find(r => r.week_start < curKey) || null
+  const wow = current && prev && current.pct != null && prev.pct != null
+    ? Number(current.pct) - Number(prev.pct)
+    : null
+  return { current, prev, wow }
 }
