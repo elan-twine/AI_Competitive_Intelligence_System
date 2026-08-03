@@ -25,7 +25,7 @@ import { AssistantChat } from '../components/AssistantChat'
 import { clearCache } from '../lib/cache'
 import { downloadCSV } from '../lib/csv'
 import { fmtDateRange } from '../lib/dates'
-import { applyFilters, rankings, platformSplit, compare } from '../lib/metrics'
+import { applyFilters, rankings, platformSplit, compare, isoWeekStart } from '../lib/metrics'
 import { PLATFORM_COLORS, registerCompanyColors, isTwine } from '../lib/colors'
 import Briefings from './Briefings'
 import '../App.css'
@@ -125,6 +125,12 @@ function Dashboard({ onLogout, onNavigate }) {
   const { config: sovConfig } = useSOVConfig()
   const lastUpdated = useLastUpdated()
   const linkedInEng = useLinkedInEngagement()  // OKR KR-21 weekly engagement % (Supabase)
+  // The week the engagement measurement covers (pipeline stamps captured_at at
+  // the END of its weekly window) — shown on the card so it never reads as the
+  // current in-progress week.
+  const engWeekLabel = linkedInEng?.captured_at
+    ? new Date(linkedInEng.captured_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : null
   const rosterCfg = useLinkedInRosterConfig()  // editable headcount + roster for KR-21
   const [rosterOpen, setRosterOpen] = useState(false)
   const { annotations, userId: annotationUserId, add: addAnnotation, update: updateAnnotation, remove: removeAnnotation } = useAnnotations()
@@ -275,13 +281,24 @@ function Dashboard({ onLogout, onNavigate }) {
     }
     return m
   }, [allPosts, selectedPlatforms])
-  // OKR gauge: Twine mentions across ALL platforms in the past week — the OKR is
-  // platform-unfiltered by definition — plus the prior 7 days for the WoW chip.
+  // OKR gauge: Twine mentions across ALL platforms in the CURRENT OKR week —
+  // the same Thursday-anchored calendar week the drill-in and weekly pipeline
+  // use (was a rolling last-7-days, which read "2" while the drill-in's
+  // current week was empty). `prev` = last COMPLETED week's total, so the
+  // chip/rail show the gap to beat. Platform-unfiltered by definition.
   const twineMentions = useMemo(() => {
-    const isT = (p) => isTwine(p.companyName)
-    const cur = applyFilters(allPosts, { days: 7 }).filter(isT).length
-    const prev = applyFilters(allPosts, { days: 14 }).filter(isT).length - cur
-    return { cur, prev }
+    const wkStart = isoWeekStart(new Date()).getTime()
+    const prevStart = wkStart - 7 * 86400000
+    let cur = 0, prev = 0
+    for (const p of allPosts) {
+      if (!isTwine(p.companyName)) continue
+      const t = p.ts ? new Date(p.ts).getTime() : NaN
+      if (isNaN(t)) continue
+      if (t >= wkStart) cur++
+      else if (t >= prevStart) prev++
+    }
+    const wkLabel = new Date(wkStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    return { cur, prev, wkLabel }
   }, [allPosts])
   const enrichedRanked = useMemo(() => boardRanked.map(r => ({
     ...r,
@@ -515,12 +532,15 @@ function Dashboard({ onLogout, onNavigate }) {
                   ? { text: `${fmtWow(linkedInEng.wowDelta)} pts`, tone: wowTone(linkedInEng.wowDelta) }
                   : null,
                 rail: linkedInEng && linkedInEng.wowDelta != null ? railTone(linkedInEng.wowDelta, 0.5) : null,
+                // The measurement is WEEKLY (pipeline runs Thursdays) — name the
+                // week it covers so the card never silently claims the current
+                // in-progress week.
                 sub: linkedInEng && linkedInEng.pct != null
                   ? (linkedInEng.wowDelta != null
-                    ? 'vs last week'
-                    : `staff on company posts${rosterCfg.config?.headcount ? ` · ${rosterCfg.config.headcount} staff` : ''}`)
+                    ? `vs prior week · wk ending ${engWeekLabel}`
+                    : `staff on company posts · wk ending ${engWeekLabel}`)
                   : 'no data yet',
-                hint: `Share of Twine staff (of the ${rosterCfg.config?.headcount ?? 40}-person headcount) who liked, commented on, or reposted the company's LinkedIn posts this week. Source: the weekly LinkedIn engagement pipeline (OKR KR-21). The chip is the change in percentage points vs last week.`,
+                hint: `Share of Twine staff (of the ${rosterCfg.config?.headcount ?? 40}-person headcount) who liked, commented on, or reposted the company's LinkedIn posts — measured WEEKLY by the engagement pipeline (OKR KR-21); the sub names the week the number covers. The chip is the change in percentage points vs the prior weekly measurement.`,
                 // Signed-in users can edit the headcount + roster the pipeline uses.
                 action: rosterCfg.canEdit ? { label: 'Edit', onClick: () => setRosterOpen(true) } : null,
               },
@@ -533,8 +553,8 @@ function Dashboard({ onLogout, onNavigate }) {
                   ? { text: `${twineMentions.cur > twineMentions.prev ? '+' : twineMentions.cur < twineMentions.prev ? '−' : ''}${Math.abs(twineMentions.cur - twineMentions.prev)}`, tone: wowTone(twineMentions.cur - twineMentions.prev) }
                   : null,
                 rail: !error && allPosts.length > 0 ? railTone(twineMentions.cur - twineMentions.prev, 0.5) : null,
-                sub: 'all platforms',
-                hint: 'Twine mentions across every platform in the past 7 days — the OKR metric ("number of mentions, all platforms, past week"). Fixed gauge: ignores the platform/time filters. The chip compares the prior 7 days.',
+                sub: `all platforms · wk of ${twineMentions.wkLabel}`,
+                hint: 'Twine mentions across every platform in the CURRENT OKR week (Thursday-anchored — the same weeks as the company drill-in and the weekly pipeline). Fixed gauge: ignores the platform/time filters. The chip/rail compare against last week\'s final total — the number to beat.',
               },
             ].map((stat, i) => (
               <GlassCard key={i} className={`stat-card ${stat.rail ? `rail-${stat.rail}` : ''}`} intensity={10} title={stat.hint}>
