@@ -392,7 +392,9 @@
 
 .sentiment-bar-group .bar {
   border-radius: 3px;
-  transition: width 0.6s ease;
+  /* animate the paint, not the layout: width still sets the bar's size, but
+     only opacity transitions (compositor-only, no layout thrash on resize) */
+  transition: opacity 0.6s ease;
 }
 
 .sentiment-score {
@@ -1289,7 +1291,7 @@
 .sb-trend-bars { display: flex; align-items: flex-end; gap: 8px; height: 64px; margin-top: 10px; }
 .sb-trend-col { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 0 0 auto; width: 34px; }
 .sb-trend-bar-track { width: 12px; height: 46px; display: flex; align-items: flex-end; background: var(--divider); border-radius: 3px; overflow: hidden; }
-.sb-trend-bar-fill { width: 100%; background: var(--accent); border-radius: 3px; min-height: 2px; transition: height 0.2s; }
+.sb-trend-bar-fill { width: 100%; background: var(--accent); border-radius: 3px; min-height: 2px; transition: opacity 0.2s; }
 .sb-trend-pct { font-size: 0.66rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
 /* Per-⭐ RAG taste score */
