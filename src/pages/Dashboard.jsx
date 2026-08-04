@@ -280,12 +280,16 @@ function Dashboard({ onLogout, onNavigate }) {
     const cur = rankInRow(s[s.length - 1], tw), prev = rankInRow(s[s.length - 2], tw)
     return cur != null && prev != null ? prev - cur : null
   }, [weeklyOverallSeries])
-  // Items per company over the last 7 days (fixed week, independent of the global
-  // time window; respects the platform filter like the rest of the table).
+  // Items per company in the CURRENT Thursday-anchored OKR week (the SOV
+  // default week — was a rolling last-7-days). Independent of the global time
+  // window; respects the platform filter like the rest of the table.
   const weekItemsByCompany = useMemo(() => {
+    const wkStart = isoWeekStart(new Date()).getTime()
     const m = {}
-    for (const p of applyFilters(allPosts, { platforms: selectedPlatforms, days: 7 })) {
-      if (p.companyName) m[p.companyName] = (m[p.companyName] || 0) + 1
+    for (const p of applyFilters(allPosts, { platforms: selectedPlatforms })) {
+      if (!p.companyName) continue
+      const t = p.ts ? new Date(p.ts).getTime() : NaN
+      if (!isNaN(t) && t >= wkStart) m[p.companyName] = (m[p.companyName] || 0) + 1
     }
     return m
   }, [allPosts, selectedPlatforms])
@@ -642,7 +646,7 @@ function Dashboard({ onLogout, onNavigate }) {
                     { key: 'postCount', label: 'items' },
                     { key: r => (r.weightedPct ?? 0).toFixed(2), label: 'sov_pct' },
                     { key: r => r.wowDelta != null ? r.wowDelta.toFixed(2) : '', label: 'sov_wow_pts' },
-                    { key: 'weekItems', label: 'items_7d' },
+                    { key: 'weekItems', label: 'items_this_week' },
                     { key: r => r.sentimentCount ? (r.avgSentiment ?? 0).toFixed(2) : '', label: 'avg_sentiment' },
                   ]
                 )}
@@ -698,7 +702,7 @@ function Dashboard({ onLogout, onNavigate }) {
                         >
                           {fmtWow(r.wowDelta)}
                         </td>
-                        <td className="col-wkitems" title="Items attributed in the last 7 days">
+                        <td className="col-wkitems" title="Items attributed in the current OKR week (Thursday-anchored, same week as the KPI cards and drill-in)">
                           {error ? '—' : r.weekItems}
                         </td>
                       </tr>
