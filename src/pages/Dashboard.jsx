@@ -125,20 +125,6 @@ function Dashboard({ onLogout, onNavigate }) {
   const { config: sovConfig } = useSOVConfig()
   const lastUpdated = useLastUpdated()
   const linkedInEng = useLinkedInEngagement()  // OKR KR-21 weekly engagement %, Thu-anchored weeks
-  // Twine company-page posts in the CURRENT Thu-week (mirrors the pipeline's
-  // author->>name filter) — lets the card show a PROVABLE live 0% before the
-  // Thursday measurement runs: zero posts means zero staff engagement.
-  const twineCompanyPostsThisWeek = useMemo(() => {
-    const wkStart = isoWeekStart(new Date()).getTime()
-    let n = 0
-    for (const p of allPosts) {
-      if (p.platform !== 'LinkedIn') continue
-      if (!p.author || p.author.name !== 'Twine Security') continue
-      const t = p.ts ? new Date(p.ts).getTime() : NaN
-      if (!isNaN(t) && t >= wkStart) n++
-    }
-    return n
-  }, [allPosts])
   const rosterCfg = useLinkedInRosterConfig()  // editable headcount + roster for KR-21
   const [rosterOpen, setRosterOpen] = useState(false)
   const { annotations, userId: annotationUserId, add: addAnnotation, update: updateAnnotation, remove: removeAnnotation } = useAnnotations()
@@ -378,22 +364,15 @@ function Dashboard({ onLogout, onNavigate }) {
   const gapToTop3 = (twineRank && twineRank > 3 && boardRanked.length >= 3 && twineRow)
     ? (boardRanked[2].weightedPct - twineRow.weightedPct) : null
 
-  // LinkedIn Engagement card state, on the SOV default week (Thu 00:00 → Wed
-  // 23:59 — every SOV metric uses this week unless explicitly specified
-  // otherwise):
-  //   measured — the pipeline measured the current week (Thursday noon on)
-  //   na       — no company posts this week (live, or a measured null-pct row):
-  //              N/A, not 0 — the week doesn't count toward averages or WoW
-  //   pending  — company posts exist this week; the Thursday run hasn't measured them
-  //   empty    — no engagement data at all
-  const engPrev = linkedInEng.prev
-  const engView = (linkedInEng.current && linkedInEng.current.pct != null)
-    ? { pct: Number(linkedInEng.current.pct), wow: linkedInEng.wow, kind: 'measured' }
-    : (linkedInEng.current || (!error && allPosts.length > 0 && twineCompanyPostsThisWeek === 0))
-      ? { pct: null, wow: null, kind: 'na' }
-      : engPrev
-        ? { pct: null, wow: null, kind: 'pending' }
-        : { pct: null, wow: null, kind: 'empty' }
+  // LinkedIn Engagement is a LAGGING weekly measurement (scraped Thursdays),
+  // not a live gauge like Mentions — so the card always shows the LAST MEASURED
+  // week and names it, instead of going blank for the 6 days between runs.
+  // `naWeeks` = measured-but-post-less weeks since then, surfaced as context so
+  // a stale-but-valid number is never mistaken for this week's.
+  const engLatest = linkedInEng.latest
+  const engWeekLabel = engLatest
+    ? new Date(`${engLatest.week_start}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : null
 
   const cmp = compareA && compareB ? compare(filtered, compareA, compareB, sovConfig) : null
 
@@ -549,20 +528,24 @@ function Dashboard({ onLogout, onNavigate }) {
                 hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors. The chip is the change vs last week\'s snapshot.',
               },
               {
-                // OKR KR-21 (owner: Twine/company). % of staff engaging with the
-                // company's LinkedIn posts in the CURRENT Thu→Wed week — same week
-                // as every other card. Weeks with no company posts are N/A (not 0)
-                // and are excluded from averages and week-over-week comparisons.
+                // OKR KR-21 (owner: Twine/company). Lagging weekly measurement:
+                // always shows the LAST MEASURED Thu→Wed week, labelled with which
+                // week that was, so it stays populated between Thursday scrapes.
                 label: 'LinkedIn Engagement',
-                value: engView.pct != null ? String(Math.round(engView.pct)) : (engView.kind === 'na' ? 'N/A' : '—'),
-                unit: engView.pct != null ? '%' : '',
-                chip: engView.wow != null ? { text: `${fmtWow(engView.wow)} pts`, tone: wowTone(engView.wow) } : null,
-                rail: engView.wow != null ? railTone(engView.wow, 0.5) : null,
-                sub: engView.kind === 'measured' ? `vs prior wk · wk of ${twineMentions.wkLabel}`
-                  : engView.kind === 'na' ? `no company posts · wk of ${twineMentions.wkLabel}`
-                    : engView.kind === 'pending' ? `measures Thu · last wk ${Math.round(engPrev.pct)}%`
-                      : 'no data yet',
-                hint: `Share of Twine staff (of the ${rosterCfg.config?.headcount ?? 40}-person headcount) who liked, commented on, or reposted the company's LinkedIn posts in the current Thursday-anchored week (the SOV default week). Weeks with no company posts show N/A and don't count toward averages or the week-over-week chip. Measured each Thursday at noon for the completed week; a later re-measure of the same week supersedes the earlier one.`,
+                value: engLatest ? String(Math.round(engLatest.pct)) : '—',
+                unit: engLatest ? '%' : '',
+                chip: linkedInEng.wow != null
+                  ? { text: `${fmtWow(linkedInEng.wow)} pts`, tone: wowTone(linkedInEng.wow) }
+                  : null,
+                rail: linkedInEng.wow != null ? railTone(linkedInEng.wow, 0.5) : null,
+                sub: !engLatest
+                  ? 'no data yet'
+                  : linkedInEng.isCurrent
+                    ? `this week · wk of ${engWeekLabel}`
+                    : linkedInEng.naWeeks > 0
+                      ? `wk of ${engWeekLabel} · no posts since`
+                      : `wk of ${engWeekLabel} · next Thu`,
+                hint: `Share of Twine staff (of the ${rosterCfg.config?.headcount ?? 40}-person headcount) who liked, commented on, or reposted the company's LinkedIn posts. Measured once a week (Thursdays at noon) for the completed Thu→Wed week, so the card shows the LAST MEASURED week — the sub says which. Weeks with no company posts are N/A and are skipped, never counted as 0. The chip compares the two most recent measured weeks.`,
                 // Signed-in users can edit the headcount + roster the pipeline uses.
                 action: rosterCfg.canEdit ? { label: 'Edit', onClick: () => setRosterOpen(true) } : null,
               },
