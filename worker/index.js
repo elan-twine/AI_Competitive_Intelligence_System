@@ -36,6 +36,74 @@ async function verifyUser(request, env) {
   return user && user.id ? user : null
 }
 
+// ---------------------------------------------------------------------------
+// GET /api/openai-usage — 30-day OpenAI token usage grouped by model, for the
+// System Health console. Requires an OpenAI ADMIN key (sk-admin-…, created in
+// the OpenAI console under Organization → Admin keys) as the OPENAI_ADMIN_KEY
+// Worker secret — the regular API key cannot read the usage endpoints. Authed
+// (any signed-in dashboard user); returns { configured:false } when the secret
+// isn't set so the health card can show setup instructions instead of erroring.
+// ---------------------------------------------------------------------------
+const OPENAI_PRICES_PER_M = {
+  // input, cached input, output — USD per 1M tokens (update if pricing changes)
+  'gpt-4.1': { in: 2.0, cached: 0.5, out: 8.0 },
+  'gpt-4.1-mini': { in: 0.4, cached: 0.1, out: 1.6 },
+  'gpt-4.1-nano': { in: 0.1, cached: 0.025, out: 0.4 },
+  'gpt-4o': { in: 2.5, cached: 1.25, out: 10.0 },
+  'gpt-4o-mini': { in: 0.15, cached: 0.075, out: 0.6 },
+  'text-embedding-3-small': { in: 0.02, cached: 0.02, out: 0 },
+}
+function priceFor(model) {
+  const key = Object.keys(OPENAI_PRICES_PER_M).find(k => String(model || '').startsWith(k))
+  return key ? OPENAI_PRICES_PER_M[key] : null
+}
+
+async function handleOpenAiUsage(request, env) {
+  if (request.method !== 'GET') return json(405, { error: 'method not allowed' })
+  const user = await verifyUser(request, env)
+  if (!user) return json(401, { error: 'unauthorized' })
+  if (!env.OPENAI_ADMIN_KEY) return json(200, { configured: false })
+
+  const start = Math.floor(Date.now() / 1000) - 30 * 86400
+  // The usage API pages by bucket; 1d buckets × 31 fits one page per endpoint.
+  const usageUrl = 'https://api.openai.com/v1/organization/usage/completions'
+    + `?start_time=${start}&bucket_width=1d&group_by=model&limit=31`
+  let r
+  try {
+    r = await fetch(usageUrl, { headers: { Authorization: 'Bearer ' + env.OPENAI_ADMIN_KEY } })
+  } catch (e) {
+    return json(502, { error: 'usage fetch failed: ' + (e?.message || e) })
+  }
+  if (!r.ok) return json(502, { error: 'usage API ' + r.status + ': ' + (await r.text()).slice(0, 200) })
+  const data = await r.json().catch(() => null)
+  if (!data || !Array.isArray(data.data)) return json(502, { error: 'unexpected usage payload' })
+
+  // Aggregate per model across the daily buckets.
+  const byModel = {}
+  for (const bucket of data.data) {
+    for (const row of bucket.results || []) {
+      const m = row.model || 'unknown'
+      const e = byModel[m] || (byModel[m] = { model: m, input: 0, cached: 0, output: 0, requests: 0 })
+      e.input += row.input_tokens || 0
+      e.cached += row.input_cached_tokens || 0
+      e.output += row.output_tokens || 0
+      e.requests += row.num_model_requests || 0
+    }
+  }
+  const models = Object.values(byModel).map(m => {
+    const p = priceFor(m.model)
+    const estUsd = p
+      ? ((m.input - m.cached) * p.in + m.cached * p.cached + m.output * p.out) / 1e6
+      : null
+    return { ...m, estUsd: estUsd != null ? Math.round(estUsd * 100) / 100 : null }
+  }).sort((a, b) => (b.estUsd || 0) - (a.estUsd || 0))
+  const totalUsd = Math.round(models.reduce((s, m) => s + (m.estUsd || 0), 0) * 100) / 100
+
+  return new Response(JSON.stringify({ configured: true, sinceDays: 30, models, totalUsd }), {
+    headers: { ...JSON_HEADERS, 'Cache-Control': 'private, max-age=3600' },
+  })
+}
+
 async function handleBriefing(request, env, url) {
   if (request.method !== 'POST') return json(405, { error: 'method not allowed' })
   const user = await verifyUser(request, env)
@@ -1230,6 +1298,7 @@ export default {
     if (url.pathname === '/api/file-issue') return handleFileIssue(request, env)
     if (url.pathname === '/api/embed-posts') return handleEmbedPosts(request, env)
     if (url.pathname === '/api/enrich-competitor') return handleEnrichCompetitor(request, env)
+    if (url.pathname === '/api/openai-usage') return handleOpenAiUsage(request, env)
     // Shallow liveness probe for the System Health console. Deliberately
     // public and secret-free: proves the Worker is deployed and answering.
     if (url.pathname === '/api/health') {

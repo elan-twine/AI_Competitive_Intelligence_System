@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { Activity, RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Database, Workflow, Server, ClipboardCopy, Layers, MessageCircleQuestion } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Activity, RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle, Database, Workflow, Server, ClipboardCopy, Layers, MessageCircleQuestion, Coins } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import { AppHeader } from '../components/AppHeader'
 import { GlassCard } from '../components/GlassCard'
 import { SystemMap } from '../components/SystemMap'
@@ -77,6 +78,81 @@ const DEMO_CHECKS = [
   { id: 'db', label: 'Database latency', group: 'Serving', status: 'ok', value: '212ms', detail: 'HEAD count on sov_daily', help: '' },
   { id: 'config', label: 'Scoring config', group: 'Serving', status: 'ok', value: 'complete', detail: 'multipliers LI 1 · X 1 · R 1.5 · News 15', help: '' },
 ]
+
+// ---------------------------------------------------------------------------
+// 30-day OpenAI token usage by model, via the Worker's /api/openai-usage proxy
+// (the admin key lives server-side only). Degrades to a setup note when the
+// OPENAI_ADMIN_KEY secret isn't configured, and to a plain error line when the
+// route is unreachable (e.g. the vite dev server, which has no Worker).
+// ---------------------------------------------------------------------------
+const fmtM = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n)
+
+function OpenAiUsageCard() {
+  const [state, setState] = useState({ loading: true })
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const { data } = await supabase.auth.getSession()
+        const token = data?.session?.access_token
+        const r = await fetch('/api/openai-usage', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+        const body = await r.json().catch(() => null)
+        if (!alive) return
+        if (!r.ok || !body) setState({ error: body?.error || `usage endpoint ${r.status}` })
+        else setState({ data: body })
+      } catch (e) {
+        if (alive) setState({ error: e?.message || String(e) })
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  const d = state.data
+  return (
+    <GlassCard className="card hs-stack-card" intensity={3}>
+      <div className="card-header">
+        <span className="card-title"><Coins size={15} style={{ verticalAlign: '-2px' }} /> OpenAI usage · last 30 days</span>
+        {d?.configured && <span className="hs-usage-total">≈ ${d.totalUsd} <i>est.</i></span>}
+      </div>
+      {state.loading && <p className="hs-help">Loading usage…</p>}
+      {state.error && <p className="hs-help">Couldn't load usage ({state.error}).</p>}
+      {d && !d.configured && (
+        <p className="hs-help">
+          Not configured yet: create an <strong>Admin key</strong> in the OpenAI console
+          (Organization → Admin keys) and add it as the <code>OPENAI_ADMIN_KEY</code> Worker
+          secret — the regular API key can't read usage. The card lights up on the next deploy.
+        </p>
+      )}
+      {d?.configured && (
+        <div className="table-wrap">
+          <table className="hs-usage-table">
+            <thead>
+              <tr><th style={{ textAlign: 'left' }}>Model</th><th>Requests</th><th>Input</th><th>Cached</th><th>Output</th><th>Est. cost</th></tr>
+            </thead>
+            <tbody>
+              {d.models.map(m => (
+                <tr key={m.model}>
+                  <td style={{ textAlign: 'left' }}>{m.model}</td>
+                  <td>{fmtM(m.requests)}</td>
+                  <td>{fmtM(m.input)}</td>
+                  <td title="Share of input tokens served from OpenAI's prompt cache (75% cheaper)">
+                    {m.input ? `${Math.round((m.cached / m.input) * 100)}%` : '—'}
+                  </td>
+                  <td>{fmtM(m.output)}</td>
+                  <td>{m.estUsd != null ? `$${m.estUsd}` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="hs-help" style={{ marginTop: 8 }}>
+            Cost is estimated from list prices (cached input billed at 25%). The <em>Cached</em> column
+            is the prompt-cache hit rate — the News gate restructure should push gpt-4.1 upward here.
+          </p>
+        </div>
+      )}
+    </GlassCard>
+  )
+}
 
 export default function SystemHealth({ onLogout, onNavigate }) {
   const [demo, setDemo] = useState(false)
@@ -294,6 +370,9 @@ export default function SystemHealth({ onLogout, onNavigate }) {
           {renderGroup('Serving', groups.Serving)}
         </div>
       </div>
+
+      {/* LLM spend — 30-day OpenAI token usage by model (Worker-proxied) */}
+      <OpenAiUsageCard />
 
       {/* Tech-stack diagram — what powers all of the above */}
       <GlassCard className="card hs-stack-card" intensity={3}>
