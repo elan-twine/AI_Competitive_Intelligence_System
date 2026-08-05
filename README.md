@@ -196,6 +196,7 @@ seen in production and how to detect each.
 | File | Contents |
 |---|---|
 | [HANDOFF.md](HANDOFF.md) | **operating manual** — access, schedules, failure modes, cost, open items |
+| [CLAUDE.md](CLAUDE.md) | orientation for AI agents — auto-loaded by Claude Code; the rules that must not be broken |
 | [docs/SOV_METHODOLOGY.md](docs/SOV_METHODOLOGY.md) | full scoring methodology and research basis |
 | [docs/DECISIONS_LOG.md](docs/DECISIONS_LOG.md) | every product/design decision, newest first |
 | [docs/CLOUDFLARE_DEPLOY.md](docs/CLOUDFLARE_DEPLOY.md) | deployment specifics |
