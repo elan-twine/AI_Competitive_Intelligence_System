@@ -1,0 +1,100 @@
+{
+ "name": "Error Handling",
+ "nodes": [
+  {
+   "parameters": {},
+   "type": "n8n-nodes-base.errorTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    0
+   ],
+   "id": "7b81e764-06d5-4b71-9866-bc43d44d0e7a",
+   "name": "Error Trigger"
+  },
+  {
+   "parameters": {
+    "sendTo": "elansmyla@gmail.com",
+    "subject": "=\ud83d\udea8 [Twine n8n] {{ $json.workflow?.name || 'Workflow' }} failed at \"{{ $json.execution?.lastNodeExecuted || 'unknown node' }}\"",
+    "message": "=A Twine n8n workflow errored.\n\n\u2022 Workflow:   {{ $json.workflow?.name || 'n/a' }}  (id {{ $json.workflow?.id || 'n/a' }})\n\u2022 Failed node: {{ $json.execution?.lastNodeExecuted || 'n/a' }}\n\u2022 Mode:       {{ $json.execution?.mode || 'n/a' }}\n\u2022 When:       {{ $now.toISO() }}\n\n\u2014 Error \u2014\n{{ $json.execution?.error?.message || $json.execution?.error?.description || 'no message provided' }}\n\n\u2014 Open the failed run \u2014\n{{ $json.execution?.url || 'n/a' }}\n(execution id {{ $json.execution?.id || 'n/a' }}, retry of {{ $json.execution?.retryOf || 'n/a' }})\n\n\u2014 Stack (truncated) \u2014\n{{ ($json.execution?.error?.stack || 'n/a').toString().slice(0, 1500) }}",
+    "options": {
+     "appendAttribution": false
+    }
+   },
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.2,
+   "position": [
+    416,
+    0
+   ],
+   "id": "8c716f49-d3b2-40d2-aa60-f0faa662ce2f",
+   "name": "Send a message",
+   "webhookId": "694ab71d-2b19-4c8b-875e-7962ffff5119",
+   "credentials": {
+    "gmailOAuth2": {
+     "id": "Vc9jVQlFFMfRW05i",
+     "name": "Gmail account 2"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "authentication": "oAuth2",
+    "select": "user",
+    "user": {
+     "__rl": true,
+     "value": "U07GYAZ62E9",
+     "mode": "list",
+     "cachedResultName": "dustin"
+    },
+    "text": "=A Twine n8n workflow errored.  \u2022 Workflow:   {{ $json.workflow?.name || 'n/a' }}  (id {{ $json.workflow?.id || 'n/a' }}) \u2022 Failed node: {{ $json.execution?.lastNodeExecuted || 'n/a' }} \u2022 Mode:       {{ $json.execution?.mode || 'n/a' }} \u2022 When:       {{ $now.toISO() }}  \u2014 Error \u2014 {{ $json.execution?.error?.message || $json.execution?.error?.description || 'no message provided' }}  \u2014 Open the failed run \u2014 {{ $json.execution?.url || 'n/a' }} (execution id {{ $json.execution?.id || 'n/a' }}, retry of {{ $json.execution?.retryOf || 'n/a' }})  \u2014 Stack (truncated) \u2014 {{ ($json.execution?.error?.stack || 'n/a').toString().slice(0, 1500) }}",
+    "otherOptions": {}
+   },
+   "type": "n8n-nodes-base.slack",
+   "typeVersion": 2.5,
+   "position": [
+    208,
+    0
+   ],
+   "id": "043dbf51-0cd3-4bd5-8af5-755b32fdfb31",
+   "name": "Send a message1",
+   "webhookId": "2e3a73ca-6a39-4498-832f-fbf634222cfe",
+   "credentials": {
+    "slackOAuth2Api": {
+     "id": "aaseRx8hiavPyH7k",
+     "name": "Dustin Slack"
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Error Trigger": {
+   "main": [
+    [
+     {
+      "node": "Send a message1",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Send a message1": {
+   "main": [
+    [
+     {
+      "node": "Send a message",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "binaryMode": "separate",
+  "availableInMCP": true
+ },
+ "active": true
+}

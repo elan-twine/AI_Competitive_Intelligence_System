@@ -1,0 +1,324 @@
+{
+ "name": "SOV \u2014 AI Answers",
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "weeks",
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 7,
+       "triggerAtMinute": 30
+      }
+     ]
+    }
+   },
+   "id": "a166ccc9-287e-41e8-9560-004c89fa6195",
+   "name": "Weekly (Thu 07:30)",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "\nconst SB='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\n// HARDCODED (do NOT read from sov_config \u2014 its aiAnswers has stale engines/samples that override the intended run)\nconst engines=['openai','anthropic'];\nconst samples=1;\nconst version=1;\nconst prompts=await this.helpers.httpRequest({method:'GET',url:SB+'/geo_prompts?select=id,topic,prompt&active=eq.true&order=id',headers:H,json:true});\nif(!prompts||!prompts.length)return [];\nconst d=new Date();const u=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));\nconst monday=new Date(u.getTime()-(((u.getUTCDay()+6)%7)*86400000));\nconst week_start=monday.toISOString().slice(0,10);\nconst out=[];\nfor(const engine of engines){\n  for(let pi=0;pi<prompts.length;pi++){\n    for(let si=0;si<samples;si++){\n      const p=prompts[pi];\n      const prompt=p.prompt;\n      let body=null;\n      if(engine==='openai')body={model:'gpt-4o-search-preview',max_tokens:700,web_search_options:{},messages:[{role:'user',content:prompt}]};\n      else if(engine==='anthropic')body={model:'claude-sonnet-4-5',max_tokens:700,temperature:0.7,tools:[{type:'web_search_20250305',name:'web_search',max_uses:1}],messages:[{role:'user',content:prompt}]};\n      else if(engine==='perplexity')body={model:'sonar',temperature:0.7,max_tokens:700,messages:[{role:'user',content:prompt}]};\n      out.push({json:{engine,prompt_idx:pi,sample_idx:si,prompt,prompt_id:p.id,topic:p.topic,week_start,prompt_version:version,body}});\n    }\n  }\n}\nreturn out;\n"
+   },
+   "id": "1c640e5b-5ac7-48a5-859c-38537d96067a",
+   "name": "Build Sample Queue",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "rules": {
+     "values": [
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 1
+        },
+        "conditions": [
+         {
+          "leftValue": "={{ $json.engine }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "openai"
+         }
+        ],
+        "combinator": "and"
+       }
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 1
+        },
+        "conditions": [
+         {
+          "leftValue": "={{ $json.engine }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "anthropic"
+         }
+        ],
+        "combinator": "and"
+       }
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 1
+        },
+        "conditions": [
+         {
+          "leftValue": "={{ $json.engine }}",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          },
+          "rightValue": "perplexity"
+         }
+        ],
+        "combinator": "and"
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "ab022027-1079-43d9-ac25-0281fe347f62",
+   "name": "Route by Engine",
+   "type": "n8n-nodes-base.switch",
+   "typeVersion": 3.2,
+   "position": [
+    448,
+    176
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.body) }}",
+    "options": {
+     "timeout": 90000
+    }
+   },
+   "id": "a8b288f5-09c5-4e3f-acf1-31f3a8ee0096",
+   "name": "Ask OpenAI",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.3,
+   "position": [
+    672,
+    0
+   ],
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "\nconst SB='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};\nconst req=async(method,path,body,prefer)=>{const h={...H};if(prefer)h.Prefer=prefer;return this.helpers.httpRequest({method,url:SB+path,headers:h,body,json:true});};\n// roster for brand detection (word-boundary match on names + aliases)\nconst comps=await req('GET','/competitors?select=name,aliases&active=eq.true');\nconst esc=(s)=>s.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&');\nconst brandPats=comps.map(c=>{const names=[c.name,...(c.aliases||[])].filter(Boolean);return {brand:c.name,re:new RegExp('\\\\b('+names.map(esc).join('|')+')\\\\b','i')};});\n// Robust recovery: iterate merged input; map each response item back to its source\n// queue item via n8n paired-item chain (survives switch + httpRequest).\nconst input=$input.all();\nconst rows=[];\nfor(let i=0;i<input.length;i++){\n  const a=(input[i]&&input[i].json)||{};\n  let src=null;\n  try{src=$('Build Sample Queue').itemMatching(i).json;}catch(e){src=null;}\n  if(!src)continue;\n  const engine=src.engine,prompt_id=src.prompt_id,topic=src.topic,week_start=src.week_start;\n  let text='';\n  if(a.error){text='';}\n  else if(a.choices&&a.choices[0]&&a.choices[0].message){text=a.choices[0].message.content||'';}\n  else if(Array.isArray(a.content)){text=a.content.filter(c=>c.type==='text').map(c=>c.text).join('\\n');}\n  if(!text)continue; // skip errored / empty answers\n  const matched=[];\n  for(const bp of brandPats){const m=text.match(bp.re);if(m)matched.push({company:bp.brand,idx:m.index});}\n  matched.sort((x,y)=>x.idx-y.idx);\n  const mentions=matched.map((m,r)=>({company:m.company,position:r+1}));\n  rows.push({prompt_id,topic,engine,week_start,web_search:true,answer:text.slice(0,6000),mentions});\n}\nif(!rows.length)return [{json:{written:0,note:'no answered items'}}];\nfor(let i=0;i<rows.length;i+=50){\n  try{await req('POST','/geo_results',rows.slice(i,i+50),'return=minimal');}catch(e){return [{json:{written:i,error:'geo_results write failed: '+String(e.message||e).slice(0,300)}}];}\n}\nreturn [{json:{week:rows[0].week_start,written:rows.length,engines:[...new Set(rows.map(r=>r.engine))]}}];\n"
+   },
+   "id": "9e803597-1cc7-4271-8cad-3691742bc4bb",
+   "name": "Parse + Aggregate + Write",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.perplexity.ai/chat/completions",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBearerAuth",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.body) }}",
+    "options": {
+     "timeout": 90000
+    }
+   },
+   "id": "6464083a-422c-41ef-978a-8e3b7efa2318",
+   "name": "Ask Perplexity",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.3,
+   "position": [
+    672,
+    384
+   ],
+   "credentials": {
+    "httpBearerAuth": {
+     "id": "UVk5RSufEzRRMcQe",
+     "name": "Bearer Auth account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.anthropic.com/v1/messages",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "anthropic-version",
+       "value": "2023-06-01"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.body) }}",
+    "options": {
+     "timeout": 90000
+    }
+   },
+   "id": "8f66a735-fa1f-4d86-9ea8-ea9c40c16ff8",
+   "name": "Ask Anthropic1",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.3,
+   "position": [
+    672,
+    192
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "4vQpdlYnRHECdsNN",
+     "name": "Anthropic_API"
+    }
+   },
+   "onError": "continueRegularOutput"
+  }
+ ],
+ "connections": {
+  "Weekly (Thu 07:30)": {
+   "main": [
+    [
+     {
+      "node": "Build Sample Queue",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Sample Queue": {
+   "main": [
+    [
+     {
+      "node": "Route by Engine",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Route by Engine": {
+   "main": [
+    [
+     {
+      "node": "Ask OpenAI",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Ask Anthropic1",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Ask Perplexity",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ask OpenAI": {
+   "main": [
+    [
+     {
+      "node": "Parse + Aggregate + Write",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ask Perplexity": {
+   "main": [
+    [
+     {
+      "node": "Parse + Aggregate + Write",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ask Anthropic1": {
+   "main": [
+    [
+     {
+      "node": "Parse + Aggregate + Write",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner",
+  "saveDataErrorExecution": "all",
+  "saveDataSuccessExecution": "none"
+ },
+ "active": true
+}

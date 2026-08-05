@@ -1,0 +1,928 @@
+{
+ "name": "SOV \u2014 Google News",
+ "nodes": [
+  {
+   "parameters": {
+    "inputSource": "passthrough"
+   },
+   "id": "b314ff3e-49eb-4d1e-8df9-15c0266fba6b",
+   "name": "Execute Workflow Trigger",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    80
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "competitors",
+    "returnAll": true,
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "active",
+       "condition": "eq",
+       "keyValue": "true"
+      }
+     ]
+    }
+   },
+   "id": "48b01281-0525-4101-a6ca-94790f76e2c7",
+   "name": "Load Competitors",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    224,
+    336
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "sov_config",
+    "returnAll": true,
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "id",
+       "condition": "eq",
+       "keyValue": "1"
+      }
+     ]
+    }
+   },
+   "id": "3cd4831a-f267-4a34-9bf1-6520d6850468",
+   "name": "Load SOV Config",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    448,
+    336
+   ],
+   "executeOnce": true,
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const competitors = $(\"Load Competitors\").all().map(i => i.json);\nconst cfgRow = $(\"Load SOV Config\").first();\nconst config = (cfgRow && cfgRow.json && cfgRow.json.config) ? cfgRow.json.config : {};\nconst active = competitors.filter(c => c.active !== false);\nconst companies = active.map(c => ({ name: c.name, keywords: Array.isArray(c.keywords)?c.keywords:[], definition: c.definition||'', collision_terms: Array.isArray(c.collision_terms)?c.collision_terms:[], aliases: Array.isArray(c.aliases) ? c.aliases : [], domain: c.domain || null, x_handle: c.x_handle || null, linkedin_urn: c.linkedin_urn || null, subreddits: Array.isArray(c.subreddits) ? c.subreddits : [], type: c.type || 'direct' }));\nconst linkedin_urns = companies.map(c => c.linkedin_urn).filter(Boolean);\nconst companyEnum = companies.filter(c => (c.type||'direct')!=='indirect').map(c => c.name).join(\", \");\nconst companyDefs = companies.filter(c => (c.type||'direct')!=='indirect').map(c=>{const dom=c.domain?(' ('+c.domain+')'):'';const nots=(c.collision_terms&&c.collision_terms.length)?('. NOT: '+c.collision_terms.join('; ')):'';return c.name+dom+' \\u2014 '+(c.definition||'(no definition yet)')+nots;}).join('\\n\\n');\nconst allSubreddits = Array.from(new Set([].concat(...companies.map(c => c.subreddits)).concat([\"cybersecurity\",\"netsec\",\"asknetsec\",\"devsecops\",\"hacking\",\"information_security\",\"security\",\"identitymanagement\",\"sysadmin\",\"itmanagers\",\"blueteamsec\"]))).filter(Boolean);\nreturn [{ json: { config, companies, linkedin_urns, companyEnum, companyDefs, allSubreddits } }];\n"
+   },
+   "id": "e64a23f0-4c5c-4ccc-a139-1653420d2124",
+   "name": "Load Shared Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    336
+   ],
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $('Load Shared Context').first().json;\nconst config = ctx.config || {};\nconst companies = (ctx.companies || []).filter(c => c && c.name && (c.type||'direct')!=='indirect');\nconst companyEnum = ctx.companyEnum || '';\nconst KW = { 'Lumos': ['Lumos'], 'Opti': ['Opti IAM','Opti Identity'], 'OFFROAD': ['Offroad Security'], '7AI': ['7AI'], 'Console': ['Console security'], 'Oak - Identity Security OS': ['Oak identity','Oak Security','oak.id'] };\nconst out = [];\nfor (const c of companies) {\n  const kws = (c.keywords&&c.keywords.length)?c.keywords:(KW[c.name] || [String(c.name)]);\n  for (const kw of kws) {\n    out.push({ json: { name: c.name, keyword: kw, type: c.type || 'direct', config: config, companies: companies, companyEnum: companyEnum, companyDefs: ctx.companyDefs } });\n  }\n}\nreturn out;"
+   },
+   "id": "6de27a1b-cbf4-4142-a86f-b2a2fb893237",
+   "name": "Build News Company Items",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    336
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Stamp a completed scrape_runs row for Google News (real 'last scraped' marker).\nconst helpers=this.helpers;\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst BASE='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\nconst now=new Date().toISOString();\ntry{ await helpers.httpRequest({method:'POST',url:BASE+'/scrape_runs',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:{platform:'Google News',started_at:now,finished_at:now,window_to:now,status:'success',note:'news daily 1d'},json:true}); }catch(e){}\nreturn [{json:{ok:true}}];\n"
+   },
+   "id": "35483f66-8851-46d5-9697-054f094d12dd",
+   "name": "News Done",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1344,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "return $input.all();"
+   },
+   "id": "aaaa5202-8cce-42f4-83cb-ee2cf52e6f29",
+   "name": "Build Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1344,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "3Z6SK7F2WoPU3t2sg"
+    },
+    "customBody": "={{ JSON.stringify({ keywords: [ $('Build Context').first().json.keyword ], maxArticles: 20, timeframe: \"1d\", region_language: \"US:en\", decodeUrls: true, extractDescriptions: true, proxyConfiguration: { useApifyProxy: true } }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "id": "0f51840c-4a8f-488d-9ee6-0659c717d631",
+   "name": "Apify Google News (task)",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    1568,
+    192
+   ],
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "alwaysOutputData": true,
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": false,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.url }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "bf6eb3f3-fd24-44b6-b8bd-4f74d39ec4be",
+   "name": "News Has Articles?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    1792,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const helpers = this.helpers;\nconst SRK = '<REDACTED_SUPABASE_JWT>';\nconst SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst items = $input.all();\nlet scored = new Set();\ntry {\n  const rows = await helpers.httpRequest({ method:'GET', url: SB + '/googlenews?select=url,post_weight&post_weight=not.is.null', headers: { apikey: SRK, Authorization: 'Bearer ' + SRK }, json: true });\n  for (const r of (rows || [])) { if (r && r.url) scored.add(String(r.url)); }\n} catch (e) { return items; }\nconst out = [];\nfor (const it of items) { const u = String((it.json && it.json.url) || ''); if (u && scored.has(u)) continue; out.push(it); }\nreturn out;"
+   },
+   "id": "b7d23b91-12d1-47cc-8114-9fd8d7b931a7",
+   "name": "News New-Articles Only",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2016,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Parse News Prefilter \u2014 fail-open relevance filter.\n// Reads the LLM JSON array [{url, relevant}], keeps only original articles\n// (from \"News New-Articles Only\") whose url is marked relevant=true.\n// On ANY error / parse failure, returns ALL original articles unchanged.\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nconst original = $('News New-Articles Only').all();\ntry {\n  const relevant = new Set();\n  let sawAny = false;\n  for (const item of $input.all()) {\n    let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n    if (!raw) continue;\n    const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n    const txt = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n    let parsed;\n    try { parsed = JSON.parse(txt); } catch (e) { continue; }\n    const arr = Array.isArray(parsed) ? parsed : [parsed];\n    for (const e of arr) {\n      if (e && e.url && e.relevant === true) { relevant.add(String(e.url)); }\n      sawAny = true;\n    }\n  }\n  // If the LLM produced nothing usable, fail open: keep everything.\n  if (!sawAny) return original;\n  const out = [];\n  for (const it of original) {\n    const u = String((it.json && it.json.url) || '');\n    if (u && relevant.has(u)) out.push(it);\n  }\n  // Never drop everything: if filter would empty the batch, fail open.\n  if (out.length === 0) return original;\n  return out;\n} catch (e) {\n  return original;\n}\n"
+   },
+   "id": "4c8b727e-15cf-42d6-aad5-ee2645d45ff1",
+   "name": "Parse News Prefilter",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2464,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/googlenews?on_conflict=url",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "<REDACTED_SUPABASE_JWT>"
+      },
+      {
+       "name": "Authorization",
+       "value": "Bearer <REDACTED_SUPABASE_JWT>"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=representation"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ url: $json.url, title: $json.title, source: $json.source, publishedAt: $json.publishedAt }) }}",
+    "options": {}
+   },
+   "id": "074f9164-9ed5-4e5e-aaa4-9d6582bdce3d",
+   "name": "Upsert googlenews",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    2688,
+    192
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.firecrawl.dev/v1/scrape",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ url: $json.url, formats: [\"markdown\"] }) }}",
+    "options": {}
+   },
+   "id": "c243cfea-706e-4db2-bda2-63e87c423488",
+   "name": "Firecrawl Scrape Article",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    2912,
+    192
+   ],
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "alwaysOutputData": true,
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "qT0DBGnJbtPp9lpU",
+     "name": "Firecrawl API"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const articles = $(\"Apify Google News (task)\").all().map(i=>i.json);\nconst byUrl = {};\nfunction norm(u){ if(!u) return \"\"; let s=String(u).trim(); s=s.replace(/[#?].*$/,\"\"); s=s.replace(/\\/+$/,\"\"); return s.toLowerCase(); }\nfor (const a of articles) { const k = norm(a.url); if (k && !(k in byUrl)) byUrl[k] = a; }\nconst items = $input.all();\nconst results = [];\nfor (let idx = 0; idx < items.length; idx++) {\n  const sd = items[idx].json || {};\n  const data = sd.data || {};\n  const meta = data.metadata || {};\n  const md = data.markdown || \"\";\n  const scrapedUrl = meta.url || meta.sourceURL || meta.ogUrl || data.url || sd.url || \"\";\n  const orig = byUrl[norm(scrapedUrl)] || {};\n  results.push({ json: {\n    url: orig.url || scrapedUrl || meta.ogUrl || \"\",\n    title: orig.title || meta.ogTitle || meta.title || \"\",\n    source: orig.source || meta.publisher || meta.source || \"\",\n    articleText: String(md).substring(0,5000)\n  } });\n}\nreturn results;"
+   },
+   "id": "c4f6324d-31cb-47f6-807b-8fdb12e6ccdd",
+   "name": "Extract Article Text",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3136,
+    192
+   ],
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "tableId": "googlenews",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "url",
+       "condition": "eq",
+       "keyValue": "={{ $json.url }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "articleText",
+       "fieldValue": "={{ $json.articleText }}"
+      }
+     ]
+    }
+   },
+   "id": "a3573262-1095-4e1b-a35c-35d2bb453437",
+   "name": "Update News articleText",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    3360,
+    192
+   ],
+   "alwaysOutputData": true,
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "// Pair each attribution response back to its SOURCE article, flatten the\n// multi-company schema, and emit exactly one item per article.\n//\n// Why this exists (2026-08-05): the 2026-07-23 multi-company refactor changed\n// the gate's output to { url, companies:[{companyName,sentiment,reasoning}] },\n// but everything downstream (the relevance gate, the post_weight writer) reads\n// FLAT $json.companyName \u2014 so from Jul 20 on, nothing was ever written. The\n// model also answers a bare \"[]\" for articles matching no company, which\n// carries no url, so those rows couldn't even be resolved back to an article.\n// Fixing both here keeps the change confined to this node.\nconst src = $('Update News articleText').all().map(i => i.json);\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfunction srcIndexOf(item, i){\n  const pi = item.pairedItem;\n  if (pi == null) return i;\n  if (typeof pi === 'number') return pi;\n  if (Array.isArray(pi)) return (pi[0] && typeof pi[0].item === 'number') ? pi[0].item : i;\n  return (typeof pi.item === 'number') ? pi.item : i;\n}\nconst inputs = $input.all();\nconst results = [];\nfor (let i = 0; i < inputs.length; i++) {\n  const item = inputs[i];\n  const article = src[srcIndexOf(item, i)] || {};\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  let parsed = null;\n  if (raw) {\n    const a = raw.indexOf('['), b = raw.lastIndexOf(']');\n    const c = raw.indexOf('{'), d = raw.lastIndexOf('}');\n    let txt = raw;\n    if (a !== -1 && b > a) txt = raw.slice(a, b + 1);\n    else if (c !== -1 && d > c) txt = raw.slice(c, d + 1);\n    try { parsed = JSON.parse(txt); } catch (e) { parsed = null; }\n  }\n  // The response is normally a 1-element array; match on url when several come back.\n  let el = null;\n  if (Array.isArray(parsed)) el = parsed.find(x => x && x.url && article.url && x.url === article.url) || parsed[0] || null;\n  else if (parsed && typeof parsed === 'object') el = parsed;\n  // New schema: companies[]. Legacy flat companyName still accepted.\n  let comps = [];\n  if (el) {\n    if (Array.isArray(el.companies)) comps = el.companies.filter(x => x && x.companyName && String(x.companyName).toUpperCase() !== 'NONE');\n    else if (el.companyName && String(el.companyName).toUpperCase() !== 'NONE') comps = [{ companyName: el.companyName, sentiment: el.sentiment, reasoning: el.reasoning }];\n  }\n  const primary = comps[0] || null;\n  // A bare \"[]\" is a VALID verdict (no company anchored) \u2014 distinct from an\n  // unparseable reply, which must not be recorded as a clean NONE.\n  const understood = parsed !== null;\n  const out = Object.assign({}, article);\n  delete out.articleText;   // keep the item light; nothing downstream needs it\n  out.url = article.url || (el && el.url) || null;\n  out.companyName = primary ? primary.companyName : 'NONE';\n  // Pass the FULL list through: 'Compute News post_weight' rebuilds\n  // company_names from `companies`, which is what makes a multi-company\n  // article count for every company it names (2026-07-23 policy). Emitting\n  // only the primary here would silently collapse that back to one.\n  out.companies = comps;\n  out.company_names = comps.map(x => ({ name: x.companyName, sentiment: x.sentiment != null ? x.sentiment : null, reasoning: x.reasoning || '' }));\n  out.sentiment = (primary && primary.sentiment != null) ? primary.sentiment : null;\n  out.reasoning = primary ? (primary.reasoning || '')\n    : (understood ? 'no listed company anchored in this article' : 'attribution response unparseable');\n  out.attribution_ok = understood;\n  results.push({ json: out });\n}\nreturn results;\n"
+   },
+   "id": "c751f498-f142-4476-bf85-afdd0b943cb9",
+   "name": "Parse News LLM",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3808,
+    192
+   ],
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 3
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "NONE",
+       "operator": {
+        "type": "string",
+        "operation": "notEquals"
+       },
+       "id": "74e70a89-1e79-4ccc-8c61-3f9877cc725d"
+      },
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       },
+       "id": "edf24488-1d74-4684-851e-f2e603809a81"
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "id": "8cccf134-c393-4df0-827b-46a790ace791",
+   "name": "News Relevance Gate",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    4032,
+    192
+   ],
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const results = [];\nfor (const item of $input.all()) { const j = item.json || {}; let raw = (typeof j.content === 'string' ? j.content : null) ?? j.output_text ?? j.text ?? (j.message && j.message.content) ?? (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) ?? ''; if (typeof raw !== 'string') raw = JSON.stringify(raw); raw = raw.replace(/```json|```/g, '').trim(); const m = raw.match(/\\[[\\s\\S]*\\]/); const txt = m ? m[0] : raw; let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; } const arr = Array.isArray(parsed) ? parsed : [parsed]; for (const e of arr) results.push({ json: e }); }\nreturn results;"
+   },
+   "id": "9599d028-d4b9-4610-a897-cddf40bbefb5",
+   "name": "Parse News Credibility",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    4480,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $(\"Build Context\").first().json; const cfg = ctx.config || {};\nconst clamp = cfg.sentimentClamp || { min:0.5, max:1.3 };\nconst halfLife = (cfg.halfLifeDays && cfg.halfLifeDays[\"Google News\"]) || 30;\nfunction newsTierMult(u){const nt=cfg.newsTiers;if(!nt||!nt.tiers)return 1;const m=String(u||'').match(/^[a-z][a-z0-9+.-]*:\\/\\/([^\\/?#]+)/i);let host=m?m[1].replace(/^www\\./i,'').toLowerCase():'';if(!host)return (nt.default!=null?nt.default:1);for(const k in nt.tiers){const t=nt.tiers[k];const ds=(t&&t.domains)||[];for(let i=0;i<ds.length;i++){const d=ds[i];if(host===d||host.endsWith('.'+d))return t.mult;}}return (nt.default!=null?nt.default:1);}\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && ch.message.content) return ch.message.content; }\n  return '';\n}\nconst credByUrl = {};\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  if (a === -1 || b === -1 || b <= a) continue;\n  let arr; try { arr = JSON.parse(raw.slice(a, b + 1)); } catch (e) { continue; }\n  for (const e of (Array.isArray(arr) ? arr : [arr])) { if (e && e.url != null) credByUrl[e.url] = Number(e.credibility_score); }\n}\nconst sentByUrl = {};\n$(\"Parse News LLM\").all().forEach(i => { sentByUrl[i.json.url] = i.json; });\nconst articles = $(\"Apify Google News (task)\").all().map(i => i.json);\nconst results = [];\nfor (const url of Object.keys(sentByUrl)) {\n  const sent = sentByUrl[url];\n  const _co=(sent&&Array.isArray(sent.companies))?sent.companies:((sent&&sent.companyName)?[{companyName:sent.companyName,sentiment:sent.sentiment,reasoning:sent.reasoning}]:[]);\n  sent.company_names=_co.filter(c=>c&&c.companyName&&c.companyName!=='NONE').map(c=>({name:c.companyName,sentiment:(c.sentiment!=null?c.sentiment:null),reasoning:c.reasoning||''}));\n  const _p=sent.company_names.length?sent.company_names[0]:null;\n  sent.companyName=_p?_p.name:'NONE'; sent.sentiment=_p?_p.sentiment:null; sent.reasoning=_p?_p.reasoning:'';\n  const cs = credByUrl[url];\n  const credScore = (cs != null && !isNaN(cs)) ? cs : 50;\n  const authorityMult = credScore / 50;\n  const s = Math.max(-3, Math.min(3, Number(sent.sentiment || 0)));\n  const sentimentMult = clamp.min + ((s + 3) / 6) * (clamp.max - clamp.min);\n  let ageDays = 0; const article = articles.find(a => a.url === url) || {};\n  if (article.publishedAt) { const d = new Date(article.publishedAt); if (!isNaN(d)) ageDays = Math.max(0, (Date.now() - d.getTime()) / 86400000); }\n  const timeDecay = Math.pow(2, -ageDays / halfLife);\n  const tierMult = newsTierMult(url);\n  const post_weight = tierMult * sentimentMult * timeDecay;\n  results.push({ json: { url: url, companyName: sent.companyName, sentiment: sent.sentiment, reasoning: sent.reasoning, credibility_score: credScore, post_weight: parseFloat(post_weight.toFixed(6)), company_names: sent.company_names } });\n}\nreturn results;"
+   },
+   "id": "3197aa2d-5ae5-427f-972a-d9631a0525a1",
+   "name": "Compute News post_weight",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    4704,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "tableId": "googlenews",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "url",
+       "condition": "eq",
+       "keyValue": "={{ $json.url }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "sentiment",
+       "fieldValue": "={{ $json.sentiment }}"
+      },
+      {
+       "fieldId": "reasoning",
+       "fieldValue": "={{ $json.reasoning }}"
+      },
+      {
+       "fieldId": "companyName",
+       "fieldValue": "={{ $json.companyName }}"
+      },
+      {
+       "fieldId": "post_weight",
+       "fieldValue": "={{ $json.post_weight }}"
+      },
+      {
+       "fieldId": "company_names",
+       "fieldValue": "={{ JSON.stringify($json.company_names) }}"
+      }
+     ]
+    }
+   },
+   "id": "509e9cf1-665f-429c-9127-7c0815aa7851",
+   "name": "Write News post_weight",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    4928,
+    272
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "options": {}
+   },
+   "id": "b668142b-7cd3-43bc-a5ad-cb77f4e8cb96",
+   "name": "Loop Over Companies",
+   "type": "n8n-nodes-base.splitInBatches",
+   "typeVersion": 3,
+   "position": [
+    1120,
+    336
+   ]
+  },
+  {
+   "parameters": {},
+   "id": "e14239a0-9603-4971-9310-a5aa01a156f1",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    272
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: \"gpt-4.1-mini\", temperature: 0, messages: [ { role: 'system', content: \"You are a relevance prefilter that decides, cheaply and quickly, whether a news article is plausibly about a specific cybersecurity / identity-security company BEFORE we spend money scraping it. Target company keyword: \" + ($(\"Build Context\").first().json.keyword) + \". Target company name: \" + ($(\"Build Context\").first().json.name) + \". Aliases/domains for disambiguation: \" + (JSON.stringify($(\"Build Context\").first().json.companies)) + \".\\n\\nCOMPANY DEFINITIONS \u2014 A post is \\\"about\\\" a company only if it concerns the specific organization below (its product, funding, people, customers, category). REJECT posts that merely share the name token but match a NOT entry or the generic/unrelated senses.\\n\\n\" + ($(\"Build Context\").first().json.companyDefs||'') + \"\\n\\nSTRICT RELEVANCE RULE: Mark relevant=true ONLY if the article is plausibly about that specific organization per its definition above (its product, people, funding, customers, or category). If the article merely shares a name token and matches a 'NOT:' entry or a generic/unrelated sense, set relevant=false. Concrete collisions to mark relevant=false: Lumos vs Proton's \\\"Lumo\\\" chatbot / Lumos Fiber/Business Finance/Digital Outdoor/Laboratories Nigeria / solar/fiber networks/Harry-Potter spell/brain-game; Surf AI vs Surf Air Mobility (the airline/\\\"BrokerOS\\\"/Wheels Up) / crypto token \\\"@SurfAI\\\"/asksurf.ai / Surfshark VPN / generic web-surfing; Twine vs Meta's internal \\\"Twine\\\"/Tupperware cluster-management platform / 'digital twin' research / Twine interactive-fiction tool / Python twine PyPI tool; 7AI vs 247.ai/[24]7.ai contact-center AI / a 'top 7 AI tools' listicle; OFFROAD vs off-road/4x4/overlanding vehicles or off-road games; Console vs gaming consoles (PS5/Xbox/Switch) or developer/terminal 'console'; Torch vs PyTorch / Torch.AI defense data-orchestration / flashlight-Olympic-torch-Torch-browser; Opti vs Optiv (different cybersecurity integrator) / Optimizely; Orchid vs Orchid VPN/Protocol crypto / the orchid flower. When the title/description is genuinely ambiguous and could be about the target cybersecurity company, still mark relevant=true (be permissive on ambiguity; only drop clear non-matches per the definitions above). Sponsor, exhibitor, partner-roundup and companies-to-watch or market-map articles that name a listed company by its exact name are RELEVANT (relevant=true). Non-English or transliterated coverage (e.g. Hebrew tech press) that plausibly concerns the target company is RELEVANT; do not drop an article merely because it is not in English \u2014 translate the title and description mentally and judge on meaning.\\n\\nYou are given an array of articles; each has a url, a title, and a description. Using ONLY the title and description, decide for EACH article whether it is plausibly about THAT cybersecurity/identity-security company per its definition above. Mark relevant=false for obvious junk that merely shares the name token, e.g. a sailboat/dinghy class or sailing championship, a stock ticker or generic finance/markets page, a sports event or team, an e-commerce/product-listing/coupon/spam page, or a clearly different company (different industry) that happens to share the name. Output ONLY a JSON array, one element per input article, each with exactly: url (the article url) and relevant (boolean true or false). No prose, no markdown.\" }, { role: 'user', content: (JSON.stringify($input.all().map(i => ({ url: i.json.url, title: i.json.title, description: i.json.description })))) } ] }) }}",
+    "options": {}
+   },
+   "id": "05a7177e-b3aa-46f7-abc2-1e71cea795ad",
+   "name": "HTTP News Relevance Prefilter",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    2240,
+    192
+   ],
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "m4FUdT4FgRFOHRKl",
+     "name": "Dustin's OpenAi account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: \"gpt-4.1\", temperature: 0, messages: [ { role: 'system', content: \"You are an expert sentiment + attribution analyst. Identify the main company discussed EXCLUSIVELY among: \" + ($(\"Build Context\").first().json.companyEnum) + \". Aliases/domains: \" + (JSON.stringify($(\"Build Context\").first().json.companies)) + \".\\n\\nDECISION PROCEDURE \u2014 apply to EVERY post BEFORE answering:\\n1) List each candidate company-name token that appears in the text, title, or post_url.\\n2) POSITIVE ANCHOR REQUIRED: to attribute a post to a listed company you MUST be able to point to a concrete, company-specific anchor IN THIS POST \u2014 its own website domain or LinkedIn handle; a product/feature unique to it; a named founder or employee; a funding round or acquisition tied to it; a named customer; OR the company named explicitly in ITS real context (identity security / IGA / SOC / the exact category in its definition below). If you cannot cite such an anchor, set companyName to NONE. A shared or similar-looking name token, by itself, is NEVER sufficient. ALSO VALID ANCHORS: (a) SPONSOR/EXHIBITOR/PARTNER/PORTFOLIO/companies-to-watch LISTS \u2014 a listed company's EXACT full name in such a curated roster is a deliberate brand reference, not a namesake; attribute it even with no further detail (still reject fuzzy or namesake tokens). (b) LANGUAGE-AGNOSTIC \u2014 anchors may appear in any language (Hebrew, transliterated names, RTL text); translate the article mentally before applying every rule above. A domain, founder name, or exact brand token is a valid anchor regardless of language.\\n3) NAMES ARE EXACT \u2014 reject near-miss namesakes even inside an AI / security / privacy context: 'Lumo' (Proton's chatbot) is NOT 'Lumos'; 'Optiv' is NOT 'Opti'; '[24]7.ai' / '247.ai' / '7.ai' is NOT '7AI'; 'Torch.AI' is NOT 'Torch Security'; Amazon 'Blink' / 'Blink for Home' is NOT 'BlinkOps'; 'Luminous' / 'Lumo' is NOT 'Lumos'. If the post is about the OTHER named entity, set companyName to NONE.\\n4) If the token is used in a clearly different sense (a chatbot, a flower, a VPN, a game, a spell, a healthcare benchmark, a train, an airline, a mythological figure), or you are unsure which entity is meant, set companyName to NONE.\\nA wrong attribution to a namesake is far worse than a NONE \u2014 when in doubt, choose NONE.\\n\\nCOMPANY DEFINITIONS \u2014 A post is \\\"about\\\" a company only if it concerns the specific organization below (its product, funding, people, customers, category). REJECT posts that merely share the name token but match a NOT entry or the generic/unrelated senses.\\n\\n\" + ($(\"Build Context\").first().json.companyDefs||'') + \"\\n\\nSTRICT ATTRIBUTION RULE: Attribute a post to a company ONLY if it is GENUINELY about that specific organization per its definition above (its product, people, funding, customers, or category). If the post merely shares a name token and matches a 'NOT:' entry or a generic/unrelated sense, set companyName to NONE. Concrete collisions to REJECT (set NONE): Lumos = NOT Proton's \\\"Lumo\\\" chatbot, NOT Lumos Fiber/Business Finance/Digital Outdoor/Laboratories Nigeria, NOT solar/fiber networks/Harry-Potter spell/brain-game; Surf AI = NOT Surf Air Mobility (the airline/\\\"BrokerOS\\\"/Wheels Up), NOT crypto token \\\"@SurfAI\\\"/asksurf.ai, NOT Surfshark VPN, NOT generic web-surfing; Twine = NOT Meta's internal \\\"Twine\\\"/Tupperware cluster-management platform, NOT 'digital twin' research, NOT the Twine interactive-fiction tool, NOT the Python twine PyPI tool; 7AI = NOT 247.ai/[24]7.ai contact-center AI, NOT a 'top 7 AI tools' listicle; OFFROAD = NOT off-road/4x4/overlanding vehicles or off-road driving games; Console = NOT gaming consoles (PS5/Xbox/Switch) or the developer/terminal 'console'/console.log; Torch = NOT PyTorch, NOT Torch.AI defense data-orchestration, NOT a flashlight/Olympic-torch/Torch-browser; Opti = NOT Optiv (the cybersecurity integrator is a different company), NOT Optimizely; Orchid = NOT Orchid VPN/Orchid Protocol crypto, NOT the orchid flower; Oak - Identity Security OS = the identity-security company (oak.id) \u2014 NOT the web3 audit firm \\\"Oak Security\\\", NOT Oak Ridge/Oakland/oak wood; require identity-security context or oak.id/founder names.\\n\\nSentiment integer -3..3. Input objects have url,title,source,articleText. Output ONLY a JSON array, one element per article with exactly: url, and companies \u2014 an array of EVERY listed company genuinely named AND anchored in the article; each element = { companyName (listed name), sentiment (int -3..3 for THIS company), reasoning (one sentence naming THIS company's anchor) }; [] if none.\" }, { role: 'user', content: (JSON.stringify($json)) } ] }) }}",
+    "options": {}
+   },
+   "id": "72368621-3b5d-4d01-b6fe-561764717448",
+   "name": "HTTP Sentiment+Attribution News",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    3584,
+    192
+   ],
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "alwaysOutputData": true,
+   "credentials": {
+    "openAiApi": {
+     "id": "m4FUdT4FgRFOHRKl",
+     "name": "Dustin's OpenAi account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: \"gpt-4.1-mini\", temperature: 0, messages: [ { role: 'system', content: \"You evaluate news source credibility. Given url and source, return a credibility_score 0-100 (80-100 major established outlets/government/academic; 50-79 niche but legitimate; 0-49 unknown/blogs/questionable). Output ONLY a JSON array, each element with exactly: url, source, credibility_score (number 0-100), credibility_label (High/Medium/Low), reasoning (one sentence).\" }, { role: 'user', content: (JSON.stringify({ url: $json.url, source: ($(\"Extract Article Text\").all().map(i=>i.json).find(a => a.url === $json.url) || {}).source || \"\" })) } ] }) }}",
+    "options": {}
+   },
+   "id": "8e8e73d4-cdc5-4980-91e4-d7bf3f434aab",
+   "name": "HTTP Source Credibility News",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    4256,
+    192
+   ],
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "m4FUdT4FgRFOHRKl",
+     "name": "Dustin's OpenAi account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "triggerAtHour": 5,
+       "triggerAtMinute": 45
+      }
+     ]
+    }
+   },
+   "id": "fd993db5-8651-43cf-9720-f5ac613c8fc5",
+   "name": "Daily 05:45",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    464
+   ]
+  }
+ ],
+ "connections": {
+  "Execute Workflow Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load Competitors": {
+   "main": [
+    [
+     {
+      "node": "Load SOV Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load SOV Config": {
+   "main": [
+    [
+     {
+      "node": "Load Shared Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load Shared Context": {
+   "main": [
+    [
+     {
+      "node": "Build News Company Items",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build News Company Items": {
+   "main": [
+    [
+     {
+      "node": "Loop Over Companies",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Context": {
+   "main": [
+    [
+     {
+      "node": "Apify Google News (task)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify Google News (task)": {
+   "main": [
+    [
+     {
+      "node": "News Has Articles?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "News Has Articles?": {
+   "main": [
+    [
+     {
+      "node": "News New-Articles Only",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Loop Over Companies",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse News Prefilter": {
+   "main": [
+    [
+     {
+      "node": "Upsert googlenews",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Upsert googlenews": {
+   "main": [
+    [
+     {
+      "node": "Firecrawl Scrape Article",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Firecrawl Scrape Article": {
+   "main": [
+    [
+     {
+      "node": "Extract Article Text",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Extract Article Text": {
+   "main": [
+    [
+     {
+      "node": "Update News articleText",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse News LLM": {
+   "main": [
+    [
+     {
+      "node": "News Relevance Gate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "News Relevance Gate": {
+   "main": [
+    [
+     {
+      "node": "HTTP Source Credibility News",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Loop Over Companies",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse News Credibility": {
+   "main": [
+    [
+     {
+      "node": "Compute News post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Compute News post_weight": {
+   "main": [
+    [
+     {
+      "node": "Write News post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write News post_weight": {
+   "main": [
+    [
+     {
+      "node": "Loop Over Companies",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Loop Over Companies": {
+   "main": [
+    [
+     {
+      "node": "News Done",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Build Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "News New-Articles Only": {
+   "main": [
+    [
+     {
+      "node": "HTTP News Relevance Prefilter",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "HTTP News Relevance Prefilter": {
+   "main": [
+    [
+     {
+      "node": "Parse News Prefilter",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Update News articleText": {
+   "main": [
+    [
+     {
+      "node": "HTTP Sentiment+Attribution News",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "HTTP Sentiment+Attribution News": {
+   "main": [
+    [
+     {
+      "node": "Parse News LLM",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "HTTP Source Credibility News": {
+   "main": [
+    [
+     {
+      "node": "Parse News Credibility",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Daily 05:45": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner",
+  "saveDataErrorExecution": "all"
+ },
+ "active": true
+}

@@ -371,6 +371,7 @@ merge. **Merging auto-deploys** to Cloudflare. Never self-merge without review.
 - `run_assistant_evals.mjs` — assistant regression tests
 - `verify_features.py` — smoke suite
 - `ops/migrations/` — dated SQL migrations (apply in the Supabase SQL editor)
+- `ops/n8n/` — **sanitized exports of all 21 live workflows** (disaster-recovery copy, and the only way to read the pipeline logic from this repo). Re-export with `ops/scripts/export_n8n.sh` after any workflow change or it goes stale.
 
 **Cost discipline (Elan's standing rules, worth keeping):**
 - **Never trigger a paid Apify run without explicit approval.** LLM calls are

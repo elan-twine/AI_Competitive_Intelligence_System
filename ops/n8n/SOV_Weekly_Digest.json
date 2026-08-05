@@ -1,0 +1,169 @@
+{
+ "name": "SOV \u2014 Weekly Digest",
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "weeks",
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 8,
+       "triggerAtMinute": 30
+      }
+     ]
+    }
+   },
+   "id": "8e42eaea-917a-4fd1-8f28-0de690aaf94a",
+   "name": "Weekly (Thu 08:30)",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "\nconst SB='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\nconst get=async(p)=>{try{return await this.helpers.httpRequest({method:'GET',url:SB+p,headers:H,json:true});}catch(e){return [];}};\n// two most recent snapshot weeks\nconst weeks=await get('/sov_weekly?select=week_start&order=week_start.desc&limit=200');\nconst uniq=[...new Set(weeks.map(w=>w.week_start))].slice(0,2);\nconst [cur,prev]=uniq;\nconst curRows=cur?await get('/sov_weekly?select=company,weighted_pct,sentiment_pct,posts_count&week_start=eq.'+cur):[];\nconst prevRows=prev?await get('/sov_weekly?select=company,weighted_pct,sentiment_pct&week_start=eq.'+prev):[];\nconst prevMap=Object.fromEntries(prevRows.map(r=>[r.company,r]));\nconst comps=await get('/competitors?select=name,type&active=eq.true');\nconst direct=new Set(comps.filter(c=>(c.type||'direct')!=='indirect').map(c=>c.name));\nconst board=curRows.filter(r=>direct.has(r.company)).map(r=>({company:r.company,sov:Number(r.weighted_pct)||0,delta:prevMap[r.company]?(Number(r.weighted_pct)||0)-(Number(prevMap[r.company].weighted_pct)||0):null,sent:r.sentiment_pct!=null?((Number(r.sentiment_pct)/100)*6-3):null,posts:r.posts_count})).sort((a,b)=>b.sov-a.sov);\n// top posts of interest this period (with strategic angles)\nconst poi=await get('/posts_of_interest?select=author,summary,strategic_angle,post_type,reactions,url,period_start&period_start=not.is.null&order=period_start.desc,reactions.desc.nullslast&limit=12');\nconst latestPeriod=poi.length?poi[0].period_start:null;\nconst topPoi=poi.filter(p=>p.period_start===latestPeriod).slice(0,5);\n// AI-answer shares (tolerates table not existing yet)\nconst llm=await get('/llm_sov?select=engine,company,share_of_model,week_start&order=week_start.desc&limit=100');\nconst llmLatest=llm.length?llm.filter(r=>r.week_start===llm[0].week_start):[];\nconst payload={week:cur,prevWeek:prev,board,topPostsOfInterest:topPoi,aiVisibility:llmLatest};\nconst openaiBody={model:'gpt-4.1',temperature:0.4,messages:[\n {role:'system',content:'You are the competitive-intelligence analyst for Twine Security (identity security). Write the weekly Slack digest of the Share-of-Voice board. Format for Slack mrkdwn (*bold*, bullets with \\u2022, <url|text> links). Structure: 1) one-line headline of the week; 2) *Board* \u2014 top movers with SOV and delta (arrow emoji), call out anything notable; 3) *Posts worth knowing* \u2014 the top posts of interest, one line each with the For-Twine angle; 4) *AI visibility* \u2014 one line per engine if data exists, else omit; 5) one *So what* action line. Under 300 words, no fluff, no headers other than the bold labels.'},\n {role:'user',content:JSON.stringify(payload)}]};\nreturn [{json:{week:cur,openaiBody,boardSize:board.length,poiCount:topPoi.length}}];\n"
+   },
+   "id": "c216edcd-d078-4c53-9522-86ef98453d4f",
+   "name": "Gather Week Data",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.openaiBody) }}",
+    "options": {
+     "timeout": 120000
+    }
+   },
+   "id": "c2ae102b-5aef-4ee0-b3d9-cc7e569ae1bc",
+   "name": "Narrate (LLM)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.3,
+   "position": [
+    448,
+    0
+   ],
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "\nconst llm=$input.first().json;\nlet text='';\nif(llm&&llm.choices&&llm.choices[0]&&llm.choices[0].message)text=llm.choices[0].message.content||'';\nconst week=$('Gather Week Data').first().json.week||'';\nif(!text)text='(digest generation failed \u2014 check the SOV \u2014 Weekly Digest workflow)';\nconst head=`:bar_chart: *SOV Weekly Digest \u2014 week of ${week}*\\n`;\nconst tail=`\\n<https://competitive-intelligence-system.pages.dev|Open the board> \\u00b7 generated automatically`;\nreturn [{json:{slackText:head+text+tail}}];\n"
+   },
+   "id": "a60fa01f-2c4c-4f32-95f5-b284a1d04ee0",
+   "name": "Format Digest",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "authentication": "oAuth2",
+    "select": "channel",
+    "channelId": {
+     "__rl": true,
+     "value": "C0BFVV55VR7",
+     "mode": "list",
+     "cachedResultName": "sov-alerts"
+    },
+    "text": "={{ $json.slackText }}",
+    "otherOptions": {
+     "mrkdwn": true
+    }
+   },
+   "id": "6ae10a6e-b05d-4f10-bb9f-6bef2a9030d1",
+   "name": "Slack Digest",
+   "type": "n8n-nodes-base.slack",
+   "typeVersion": 2.3,
+   "position": [
+    896,
+    0
+   ],
+   "webhookId": "81b8308c-07b5-46d7-a3bd-001a928adc9d",
+   "credentials": {
+    "slackOAuth2Api": {
+     "id": "qnZtXBwMt2ZcMSsj",
+     "name": "Slack OAuth2 API"
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Weekly (Thu 08:30)": {
+   "main": [
+    [
+     {
+      "node": "Gather Week Data",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gather Week Data": {
+   "main": [
+    [
+     {
+      "node": "Narrate (LLM)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Narrate (LLM)": {
+   "main": [
+    [
+     {
+      "node": "Format Digest",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Format Digest": {
+   "main": [
+    [
+     {
+      "node": "Slack Digest",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner"
+ },
+ "active": true
+}

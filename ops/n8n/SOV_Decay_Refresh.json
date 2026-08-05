@@ -1,0 +1,110 @@
+{
+ "name": "SOV \u2014 Decay Refresh",
+ "nodes": [
+  {
+   "id": "e817b3f5-e472-4ec3-93f5-61e7a9a02336",
+   "name": "Daily 6:35",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "days",
+       "daysInterval": 1,
+       "triggerAtHour": 6,
+       "triggerAtMinute": 35
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "e8d9810f-f61c-4287-94fc-b5d5f96e83a7",
+   "name": "Build Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const helpers=this.helpers;\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst BASE='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\nconst competitors=await helpers.httpRequest({method:'GET',url:BASE+'/competitors?select=name,aliases,domain,x_handle,linkedin_urn,subreddits,type,active&active=eq.true',headers:H,json:true});\nconst cfgRows=await helpers.httpRequest({method:'GET',url:BASE+'/sov_config?select=config&id=eq.1',headers:H,json:true});\nconst config=(cfgRows&&cfgRows[0]&&cfgRows[0].config)?cfgRows[0].config:{};\nconst active=(competitors||[]).filter(c=>c.active!==false);\nconst companies=active.map(c=>({name:c.name,aliases:Array.isArray(c.aliases)?c.aliases:[],domain:c.domain||null,x_handle:c.x_handle||null,linkedin_urn:c.linkedin_urn||null,subreddits:Array.isArray(c.subreddits)?c.subreddits:[],type:c.type||'direct'}));\nreturn [{json:{config,companies}}];\n"
+   }
+  },
+  {
+   "id": "63d4b7cc-742b-4ef0-aa8b-2eaf37e0cd75",
+   "name": "Weekly Decay Refresh",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    448,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "// Re-age post_weight on ATTRIBUTED rows only, ternary author model, 50-row batches (own execution).\nconst helpers=this.helpers;\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst BASE='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\nconst ctx=$('Build Context').first().json;const cfg=(ctx&&ctx.config)?ctx.config:{};\nconst clamp=cfg.sentimentClamp||{min:0.5,max:1.3};\nconst ewAll=cfg.engagementWeights||{};\nconst lw=ewAll.LinkedIn||{reaction:1,comment:3,reshare:10,image:1.5};\nconst xw=ewAll.X||{like:1,reply:2,repost:10,quote:4};\nconst rw=ewAll.Reddit||{upvote:1,comment:3};\nconst AB=cfg.authorBaseline||{company:1.0,employee:2.0,external:5.0};\nconst AEM=cfg.authorEngMult||{company:1.0,employee:1.2,external:2.0};\nconst hl=cfg.halfLifeDays||{};\nconst hlLI=hl.LinkedIn||14,hlX=hl.X||7,hlReddit=hl.Reddit||10,hlNews=hl['Google News']||30;\nconst urnSet=new Set((ctx&&ctx.companies?ctx.companies:[]).map(c=>String(c.linkedin_urn||'')).filter(Boolean));\nconst EMP={};\ntry{const aff=await helpers.httpRequest({method:'GET',url:BASE+'/author_affiliation?select=profile_id,competitor&verdict=eq.employee',headers:H,json:true});for(const a of (aff||[])){if(a&&a.profile_id&&a.competitor)EMP[String(a.competitor).trim().toLowerCase()+'|'+String(a.profile_id)]=true;}}catch(e){}\nfunction num(x,d){return (x!=null?Number(x):d);}\nfunction round6(x){return parseFloat(Number(x).toFixed(6));}\nfunction sentMult(x){if(x==null)return 1.0;const s=Math.max(-3,Math.min(3,Number(x)));return clamp.min+((s+3)/6)*(clamp.max-clamp.min);}\nfunction ageDays(t){if(!t)return 0;const d=new Date(t);return isNaN(d)?0:Math.max(0,(Date.now()-d.getTime())/86400000);}\nfunction decay(age,hlife){return age<=7?1:Math.pow(2,-age/hlife);}\nfunction reachOf(eng){return Math.pow(Math.max(0,eng),49/50);}\nfunction newsTierMult(u){const nt=cfg.newsTiers;if(!nt||!nt.tiers)return 1;const m=String(u||'').match(/^[a-z][a-z0-9+.-]*:\\/\\/([^\\/?#]+)/i);let host=m?m[1].replace(/^www\\./i,'').toLowerCase():'';if(!host)return (nt.default!=null?nt.default:1);for(const k in nt.tiers){const t=nt.tiers[k];const ds=(t&&t.domains)||[];for(let i=0;i<ds.length;i++){const d=ds[i];if(host===d||host.endsWith('.'+d))return t.mult;}}return (nt.default!=null?nt.default:1);}\nfunction authorTier(r){const a=(r.author&&typeof r.author==='object')?r.author:{};const prof=String(a.profile_id||'');const head=String(a.headline||'').toLowerCase();const cn=String(r.companyName||'');if(prof&&urnSet.has(prof))return 'company';if(prof&&cn&&cn!=='NONE'&&EMP[cn.toLowerCase()+'|'+prof])return 'employee';if(cn&&cn!=='NONE'&&head.indexOf(cn.toLowerCase())!==-1)return 'employee';return 'external';}\nfunction tierB(t){return t==='company'?num(AB.company,1.0):(t==='employee'?num(AB.employee,2.0):num(AB.external,5.0));}\nfunction tierM(t){return t==='company'?num(AEM.company,1.0):(t==='employee'?num(AEM.employee,1.2):num(AEM.external,2.0));}\nconst ATTR='&companyName=not.is.null&companyName=neq.NONE';\nasync function process(table,cols,orderCol,keyCol,computeRow,mode){const BATCH=50;let off=0,total=0;const hh=Object.assign({},H,{'Content-Type':'application/json','Prefer':(mode==='patch'?'return=minimal':'resolution=merge-duplicates,return=minimal')});for(;;){const url=BASE+'/'+table+'?select='+cols+ATTR+'&order='+orderCol+'&limit='+BATCH+'&offset='+off;const batch=await helpers.httpRequest({method:'GET',url,headers:H,json:true});const arr=Array.isArray(batch)?batch:[];if(!arr.length)break;const rows=arr.map(computeRow);if(mode==='patch'){for(const r of rows){const u=BASE+'/'+table+'?'+keyCol+'=eq.'+encodeURIComponent(r[keyCol]);const body={};for(const k in r){if(k!==keyCol)body[k]=r[k];}try{await helpers.httpRequest({method:'PATCH',url:u,headers:hh,body,json:true});total++;}catch(e){}}}else{try{await helpers.httpRequest({method:'POST',url:BASE+'/'+table+'?on_conflict='+keyCol,headers:hh,body:rows,json:true});total+=rows.length;}catch(e){}}if(arr.length<BATCH)break;off+=BATCH;}return total;}\nconst liN=await process('linkedin_posts','activity_id,companyName,totalReactions,comments,reshares,imageURL,sentiment,posted_at,author','activity_id','activity_id',function(r){let eng=num(lw.reaction,1)*Number(r.totalReactions||0)+num(lw.comment,3)*Number(r.comments||0)+num(lw.reshare,10)*Number(r.reshares||0);if(r.imageURL&&String(r.imageURL).length>0)eng+=num(lw.image,1.5);const reach=reachOf(eng);const t=authorTier(r);return {activity_id:r.activity_id,post_weight:round6((tierB(t)+reach*tierM(t))*sentMult(r.sentiment)*decay(ageDays(r.posted_at),hlLI))};},'upsert');\nconst twN=await process('tweets','id,companyName,likeCount,replyCount,retweetCount,quoteCount,authorWeight,sentiment,createdAt','id','id',function(r){const eng=num(xw.like,1)*Number(r.likeCount||0)+num(xw.reply,2)*Number(r.replyCount||0)+num(xw.repost,10)*Number(r.retweetCount||0)+num(xw.quote,4)*Number(r.quoteCount||0);const reach=reachOf(eng);const own=Number(r.authorWeight||5)<=1;const B=own?num(AB.company,1.0):num(AB.external,5.0);const M=own?num(AEM.company,1.0):num(AEM.external,2.0);return {id:r.id,post_weight:round6((B+reach*M)*sentMult(r.sentiment)*decay(ageDays(r.createdAt),hlX))};},'upsert');\nconst gnN=await process('googlenews','url,companyName,sentiment,publishedAt','url','url',function(r){return {url:r.url,post_weight:round6(newsTierMult(r.url)*sentMult(r.sentiment)*decay(ageDays(r.publishedAt),hlNews))};},'upsert');\nconst rdN=await process('reddit_posts','id,companyName,score,numComments,sentiment,createdAt','id','id',function(r){const eng=num(rw.upvote,1)*Math.max(0,Number(r.score||0))+num(rw.comment,3)*Number(r.numComments||0);return {id:r.id,post_weight:round6(reachOf(eng)*sentMult(r.sentiment)*decay(ageDays(r.createdAt),hlReddit))};},'patch');\nreturn [{json:{decayRefresh:true,model:'ternary; attributed-only; batch50',linkedin:liN,x:twN,news:gnN,reddit:rdN}}];\n"
+   }
+  },
+  {
+   "id": "80a7ab5c-1d4a-4c6f-aaac-5af6254a438f",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    192
+   ],
+   "parameters": {}
+  }
+ ],
+ "connections": {
+  "Build Context": {
+   "main": [
+    [
+     {
+      "node": "Weekly Decay Refresh",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Build Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Daily 6:35": {
+   "main": [
+    [
+     {
+      "node": "Build Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner"
+ },
+ "active": true
+}
