@@ -1,0 +1,120 @@
+{
+ "name": "SOV \u2014 Author Relationship",
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "triggerAtHour": 6,
+       "triggerAtMinute": 25
+      }
+     ]
+    }
+   },
+   "id": "ba7f4244-7de6-47b8-9630-9c65b7c9672f",
+   "name": "Daily 06:25",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "\nconst SB='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\nconst comps=await this.helpers.httpRequest({method:'GET',url:SB+'/competitors?select=name,linkedin_urn&active=eq.true',headers:H,json:true});\nconst urn=new Set((comps||[]).map(c=>String(c.linkedin_urn||'')).filter(Boolean));\nconst aff=await this.helpers.httpRequest({method:'GET',url:SB+'/author_affiliation?select=key,verdict',headers:H,json:true});\nconst verdictByKey={};for(const a of (aff||[])){if(a&&a.key)verdictByKey[String(a.key)]=a.verdict;}\n// Stream attributed LI posts in small pages; fold DISTINCT candidate authors into byKey; discard each page.\n// (Loading all posts + full text at once OOMs the tight n8n worker \u2014 2026-07-08.)\nconst byKey={}; let off=0; const PAGE=200;\nfor(;;){\n  const b=await this.helpers.httpRequest({method:'GET',url:SB+'/linkedin_posts?select=companyName,author,text,posted_at&companyName=neq.NONE&companyName=not.is.null&order=posted_at.desc&limit='+PAGE+'&offset='+off,headers:H,json:true});\n  const page=Array.isArray(b)?b:[];\n  for(const r of page){\n    const a=(r.author&&typeof r.author==='object')?r.author:null; if(!a)continue;\n    const pid=String(a.profile_id||''); if(!pid)continue;\n    if(urn.has(pid))continue;\n    if(verdictByKey[pid]==='employee')continue;\n    if(!byKey[pid]){byKey[pid]={key:pid,profile_id:pid,competitor:r.companyName,name:a.name||'',headline:a.headline||'',texts:[],ts:r.posted_at};}\n    const e=byKey[pid];\n    if(e.texts.length<2 && r.text){e.texts.push(String(r.text).replace(/\\s+/g,' ').slice(0,400));}\n  }\n  if(page.length<PAGE)break;\n  off+=PAGE;\n}\nlet cands=Object.values(byKey);\ncands.sort((x,y)=>String(y.ts).localeCompare(String(x.ts)));\ncands=cands.slice(0,60);\nif(!cands.length)return [];\nconst promptList=cands.map((c,i)=>({idx:i,competitor:c.competitor,name:c.name,headline:c.headline,posts:c.texts}));\nconst openaiBody={model:'gpt-4.1',temperature:0,response_format:{type:'json_object'},messages:[{role:'system',content:\"You classify the RELATIONSHIP between a LinkedIn author and a competitor company, for a competitive-intelligence tool at Twine Security. You are given a list of authors; each has: idx, competitor (the company their post was attributed to), the author's name, their LinkedIn headline, and 1-2 of their post texts (about that competitor). For EACH author, decide their relationship to THAT competitor and return exactly one label:\\n- \\\"employee\\\": the author currently works at the competitor, OR is announcing they JUST JOINED / are JOINING / STARTING a role there (e.g. 'excited to join <competitor>', 'Day 1 at <competitor>', 'starting a new position at <competitor>', or a headline like 'VP at <competitor>'). Incoming/just-joined counts as employee.\\n- \\\"external\\\": anyone else \u2014 a customer, partner, investor, event organizer, a person who works at a DIFFERENT company (even if they mention or praise the competitor), a commentator/analyst, OR an EX-employee who is LEAVING or has LEFT (departure/farewell posts, 'ex-<competitor>', 'my last day at <competitor>', now at another company).\\nKey distinctions: JOINING = employee; LEAVING/DEPARTED = external; working at another company while mentioning the competitor = external. When the headline names a DIFFERENT current employer, choose external unless the post clearly announces joining the competitor. Return ONLY a JSON object: {\\\"results\\\":[{\\\"idx\\\":<int>,\\\"relation\\\":\\\"employee\\\"|\\\"external\\\"}]} with one entry per input author, no prose.\"},{role:'user',content:'Authors to classify (JSON):\\n'+JSON.stringify(promptList)}]};\nreturn [{json:{candidates:cands,openaiBody}}];\n"
+   },
+   "id": "265df49b-ad18-49f0-859b-9acbdfe20971",
+   "name": "Fetch Candidates",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.openaiBody) }}",
+    "options": {
+     "timeout": 120000
+    }
+   },
+   "id": "2be5104e-3dd3-451e-b2b8-ac163fb85a87",
+   "name": "Classify (LLM)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.3,
+   "position": [
+    448,
+    0
+   ],
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "\nconst SB='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'};\nconst llm=$input.first().json;\nlet content='';\nif(llm&&llm.choices&&llm.choices[0]&&llm.choices[0].message)content=llm.choices[0].message.content||'';\nelse if(llm&&llm.message&&llm.message.content)content=llm.message.content;\nelse if(typeof llm==='string')content=llm;\nlet parsed={results:[]};try{parsed=JSON.parse(content);}catch(e){parsed={results:[]};}\nconst results=Array.isArray(parsed.results)?parsed.results:[];\nconst src=$('Fetch Candidates').first().json;\nconst cands=(src&&src.candidates)||[];\nconst now=new Date().toISOString();\nconst rows=[];\nfor(const res of results){\n  const c=cands[Number(res.idx)];\n  if(!c)continue;\n  const v=(res.relation==='employee')?'employee':'external';\n  rows.push({key:c.key,profile_id:c.profile_id,name:c.name,competitor:c.competitor,verdict:v,employer:(v==='employee'?c.competitor:null),method:'llm',checked_at:now});\n}\nif(!rows.length)return [{json:{classified:0,candidates:cands.length}}];\nlet ok=false,err='';\ntry{await this.helpers.httpRequest({method:'POST',url:SB+'/author_affiliation?on_conflict=key',headers:H,body:rows,json:true});ok=true;}\ncatch(e){err=String((e&&e.message)||e).slice(0,300);}\nconst emp=rows.filter(r=>r.verdict==='employee').length;\nreturn [{json:{classified:ok?rows.length:0,employees:emp,externals:rows.length-emp,candidates:cands.length,ok,error:err}}];\n"
+   },
+   "id": "54bb87aa-ab9f-40ba-aee8-4bfa815c701c",
+   "name": "Upsert Author Verdicts",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    0
+   ]
+  }
+ ],
+ "connections": {
+  "Daily 06:25": {
+   "main": [
+    [
+     {
+      "node": "Fetch Candidates",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fetch Candidates": {
+   "main": [
+    [
+     {
+      "node": "Classify (LLM)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Classify (LLM)": {
+   "main": [
+    [
+     {
+      "node": "Upsert Author Verdicts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate"
+ },
+ "active": true
+}

@@ -1,0 +1,598 @@
+{
+ "name": "SOV \u2014 X",
+ "nodes": [
+  {
+   "id": "07024df6-e860-4872-b059-2506c42508e9",
+   "name": "Execute Workflow Trigger",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "inputSource": "passthrough"
+   }
+  },
+  {
+   "id": "09188a3b-4181-4edf-bea4-6d155435c580",
+   "name": "Load Competitors",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    224,
+    96
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "getAll",
+    "tableId": "competitors",
+    "returnAll": true,
+    "filterType": "manual",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "active",
+       "condition": "eq",
+       "keyValue": "true"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "id": "2b9fda9c-28ea-4aae-8151-a5ad9abd3c7b",
+   "name": "Load SOV Config",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    448,
+    96
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "getAll",
+    "tableId": "sov_config",
+    "returnAll": true,
+    "filterType": "manual",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "id",
+       "condition": "eq",
+       "keyValue": "1"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "executeOnce": true
+  },
+  {
+   "id": "fec8d329-3fdb-4214-886a-ffd70bb7aa7f",
+   "name": "Build Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const competitors = $(\"Load Competitors\").all().map(i => i.json);\nconst cfgRow = $(\"Load SOV Config\").first();\nconst config = (cfgRow && cfgRow.json && cfgRow.json.config) ? cfgRow.json.config : {};\nconst active = competitors.filter(c => c.active !== false);\nconst companies = active.map(c => ({ name: c.name, keywords: Array.isArray(c.keywords)?c.keywords:[], definition: c.definition||'', collision_terms: Array.isArray(c.collision_terms)?c.collision_terms:[], aliases: Array.isArray(c.aliases) ? c.aliases : [], domain: c.domain || null, x_handle: c.x_handle || null, linkedin_urn: c.linkedin_urn || null, subreddits: Array.isArray(c.subreddits) ? c.subreddits : [], type: c.type || 'direct' }));\nconst linkedin_urns = companies.map(c => c.linkedin_urn).filter(Boolean);\nconst companyEnum = companies.map(c => c.name).join(\", \");\nconst allSubreddits = Array.from(new Set([].concat(...companies.map(c => c.subreddits)).concat([\"cybersecurity\",\"netsec\",\"asknetsec\",\"devsecops\",\"hacking\",\"information_security\",\"security\",\"identitymanagement\",\"sysadmin\",\"itmanagers\",\"blueteamsec\"]))).filter(Boolean);\nreturn [{ json: { config, companies, linkedin_urns, companyEnum, allSubreddits } }];\n"
+   },
+   "executeOnce": true
+  },
+  {
+   "id": "69e0f741-b9dc-46d6-8da3-4813b27e0ae1",
+   "name": "Build X Queries",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const ctx = $(\"Build Context\").first().json;\n// DIRECT competitors only. HYBRID handle-first: (A) from:<handle> timeline; (B) one GUARDED mention query\n// per co (quoted phrase + static negations + DYNAMIC learned negations from sov_config.xNegations + lang:en).\n// NEVER an OR-blob. One Apify run. Learned negations self-tune the queries to the junk they actually hit.\nconst companies = (ctx.companies || []).filter(c => c && (c.type || 'direct') === 'direct');\nconst cfg = ctx.config || {};\nconst NEG = (cfg.xNegations && typeof cfg.xNegations === 'object') ? cfg.xNegations : {};\nconst start = $now.minus({ days: 1 }).toISODate();\nconst GUARD = {\n  'Surf AI':        { phrase: '\"Surf AI\" OR \"Surf Security\"',                          neg: '-surfshark -asksurf -crypto -token -airdrop -aviation' },\n  'Lumos':          { phrase: '\"Lumos identity\" OR \"Lumos IGA\" OR \"Lumos IAM\"',          neg: '-\"harry potter\" -crypto -token -proton -lumosity -fiber' },\n  'Opti':           { phrase: '\"Opti identity\" OR \"Opti IAM\" OR \"opti.ai\"',              neg: '-optiv -optimizely' },\n  'Console':        { phrase: '\"Console ITSM\" OR \"Console identity\" OR \"console.com\"',    neg: '-playstation -xbox -nintendo' },\n  'Torch Security': { phrase: '\"Torch Security\" OR \"torch.security\"',                    neg: '-pytorch -flashlight' },\n  '7AI':            { phrase: '\"7AI\" OR \"7ai.com\"',                                      neg: '-247' },\n  'OFFROAD':        { phrase: '\"Offroad Security\" OR \"offroad.ai\"',                      neg: '-jeep -4x4 -overlanding -truck' },\n  'Twine Security': { phrase: '\"Twine Security\" OR \"Twine identity\"',                    neg: '-\"digital twin\" -tupperware -twinery' }\n};\nconst seen = new Set();\nconst searchTerms = [];\nfunction push(q){ const k = q.toLowerCase(); if (!seen.has(k)) { seen.add(k); searchTerms.push(q); } }\nfor (const c of companies) {\n  const name = (c.name == null ? \"\" : String(c.name)).trim();\n  if (!name) continue;\n  let handle = c.x_handle ? String(c.x_handle).trim().replace(/^@/, \"\") : \"\";\n  if (handle && !/^[A-Za-z0-9_]{1,15}$/.test(handle)) handle = \"\";\n  if (handle) push('from:' + handle + ' lang:en');\n  const g = GUARD[name];\n  const core = g ? g.phrase : ((c.keywords&&c.keywords.length) ? c.keywords.map(k=>'\"'+k+'\"').join(' OR ') : ('\"' + name + '\"'));\n  const handleClause = handle ? ('@' + handle + ' OR ') : '';\n  let neg = (g && g.neg) ? (' ' + g.neg) : '';\n  const learned = Array.isArray(NEG[name]) ? NEG[name] : [];\n  for (const t of learned) { const tok = String(t || '').trim(); if (tok) neg += ' -' + tok; }\n  push('(' + handleClause + core + ')' + neg + ' lang:en');\n}\nreturn [{ json: { searchTerms, start } }];"
+   },
+   "executeOnce": true
+  },
+  {
+   "id": "b1baf554-2187-4d55-aa8a-cf473e1551ab",
+   "name": "Apify X (per query)",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    1120,
+    96
+   ],
+   "parameters": {
+    "resource": "Actors",
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "61RPP7dywgiy0JPD0"
+    },
+    "customBody": "={{ JSON.stringify({ searchTerms: $json.searchTerms, sort: \"Latest\", start: $json.start, maxItems: 200, includeSearchTerms: true }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "executeOnce": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "a3e72879-944e-49cb-96f8-9196afc2b694",
+   "name": "Prep X Batches",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1344,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "// Flatten + dedup the Apify tweets, then chunk into batches of 50 (one item per chunk) so the LLM node\n// runs a few times, not once-per-tweet \u2014 bounded memory (the OOM-safe Processor pattern).\nconst BATCH = 50, MAXTEXT = 400;\nconst ctx = $(\"Build Context\").first().json;\nconst companies = (ctx.companies || []).map(c => ({ name: c.name, x_handle: c.x_handle || null }));\nconst companyEnum = companies.map(c => c.name).join(', ');\nconst companyDefs = companies.map(c=>{const dom=c.domain?(' ('+c.domain+')'):'';const nots=(c.collision_terms&&c.collision_terms.length)?('. NOT: '+c.collision_terms.join('; ')):'';return c.name+dom+' \\u2014 '+(c.definition||'(no definition yet)')+nots;}).join('\\n\\n');\nconst seen = {}; const flat = [];\nfor (const item of $input.all()) {\n  const t = item.json || {}; const id = t.id || t.tweetId || t.rest_id; if (!id || seen[id]) continue; seen[id] = 1;\n  const a = t.author || {}; const followers = Number(a.followers || 0); const viewCount = Number(t.viewCount || t.views || 0);\n  let bw = 1; if (followers >= 100000) bw = 6; else if (followers >= 10000) bw = 5; else if (followers >= 1000) bw = 4; else if (followers >= 500) bw = 3; else if (followers >= 50) bw = 2;\n  let authorWeight = bw; if (a.isVerified || a.isBlueVerified) authorWeight = bw < 5 ? bw + 1 : 5;\n  const authorUserName = (a.userName || a.username || a.screenName || a.screen_name || '');\n  flat.push({ id: String(id), twitterUrl: t.url || '', url: t.url || '', text: t.text || '', createdAt: t.createdAt || '', likeCount: Number(t.likeCount || 0), retweetCount: Number(t.retweetCount || 0), replyCount: Number(t.replyCount || 0), quoteCount: Number(t.quoteCount || 0), viewCount, followers, authorWeight, authorUserName });\n}\nif (!flat.length) return [];\nconst out = [];\nfor (let i = 0; i < flat.length; i += BATCH) {\n  const chunk = flat.slice(i, i + BATCH);\n  const llmPosts = chunk.map(t => ({ id: t.id, text: String(t.text || '').slice(0, MAXTEXT), authorUserName: t.authorUserName }));\n  out.push({ json: { chunkIndex: i / BATCH, companyEnum, companyDefs, companies, llmPosts, full: chunk } });\n}\nreturn out;\n"
+   }
+  },
+  {
+   "id": "73731302-bce5-4e8d-a6b3-547f63b57608",
+   "name": "Upsert tweets",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1568,
+    96
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/tweets?on_conflict=id",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=representation"
+      }
+     ]
+    },
+    "sendBody": true,
+    "contentType": "json",
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ id: $json.id, twitterUrl: $json.twitterUrl, url: $json.url, text: $json.text, createdAt: $json.createdAt, likeCount: $json.likeCount, retweetCount: $json.retweetCount, replyCount: $json.replyCount, quoteCount: $json.quoteCount, viewCount: $json.viewCount, followers: $json.followers }) }}",
+    "options": {}
+   },
+   "onError": "continueRegularOutput",
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "id": "d11ec840-c140-4c73-b394-344c6a1cdc97",
+   "name": "Parse X Relevance",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2016,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  if (a === -1 || b === -1 || b <= a) continue;\n  let parsed; try { parsed = JSON.parse(raw.slice(a, b + 1)); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) { if (e && e.id) results.push({ json: e }); }\n}\nreturn results;"
+   }
+  },
+  {
+   "id": "c7d4027d-a3fe-40fc-b5dd-078808ab23ff",
+   "name": "Parse X LLM",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2464,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  const txt = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n  let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) results.push({ json: { activity_id: e.activity_id, companyName: e.companyName, sentiment: e.sentiment, reasoning: e.reasoning } });\n}\nreturn results;"
+   }
+  },
+  {
+   "id": "2e8f66fc-84c0-40c7-beb7-927bcbbaf949",
+   "name": "X Relevance Gate",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    2688,
+    96
+   ],
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": false,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "NONE",
+       "operator": {
+        "type": "string",
+        "operation": "notEquals"
+       }
+      },
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "91e602f7-5c96-4980-977f-2172bce43487",
+   "name": "Score + Write + Learn X",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2912,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const helpers=this.helpers;\nconst SRK='<REDACTED_SUPABASE_JWT>';\nconst SB='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:SRK,Authorization:'Bearer '+SRK};\nconst ctx=$(\"Build Context\").first().json; const cfg=ctx.config||{};\nconst ew=(cfg.engagementWeights&&cfg.engagementWeights.X)||{like:1,reply:2,repost:10,quote:4};\nconst clamp=cfg.sentimentClamp||{min:0.5,max:1.3}; const halfLife=(cfg.halfLifeDays&&cfg.halfLifeDays.X)||7;\nconst nameSet=new Set((ctx.companies||[]).filter(c=>(c.type||'direct')!=='indirect').map(c=>c.name));\n// company name -> its own x_handle (lowercased, no @). Used to DISCOUNT a company's OWN tweets:\n// earned attention beats self-promotion, so own-account posts count least (mirrors the LinkedIn\n// ternary company-tier) instead of getting boosted by the company's own follower count.\nconst cmap={}; for(const c of (ctx.companies||[])){ if(c&&c.name&&c.x_handle) cmap[c.name]=String(c.x_handle).toLowerCase().replace(/^@/,''); }\nfunction normTerm(t){ if(!t)return''; let s=String(t).toLowerCase().trim().replace(/^[@#$]/,''); if(!/^[a-z0-9_.\\-]{2,20}$/.test(s))return''; return s; }\nfunction sentMult(s){ if(s==null)return 1.0; const x=Math.max(-3,Math.min(3,Number(s))); return clamp.min+((x+3)/6)*(clamp.max-clamp.min); }\nfunction llmText(j){ if(j&&Array.isArray(j.choices)&&j.choices[0]){const ch=j.choices[0]; if(ch.message&&(ch.message.content||ch.message.reasoning))return ch.message.content||ch.message.reasoning; if(typeof ch.text==='string')return ch.text;} if(j&&typeof j.text==='string')return j.text; return ''; }\nconst full={}; for(const it of $('Prep X Batches').all()){ for(const t of (it.json.full||[])) full[String(t.id)]=t; }\nconst llm={};\nfor(const it of $input.all()){ let raw=String(llmText(it.json)||'').replace(/```json/gi,'').replace(/```/g,'').trim(); if(!raw)continue; const a=raw.indexOf('['),b=raw.lastIndexOf(']'); const txt=(a!==-1&&b!==-1&&b>a)?raw.slice(a,b+1):raw; let parsed; try{parsed=JSON.parse(txt);}catch(e){continue;} for(const e of (Array.isArray(parsed)?parsed:[parsed])){ if(e&&e.activity_id!=null) llm[String(e.activity_id)]=e; } }\nconst rows=[]; const learn={};\nfor(const id in full){\n  const tw=full[id]; const e=llm[id]||{};\n  const _co=(e&&Array.isArray(e.companies))?e.companies:((e&&e.companyName)?[{companyName:e.companyName,sentiment:e.sentiment,reasoning:e.reasoning}]:[]);\n  const company_names=_co.filter(c=>c&&c.companyName&&nameSet.has(c.companyName)).map(c=>({name:c.companyName,sentiment:(c.sentiment!=null?c.sentiment:null),reasoning:c.reasoning||''}));\n  const companyName=company_names.length?company_names[0].name:'NONE';\n  const sentiment=(companyName!=='NONE'&&company_names[0].sentiment!=null)?company_names[0].sentiment:null;\n  const reasoning=company_names.length?(company_names[0].reasoning||''):'';\n  let post_weight=null; let tierB=null;\n  if(companyName!=='NONE'){\n    const eng=((ew.like!=null?ew.like:1)*Number(tw.likeCount||0))+((ew.reply!=null?ew.reply:2)*Number(tw.replyCount||0))+((ew.repost!=null?ew.repost:10)*Number(tw.retweetCount||0))+((ew.quote!=null?ew.quote:4)*Number(tw.quoteCount||0));\n    // MINDSHARE MODEL (2026-07-08): reach = engagement only \u2014 viewCount removed from scoring (still stored on the row).\n    const reach=Math.pow(Math.max(0,eng),49/50);\n    const authorU=String(tw.authorUserName||'').toLowerCase().replace(/^@/,'');\n    const ownH=cmap[companyName];\n    const own=(ownH&&authorU&&authorU===ownH); // own post -> company tier, counts least\n    const AB=cfg.authorBaseline||{company:1,employee:2,external:5};\n    const AEM=cfg.authorEngMult||{company:1,employee:1.2,external:2};\n    const B=own?(AB.company!=null?AB.company:1):(AB.external!=null?AB.external:5);\n    const M=own?(AEM.company!=null?AEM.company:1):(AEM.external!=null?AEM.external:2);\n    tierB=B;\n    let age=0; if(tw.createdAt){const d=new Date(tw.createdAt); if(!isNaN(d))age=Math.max(0,(Date.now()-d.getTime())/86400000);}\n    const decay=age<=7?1:Math.pow(2,-age/halfLife);\n    post_weight=parseFloat(((B+reach*M)*sentMult(sentiment)*decay).toFixed(6));\n  } else {\n    const term=normTerm(e.rejectTerm); const col=e.collidesWith;\n    if(term&&col&&nameSet.has(col)){ (learn[col]||(learn[col]=new Set())).add(term); }\n  }\n  // authorWeight column now stores the author-TIER baseline B (1 own / 5 external) \u2014 Decay reads it; no longer the follower tier.\n  rows.push({id:tw.id,twitterUrl:tw.twitterUrl,url:tw.url,text:tw.text,createdAt:tw.createdAt||null,likeCount:tw.likeCount,retweetCount:tw.retweetCount,replyCount:tw.replyCount,quoteCount:tw.quoteCount,viewCount:tw.viewCount,followers:tw.followers,authorWeight:(tierB!=null?tierB:tw.authorWeight),sentiment,reasoning,companyName,company_names,post_weight});\n}\nlet written=0;\nif(rows.length){ try{ await helpers.httpRequest({method:'POST',url:SB+'/tweets?on_conflict=id',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:rows,json:true}); written=rows.length; }catch(err){ return [{json:{error:'upsert failed: '+(err&&err.message||err)}}]; } }\nlet learnedCount=0; const learnKeys=Object.keys(learn);\nif(learnKeys.length){ try{\n  const cfgRows=await helpers.httpRequest({method:'GET',url:SB+'/sov_config?select=config&id=eq.1',headers:H,json:true});\n  const conf=(cfgRows&&cfgRows[0]&&cfgRows[0].config)?cfgRows[0].config:{};\n  const neg=(conf.xNegations&&typeof conf.xNegations==='object')?conf.xNegations:{};\n  for(const co of learnKeys){ const existing=new Set((Array.isArray(neg[co])?neg[co]:[]).map(x=>String(x).toLowerCase())); const own=new Set([co.toLowerCase()]); for(const w of String(co).toLowerCase().split(/\\s+/))own.add(w); for(const term of learn[co]){ if(existing.size>=25)break; if(existing.has(term)||own.has(term))continue; existing.add(term); learnedCount++; } neg[co]=Array.from(existing).slice(0,25); }\n  conf.xNegations=neg;\n  await helpers.httpRequest({method:'PATCH',url:SB+'/sov_config?id=eq.1',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:{config:conf},json:true});\n}catch(e){} }\nconst attributed=rows.filter(r=>r.post_weight!=null).length;\nreturn [{json:{processed:rows.length,written,attributed,none:rows.length-attributed,learnedNegations:learnedCount}}];\n"
+   }
+  },
+  {
+   "id": "c72f69ac-ba2f-4263-9099-88731d94acaf",
+   "name": "Write X post_weight",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    3136,
+    96
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "update",
+    "tableId": "tweets",
+    "filterType": "manual",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "id",
+       "condition": "eq",
+       "keyValue": "={{ $json.id }}"
+      }
+     ]
+    },
+    "dataToSend": "defineBelow",
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "sentiment",
+       "fieldValue": "={{ $json.sentiment }}"
+      },
+      {
+       "fieldId": "reasoning",
+       "fieldValue": "={{ $json.reasoning }}"
+      },
+      {
+       "fieldId": "companyName",
+       "fieldValue": "={{ $json.companyName }}"
+      },
+      {
+       "fieldId": "post_weight",
+       "fieldValue": "={{ $json.post_weight }}"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "96d8a4ed-e951-42c1-b3bb-f8e606acec20",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    192
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "fe172f4a-ff15-4f60-be42-c9dca7955385",
+   "name": "HTTP X Strict Relevance Filter",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1792,
+    96
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "contentType": "json",
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0, messages: [ { role: 'system', content: 'You are a strict data filtering system for cybersecurity social media content. You receive a single JSON object representing one post with fields like id,text,url,createdAt. TASK: determine if relevant to cybersecurity discussions involving any of: ' + $(\"Build Context\").first().json.companyEnum + ' (use these aliases/handles for matching: ' + JSON.stringify($(\"Build Context\").first().json.companies) + '). RELEVANCE RULES: keep if (1) mentions a listed company explicitly by name, handle, or close variant; OR (2) clearly discusses cybersecurity (IAM, IGA, PAM, SOC, SOAR, CTEM, identity governance, access control, security automation, threat detection) AND plausibly tied to a listed company; OR (3) announcements/funding/partnerships/features clearly tied to a listed company. REMOVE IF: generic tech/AI/startup not clearly cybersecurity; physical/non-cyber meaning of security; unrelated job posts; unrelated companies; weak/unclear relevance (be conservative); a token refers to something unrelated (e.g. Lumos as a crypto token or Harry Potter spell, a medical device). OUTPUT: return ONLY a valid JSON array. If relevant return the original object unchanged in an array; if not relevant return []. Copy ALL fields exactly, add/remove nothing. Be strict: when unsure return [].' }, { role: 'user', content: JSON.stringify($json) } ] }) }}",
+    "options": {}
+   },
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 5,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "m4FUdT4FgRFOHRKl",
+     "name": "Dustin's OpenAi account"
+    }
+   }
+  },
+  {
+   "id": "e13775d7-4dd3-4088-8492-77c7554c50ad",
+   "name": "LLM Attribution X",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    2240,
+    96
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "contentType": "json",
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'gpt-4.1', temperature: 0, messages: [ { role: 'system', content: \"You are an expert sentiment + attribution analyst for a competitive share-of-voice tool covering identity/access-security companies. You receive a JSON ARRAY of X/Twitter posts, each with id, text, authorUserName. For EACH post identify which listed company it is about, EXCLUSIVELY among: \" + $json.companyEnum + \". Company definitions (identity + namesakes to reject): \" + ($json.companyDefs||'') + \". Company records (name, x_handle): \" + JSON.stringify($json.companies) + \".\\n\\nATTRIBUTION: (1) If authorUserName equals a listed company x_handle (case-insensitive, ignoring a leading @), it is that company's own account, so attribute to that company - UNLESS the post itself is clearly one of the rejected collisions below (crypto token, airdrop, Discord-role or ecosystem-reward hype, or otherwise off-topic), in which case the handle is wrong or hijacked and you MUST return NONE. A real B2B security company's own posts are about its product, funding, people, customers, or category - never crypto or meme content. (2) Otherwise attribute by the text to the one listed company it is genuinely about. (3) Otherwise companyName = NONE.\\n\\nSTRICT: attribute ONLY when the post concerns that specific organization (product, people, funding, customers, or identity/access-security category); a shared name token used in a generic or unrelated sense = NONE.\\n\\nDECISION PROCEDURE \u2014 apply to EVERY post BEFORE answering:\\n1) List each candidate company-name token that appears in the text, title, or post_url.\\n2) POSITIVE ANCHOR REQUIRED: to attribute a post to a listed company you MUST be able to point to a concrete, company-specific anchor IN THIS POST \u2014 its own website domain or LinkedIn handle; a product/feature unique to it; a named founder or employee; a funding round or acquisition tied to it; a named customer; OR the company named explicitly in ITS real context (identity security / IGA / SOC / the exact category in its definition below). If you cannot cite such an anchor, set companyName to NONE. A shared or similar-looking name token, by itself, is NEVER sufficient.\\n3) NAMES ARE EXACT \u2014 reject near-miss namesakes even inside an AI / security / privacy context: 'Lumo' (Proton's chatbot) is NOT 'Lumos'; 'Optiv' is NOT 'Opti'; '[24]7.ai' / '247.ai' / '7.ai' is NOT '7AI'; 'Torch.AI' is NOT 'Torch Security'; Amazon 'Blink' / 'Blink for Home' is NOT 'BlinkOps'; 'Luminous' / 'Lumo' is NOT 'Lumos'. If the post is about the OTHER named entity, set companyName to NONE.\\n4) If the token is used in a clearly different sense (a chatbot, a flower, a VPN, a game, a spell, a healthcare benchmark, a train, an airline, a mythological figure), or you are unsure which entity is meant, set companyName to NONE.\\nA wrong attribution to a namesake is far worse than a NONE \u2014 when in doubt, choose NONE.\\n\\nConcrete collisions to REJECT (set NONE): Lumos = NOT Proton Lumo chatbot, NOT Lumos Fiber/Networks ISP, NOT the Harry Potter spell, NOT Lumosity brain-games, NOT any crypto token; Surf AI (our competitor is surf.ai, handle @trysurfai) = NOT the crypto token @SurfAI or asksurf.ai, NOT Surf Air Mobility (aviation/Wheels Up), NOT Surfshark VPN, NOT SURF Security the enterprise-browser company at surf.security, NOT the Dutch research org SURF, NOT generic web-surfing/surfer content; Twine = NOT Meta internal Twine/Tupperware cluster-management platform, NOT the Twine interactive-fiction tool, NOT the Python twine PyPI tool, NOT digital-twin research; 7AI = NOT 247.ai or [24]7.ai contact-center AI, NOT a top-7-AI-tools listicle; OFFROAD = NOT off-road/4x4/overlanding vehicles or off-road games or Thai TV shows; Console = NOT gaming consoles (PS5/Xbox/Switch) and NOT the developer/terminal console or console.log; Torch = NOT PyTorch, NOT Torch.AI defense data-orchestration, NOT a flashlight/Olympic torch/Torch browser; Opti = NOT Optiv the security integrator, NOT Optimizely; Orchid = NOT Orchid VPN/Orchid Protocol crypto (OXT), NOT the orchid flower; Linx = NOT LINX/Lynx physical-security or alarm firms, NOT the word links; Cerby = NOT Cerberus the mythological dog; Redblock = NOT the Volvo Redblock engine or car/turbo content, NOT Redblock Realty, NOT the YouTube ad-blocker.\\n\\nFor a NONE post that collides with a listed company name or token, ALSO return collidesWith (the listed company name it resembles) and rejectTerm (ONE distinctive lowercase junk token from the post that best identifies the collision - a handle, cashtag, or keyword like airdrop or token; no spaces; otherwise an empty string). For attributed posts set collidesWith and rejectTerm to empty strings.\\n\\nSentiment is an integer -3..3 (negative..positive). Output ONLY a valid JSON array, one element per input post, each with exactly: activity_id (the input id), companies (an array of EVERY listed company genuinely named AND anchored in the post; each element = { companyName (a listed name), sentiment (int -3..3 for THIS company), reasoning (one sentence naming THIS company's anchor) }; [] if none), collidesWith (a listed name or empty), rejectTerm (a lowercase token or empty).\" }, { role: 'user', content: JSON.stringify($json.llmPosts) } ] }) }}",
+    "options": {}
+   },
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 5,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "m4FUdT4FgRFOHRKl",
+     "name": "Dustin's OpenAi account"
+    }
+   }
+  },
+  {
+   "id": "c55c5e1c-4491-4025-b67a-1c256c3022ff",
+   "name": "Daily 5:10",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    384
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "days",
+       "daysInterval": 1,
+       "triggerAtHour": 5,
+       "triggerAtMinute": 10
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "1148d4fc-6c08-4a55-af93-496008e941c0",
+   "name": "Attach X provenance",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1650,
+    300
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "// Re-attach rich fields from Flatten (by id) for the LLM: the upsert output only has DB columns, so\n// authorUserName (needed to attribute a company's OWN tweets via handle match) would otherwise be lost.\nconst flat = {}; for (const it of $(\"Flatten X Data\").all()) { const j = it.json; flat[String(j.id)] = j; }\nreturn $input.all().map(it => { const j = it.json; const f = flat[String(j.id)] || {}; return { json: { id: String(j.id), text: (j.text || f.text || \"\"), authorUserName: (f.authorUserName || \"\"), foundBy: (f.foundBy || \"\") } }; });\n"
+   }
+  }
+ ],
+ "connections": {
+  "Execute Workflow Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load Competitors": {
+   "main": [
+    [
+     {
+      "node": "Load SOV Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load SOV Config": {
+   "main": [
+    [
+     {
+      "node": "Build Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Context": {
+   "main": [
+    [
+     {
+      "node": "Build X Queries",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build X Queries": {
+   "main": [
+    [
+     {
+      "node": "Apify X (per query)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify X (per query)": {
+   "main": [
+    [
+     {
+      "node": "Prep X Batches",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse X LLM": {
+   "main": [
+    [
+     {
+      "node": "X Relevance Gate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "HTTP X Strict Relevance Filter": {
+   "main": [
+    [
+     {
+      "node": "Parse X Relevance",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Upsert tweets": {
+   "main": [
+    [
+     {
+      "node": "Attach X provenance",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Prep X Batches": {
+   "main": [
+    [
+     {
+      "node": "LLM Attribution X",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM Attribution X": {
+   "main": [
+    [
+     {
+      "node": "Score + Write + Learn X",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Daily 5:10": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner"
+ },
+ "active": true
+}

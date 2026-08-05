@@ -1,0 +1,132 @@
+{
+ "name": "SOV \u2014 X Engagement Refresh (This Week)",
+ "nodes": [
+  {
+   "id": "f743e987-37ea-47ef-bb33-fe188b4a563f",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    192
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "6b3c36aa-1c15-40c8-aedb-dcd5c9f671e8",
+   "name": "X Engagement Refresh",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "// === SOV \u2014 X Engagement Refresh (This Week: manual full / Thursday hourly batches) ===\n// Tweets are scraped within ~24h of posting, when engagement is still near zero.\n// This job runs DAILY and, for ATTRIBUTED tweets crossing 7 days of age\n// (createdAt in [now-8d, now-7d)), re-scrapes CURRENT engagement via\n// apidojo/tweet-scraper (by status URL), updates like/reply/repost/quote/view\n// counts, and recomputes post_weight with the mindshare X model (engagement-only\n// reach; own vs external tier read from the stored authorWeight marker). Each\n// tweet is finalized once, after its first full week. 50 URLs per Apify call.\nconst helpers = this.helpers;\nconst KEY = '<REDACTED_SUPABASE_JWT>';\nconst BASE = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H = { apikey: KEY, Authorization: 'Bearer ' + KEY };\nconst APIFY_TOKEN = '<REDACTED_APIFY_TOKEN>';\n// apidojo~tweet-scraper began FORBIDDING single-tweet URL fetches (runs 'succeed'\n// with 0 items) \u2014 switched 2026-07-30 to the maker's designated replacement for\n// single tweets. Same output schema; $0.05 per tweet URL.\nconst ACTOR = 'apidojo~twitter-scraper-lite';\n\nconst cfgRows = await helpers.httpRequest({ method:'GET', url: BASE + '/sov_config?select=config&id=eq.1', headers: H, json: true });\nconst cfg = (cfgRows && cfgRows[0] && cfgRows[0].config) || {};\nconst ew = (cfg.engagementWeights && cfg.engagementWeights.X) || { like:1, reply:2, repost:10, quote:4 };\nconst clamp = cfg.sentimentClamp || { min:0.5, max:1.3 };\nconst AB = cfg.authorBaseline || { company:1, employee:2, external:5 };\nconst AEM = cfg.authorEngMult || { company:1, employee:1.2, external:2 };\nconst hlX = (cfg.halfLifeDays && cfg.halfLifeDays.X) || 7;\nfunction num(x,d){ return (x!=null?Number(x):d); }\nfunction round6(x){ return parseFloat(Number(x).toFixed(6)); }\nfunction sentMult(s){ if(s==null) return 1.0; const x=Math.max(-3,Math.min(3,Number(s))); return clamp.min + ((x+3)/6)*(clamp.max-clamp.min); }\nfunction ageDays(t){ if(!t) return 0; const d=new Date(t); return isNaN(d)?0:Math.max(0,(Date.now()-d.getTime())/86400000); }\nfunction decay(age,hl){ return age<=7 ? 1 : Math.pow(2, -age/hl); }\n// Modes:\n//  - MANUAL (UI Execute): original pre-OKR behavior \u2014 refresh EVERY attributed\n//    post from the last 8 days in one shot.\n//  - SCHEDULED (Thursday batches): refresh the PAST WEEK in six hourly batches\n//    (04:xx-09:xx). Window is [now-7d, now-24h] \u2014 the last 24h are excluded\n//    because those posts were first scraped this same morning (no point\n//    re-scraping engagement hours after the initial scrape). Each run owns a\n//    stable sixth of the ids (id % 6 == hour slot), so the six runs partition\n//    the cohort without dup/skip even as the eligible set shifts mid-morning.\nlet MODE = 'trigger';\ntry { MODE = ($execution && $execution.mode) || 'trigger'; } catch (e) { /* runner without $execution */ }\nconst scheduled = MODE !== 'manual';\nconst SLOTS = 6;\nconst SLOT = Math.min(SLOTS - 1, Math.max(0, new Date().getHours() - 4));\nconst now = Date.now();\nconst from = new Date(now - (scheduled ? 7 : 8)*86400000).toISOString();\nconst to = new Date(now - (scheduled ? 1 : 0)*86400000).toISOString();\nlet url = BASE + '/tweets?select=id,url,twitterUrl,companyName,sentiment,createdAt,authorWeight&companyName=not.is.null&companyName=neq.NONE&createdAt=gte.' + encodeURIComponent(from) + '&order=id&limit=200';\nif (scheduled) url += '&createdAt=lt.' + encodeURIComponent(to);\nconst rows = await helpers.httpRequest({ method:'GET', url: url, headers: H, json: true });\nlet list = Array.isArray(rows) ? rows : [];\nif (scheduled) list = list.filter(function (r) { try { return Number(BigInt(String(r.id)) % BigInt(SLOTS)) === SLOT; } catch (e) { return SLOT === 0; } });\nif (!list.length) return [{ json: { xEngagementRefresh:true, mode: MODE, slot: scheduled ? SLOT : null, window:[from,to], found:0, scraped:0, updated:0 } }];\nconst byId = {}; const urls = [];\nfor (const r of list) { const id = String(r.id); byId[id] = r; urls.push(r.twitterUrl || r.url || ('https://x.com/i/status/' + id)); }\nlet scraped=0, updated=0; const failed=[];\nfor (let i=0; i<urls.length; i+=50) {\n  const chunk = urls.slice(i, i+50);\n  let items = [];\n  try {\n    items = await helpers.httpRequest({ method:'POST', url:'https://api.apify.com/v2/acts/' + ACTOR + '/run-sync-get-dataset-items?token=' + APIFY_TOKEN, headers:{'Content-Type':'application/json'}, body:{ startUrls: chunk, maxItems: chunk.length }, json:true, timeout:240000 });\n  } catch(e){ continue; }\n  for (const it of (Array.isArray(items)?items:[])) {\n    const pid = String(it.id || it.tweetId || it.rest_id || '');\n    const row = byId[pid]; if(!row) continue;\n    const like = it.likeCount, rep = it.retweetCount, rpl = it.replyCount, qt = it.quoteCount, vw = (it.viewCount!=null?it.viewCount:it.views);\n    if (like==null && rep==null && rpl==null && qt==null) continue;\n    scraped++;\n    const eng = num(ew.like,1)*Number(like||0) + num(ew.reply,2)*Number(rpl||0) + num(ew.repost,10)*Number(rep||0) + num(ew.quote,4)*Number(qt||0);\n    const reach = Math.pow(Math.max(0,eng), 49/50);\n    const own = (Number(row.authorWeight)||5) <= 1;\n    const B = own ? num(AB.company,1) : num(AB.external,5);\n    const M = own ? num(AEM.company,1) : num(AEM.external,2);\n    const pw = round6((B + reach*M) * sentMult(row.sentiment) * decay(ageDays(row.createdAt), hlX));\n    const body = { likeCount:Number(like||0), retweetCount:Number(rep||0), replyCount:Number(rpl||0), quoteCount:Number(qt||0), post_weight: pw };\n    if (vw != null) body.viewCount = Number(vw);\n    try {\n      await helpers.httpRequest({ method:'PATCH', url: BASE + '/tweets?id=eq.' + encodeURIComponent(pid), headers: Object.assign({}, H, {'Content-Type':'application/json', Prefer:'return=minimal'}), body, json:true });\n      updated++;\n    } catch(e){ failed.push(pid); }\n  }\n}\nreturn [{ json: { xEngagementRefresh:true, mode: MODE, slot: scheduled ? SLOT : null, window:[from,to], found:list.length, scraped, updated, failed } }];"
+   }
+  },
+  {
+   "id": "thu-batches-trigger",
+   "name": "Thursday Batches",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    -180,
+    180
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "weeks",
+       "weeksInterval": 1,
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 4,
+       "triggerAtMinute": 45
+      },
+      {
+       "field": "weeks",
+       "weeksInterval": 1,
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 5,
+       "triggerAtMinute": 45
+      },
+      {
+       "field": "weeks",
+       "weeksInterval": 1,
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 6,
+       "triggerAtMinute": 45
+      },
+      {
+       "field": "weeks",
+       "weeksInterval": 1,
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 7,
+       "triggerAtMinute": 45
+      },
+      {
+       "field": "weeks",
+       "weeksInterval": 1,
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 8,
+       "triggerAtMinute": 45
+      },
+      {
+       "field": "weeks",
+       "weeksInterval": 1,
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 9,
+       "triggerAtMinute": 45
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "X Engagement Refresh",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Thursday Batches": {
+   "main": [
+    [
+     {
+      "node": "X Engagement Refresh",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "saveDataSuccessExecution": "all",
+  "saveManualExecutions": true
+ },
+ "active": true
+}

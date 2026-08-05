@@ -1,0 +1,156 @@
+{
+ "name": "SOV \u2014 LinkedIn Processor",
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "triggerAtHour": 5,
+       "triggerAtMinute": 15
+      },
+      {
+       "triggerAtHour": 5,
+       "triggerAtMinute": 35
+      },
+      {
+       "triggerAtHour": 6
+      },
+      {
+       "triggerAtHour": 6,
+       "triggerAtMinute": 20
+      }
+     ]
+    }
+   },
+   "id": "063044a0-1e3b-4374-89ec-44c22087a518",
+   "name": "Drain (4x/day post-scrape)",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const helpers=this.helpers;\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst BASE='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\nconst BATCH=100;\nconst MAXTEXT=600;  // truncate post text sent to the LLM (stay under the 30k TPM cap)\nconst batch=await helpers.httpRequest({method:'GET',url:BASE+'/linkedin_raw?select=activity_id,raw,source,search_input,owner_company&status=eq.pending&order=scraped_at&limit='+BATCH,headers:H,json:true});\nconst rows=Array.isArray(batch)?batch:[];\nif(!rows.length) return [];  // empty queue -> 0 items -> LLM + write nodes skip (no wasted OpenAI call on idle drains)\nconst cfgRows=await helpers.httpRequest({method:'GET',url:BASE+'/sov_config?select=config&id=eq.1',headers:H,json:true});\nconst config=(cfgRows&&cfgRows[0]&&cfgRows[0].config)||{};\nconst comps=await helpers.httpRequest({method:'GET',url:BASE+'/competitors?select=name,aliases,domain,linkedin_urn,type,active,definition,collision_terms&active=eq.true',headers:H,json:true});\nconst companies=(comps||[]).filter(c=>c.active!==false).map(c=>({name:c.name,aliases:Array.isArray(c.aliases)?c.aliases:[],domain:c.domain||null,linkedin_urn:c.linkedin_urn||null,type:c.type||'direct',definition:c.definition||'',collision_terms:Array.isArray(c.collision_terms)?c.collision_terms:[]}));\nconst companyEnum=companies.map(c=>c.name).join(', ');\nconst companyDefs=companies.map(c=>{const dom=c.domain?(' ('+c.domain+')'):'';const nots=(c.collision_terms&&c.collision_terms.length)?('. NOT: '+c.collision_terms.join('; ')):'';return c.name+dom+' \\u2014 '+(c.definition||'(no definition yet)')+nots;}).join('\\n\\n');\n// LLM-SKIP: which of this batch are ALREADY attributed in linkedin_posts? Reuse their cached\n// companyName/sentiment downstream (no LLM call); engagement + post_weight still get refreshed.\n// Kills re-attribution churn on re-scraped posts while keeping engagement current.\nconst idList=rows.map(r=>'\"'+String(r.activity_id)+'\"').join(',');\nlet known={};\ntry{ const existing=await helpers.httpRequest({method:'GET',url:BASE+'/linkedin_posts?select=activity_id,companyName,sentiment&activity_id=in.('+idList+')',headers:H,json:true}); for(const e of (existing||[])){ if(e&&e.activity_id!=null) known[String(e.activity_id)]={companyName:e.companyName,sentiment:e.sentiment}; } }catch(e){ known={}; }\nconst keywordPosts=rows.filter(r=>r.source!=='company_page' && !known[String(r.activity_id)]).map(r=>({activity_id:r.activity_id,text:String((r.raw&&r.raw.text)||'').slice(0,MAXTEXT),title:String((r.raw&&r.raw.title)||'').slice(0,200),post_url:(r.raw&&r.raw.post_url)||''}));\nreturn [{json:{config,companyEnum,companyDefs,companies,keywordPosts,batch:rows,batchCount:rows.length,known}}];\n"
+   },
+   "id": "a045bbc1-a1a7-4db2-b940-b062ea28e968",
+   "name": "Fetch + Prep Batch",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    96
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'gpt-4.1', temperature: 0, messages: [{ role: 'system', content: \"You are an expert linguistic analyst. Analyze sentiment using an integer scale -3..3. Identify the main company discussed or the authoring company EXCLUSIVELY among: \" + ($json.companyEnum) + \". Aliases and domains for disambiguation: \" + (JSON.stringify($json.companies)) + \".\\n\\nDECISION PROCEDURE \u2014 apply to EVERY post BEFORE answering:\\n1) List each candidate company-name token that appears in the text, title, or post_url.\\n2) POSITIVE ANCHOR REQUIRED: to attribute a post to a listed company you MUST be able to point to a concrete, company-specific anchor IN THIS POST \u2014 its own website domain or LinkedIn handle; a product/feature unique to it; a named founder or employee; a funding round or acquisition tied to it; a named customer; OR the company named explicitly in ITS real context (identity security / IGA / SOC / the exact category in its definition below). If you cannot cite such an anchor, set companyName to NONE. A shared or similar-looking name token, by itself, is NEVER sufficient. ALSO VALID ANCHORS (any one counts as a concrete anchor): (a) SPONSOR/EXHIBITOR/PARTNER/PORTFOLIO/AWARD-FINALIST LISTS \u2014 a listed company's EXACT full name inside a curated roster of sponsors, exhibitors, partners, portfolio or finalists is a deliberate brand reference, not a namesake; attribute it even with no other detail (still reject fuzzy or namesake tokens like Lumo or Optiv). (b) AUTHOR-IDENTITY SELF-REFERENCE \u2014 if the author name or headline shows they are a founder, executive, or employee of a listed company, first-person language (we, our, I am building, my team, my company) about that company's category attributes the post to it EVEN when the company is never named and post_url is a personal profile; cite the author identity as the anchor. (c) LANGUAGE-AGNOSTIC \u2014 anchors and affiliation phrasing may appear in ANY language (e.g. Hebrew works-at or we-are-building phrasing, transliterated brand names, RTL text); translate mentally before applying every rule above.\\n3) NAMES ARE EXACT \u2014 reject near-miss namesakes even inside an AI / security / privacy context: 'Lumo' (Proton's chatbot) is NOT 'Lumos'; 'Optiv' is NOT 'Opti'; '[24]7.ai' / '247.ai' / '7.ai' is NOT '7AI'; 'Torch.AI' is NOT 'Torch Security'; Amazon 'Blink' / 'Blink for Home' is NOT 'BlinkOps'; 'Luminous' / 'Lumo' is NOT 'Lumos'. If the post is about the OTHER named entity, set companyName to NONE.\\n4) If the token is used in a clearly different sense (a chatbot, a flower, a VPN, a game, a spell, a healthcare benchmark, a train, an airline, a mythological figure), or you are unsure which entity is meant, set companyName to NONE.\\nA wrong attribution to a namesake is far worse than a NONE \u2014 when in doubt, choose NONE.\\n\\nCOMPANY DEFINITIONS \u2014 A post is \\\"about\\\" a company only if it concerns the specific organization below (its product, funding, people, customers, category). REJECT posts that merely share the name token but match a NOT entry or the generic/unrelated senses.\\n\\n\" + ($json.companyDefs||'') + \"\\n\\nSTRICT ATTRIBUTION RULE: Attribute a post to a company ONLY if it is GENUINELY about that specific organization per its definition above (its product, people, funding, customers, or category). If the post merely shares a name token and matches a 'NOT:' entry or a generic/unrelated sense, set companyName to NONE. Concrete collisions to REJECT (set NONE): Lumos = NOT Proton's \\\"Lumo\\\" chatbot/assistant (singular, no trailing s \u2014 the biggest collision), NOT a Women's-Health/medical LLM benchmark (Lumos Diagnostics), NOT Lumos Fiber/Business Finance/Digital Outdoor/Laboratories Nigeria, NOT solar/fiber networks/Harry-Potter spell/brain-game/mystical 'node' names \u2014 ATTRIBUTE ONLY when the post is about identity governance / access management / IGA or names lumos.com, Albus, or Identity Agent Force; Surf AI = NOT Surf Air Mobility (the airline/\\\"BrokerOS\\\"/Wheels Up), NOT crypto token \\\"@SurfAI\\\"/asksurf.ai, NOT Surfshark VPN, NOT generic web-surfing; Twine = NOT Meta's internal \\\"Twine\\\"/Tupperware cluster-management platform, NOT 'digital twin' research, NOT the Twine interactive-fiction tool, NOT the Python twine PyPI tool; 7AI = NOT 247.ai/[24]7.ai contact-center AI, NOT a 'top 7 AI tools' listicle; OFFROAD = NOT off-road/4x4/overlanding vehicles or off-road driving games; Console = NOT gaming consoles (PS5/Xbox/Switch) or the developer/terminal 'console'/console.log; Torch = NOT PyTorch, NOT Torch.AI defense data-orchestration, NOT a flashlight/Olympic-torch/Torch-browser; Opti = NOT Optiv (the cybersecurity integrator is a different company), NOT Optimizely; Orchid = NOT Orchid VPN/Orchid Protocol crypto, NOT the orchid flower; Oak - Identity Security OS = the identity-security company (oak.id) \u2014 NOT the web3 audit firm \\\"Oak Security\\\", NOT Oak Ridge/Oakland/oak wood; require identity-security context or oak.id/founder names.\\n\\nCompanies often post about themselves with we/our without naming themselves: inspect post_url domain/handle to attribute. If not relevant to a listed company or cybersecurity, set companyName to NONE. Input: array of objects with activity_id,text,title,post_url. Output ONLY a valid JSON array, one element per input post with exactly: activity_id, and companies \u2014 an array of EVERY listed company genuinely named AND anchored in the post (apply all the anchor and collision rules above per company). Each companies element = { companyName (a listed name), sentiment (int -3..3 for THIS company), reasoning (one sentence naming THIS company's concrete anchor) }. If no listed company qualifies, companies MUST be []. Never invent a company or duplicate one; each needs its own anchor.\" }, { role: 'user', content: JSON.stringify($json.keywordPosts) }] }) }}",
+    "options": {}
+   },
+   "id": "d6849cef-39fd-4418-b505-570f01b387d1",
+   "name": "LLM Attribution",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    448,
+    96
+   ],
+   "credentials": {
+    "openAiApi": {
+     "id": "m4FUdT4FgRFOHRKl",
+     "name": "Dustin's OpenAi account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const helpers=this.helpers;\nconst SRK='<REDACTED_SUPABASE_JWT>';\nconst SB='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:SRK,Authorization:'Bearer '+SRK};\nfunction llmText(j){\n  if(j&&Array.isArray(j.choices)&&j.choices[0]){const ch=j.choices[0]; if(ch.message&&(ch.message.content||ch.message.reasoning)) return ch.message.content||ch.message.reasoning; if(typeof ch.text==='string') return ch.text;}\n  if(j&&typeof j.text==='string') return j.text;\n  if(j&&j.message&&typeof j.message.content==='string') return j.message.content;\n  return '';\n}\nconst llmMap={};\nfor(const item of $input.all()){\n  let raw=String(llmText(item.json)||'').replace(/```json/gi,'').replace(/```/g,'').trim();\n  if(!raw) continue;\n  const a=raw.indexOf('['),b=raw.lastIndexOf(']');\n  const txt=(a!==-1&&b!==-1&&b>a)?raw.slice(a,b+1):raw;\n  let parsed; try{parsed=JSON.parse(txt);}catch(e){continue;}\n  const arr=Array.isArray(parsed)?parsed:[parsed];\n  for(const e of arr){ if(e&&e.activity_id!=null) llmMap[String(e.activity_id)]=e; }\n}\nconst prep=$('Fetch + Prep Batch').first().json;\nconst batch=prep.batch||[]; const cfg=prep.config||{}; const companies=prep.companies||[]; const known=prep.known||{};\nif(!batch.length) return [{json:{processed:0,written:0,note:'no pending rows'}}];\nconst nameSet=new Set(companies.map(c=>c.name));\n  const directSet=new Set(companies.filter(c=>(c.type||'direct')!=='indirect').map(c=>c.name));\nconst urnSet=new Set(companies.map(c=>String(c.linkedin_urn||'')).filter(Boolean));\nconst EMP={};\ntry{const aff=await helpers.httpRequest({method:'GET',url:SB+'/author_affiliation?select=profile_id,competitor&verdict=eq.employee',headers:H,json:true}); for(const a of (aff||[])){ if(a&&a.profile_id&&a.competitor) EMP[String(a.competitor).trim().toLowerCase()+'|'+String(a.profile_id)]=true; }}catch(e){}\nconst ew=(cfg.engagementWeights&&cfg.engagementWeights.LinkedIn)||{reaction:1,comment:3,reshare:10,image:1.5};\nconst clamp=cfg.sentimentClamp||{min:0.5,max:1.3};\nconst halfLife=(cfg.halfLifeDays&&cfg.halfLifeDays.LinkedIn)||14;\nconst AB=cfg.authorBaseline||{company:1.0,employee:2.0,external:5.0};\nconst AEM=cfg.authorEngMult||{company:1.0,employee:1.2,external:2.0};\nfunction computePW(post,companyName,sentiment){\n  const reactions=Number(post.totalReactions||0),comments=Number(post.comments||0),reshares=Number(post.reshares||0);\n  const hasImage=post.imageURL&&String(post.imageURL).length>0;\n  let eng=((ew.reaction!=null?ew.reaction:1)*reactions)+((ew.comment!=null?ew.comment:3)*comments)+((ew.reshare!=null?ew.reshare:10)*reshares);\n  if(hasImage) eng+=(ew.image!=null?ew.image:1.5);\n  const hasVideo=post&&post.content&&post.content.type==='video';\n  if(hasVideo) eng+=(ew.video!=null?ew.video:2);\n  const reach=Math.pow(Math.max(0,eng),49/50);\n  const sentMult=(post.source==='company_page'||sentiment==null)?1.0:(clamp.min+((Math.max(-3,Math.min(3,Number(sentiment)))+3)/6)*(clamp.max-clamp.min));\n  const author=post.author||{}; const headline=String(author.headline||'').toLowerCase(); const authorUrn=String(author.profile_id||''); const cn=String(companyName||'');\n  let at;\n  if(post.source==='company_page') at='company';\n  else if(authorUrn&&urnSet.has(authorUrn)) at='company';\n  else if(authorUrn&&cn&&cn!=='NONE'&&EMP[cn.toLowerCase()+'|'+authorUrn]) at='employee';\n  else if(cn&&cn!=='NONE'&&headline.indexOf(cn.toLowerCase())!==-1) at='employee';\n  else at='external';\n  const B=(at==='company')?(AB.company!=null?AB.company:1.0):(at==='employee')?(AB.employee!=null?AB.employee:2.0):(AB.external!=null?AB.external:5.0);\n  const M=(at==='company')?(AEM.company!=null?AEM.company:1.0):(at==='employee')?(AEM.employee!=null?AEM.employee:1.2):(AEM.external!=null?AEM.external:2.0);\n  let ageDays=0; if(post.posted_at){const d=new Date(post.posted_at); if(!isNaN(d)) ageDays=Math.max(0,(Date.now()-d.getTime())/86400000);}\n  const timeDecay=ageDays<=7?1:Math.pow(2,-ageDays/halfLife);\n  return parseFloat(((B+reach*M)*sentMult*timeDecay).toFixed(6));\n}\nconst upserts=[]; const doneIds=[];\nfor(const row of batch){\n  const post=row.raw||{}; const aid=String(row.activity_id); doneIds.push(aid);\n  let companyName,sentiment,reasoning; let companiesArr=null;\n  if(row.source==='company_page'){ companyName=row.owner_company||'NONE'; sentiment=null; reasoning='company self-post (auto-accepted)'; }\n  else if(known[aid]){ companyName=known[aid].companyName||'NONE'; sentiment=(known[aid].sentiment!=null)?known[aid].sentiment:null; reasoning='engagement refresh (cached attribution)'; }\n  else { const e=llmMap[aid]; companyName=(e&&e.companyName)?e.companyName:'NONE'; sentiment=(e&&e.sentiment!=null)?e.sentiment:null; reasoning=(e&&e.reasoning)?e.reasoning:'no match'; companiesArr=(e&&Array.isArray(e.companies))?e.companies:null; }\n  // HARD RULE: a post scraped from a company's own LinkedIn page (owner_company set) is ALWAYS\n  // attributed to that company - never left to the LLM (which could drop it to NONE).\n  const ownerCo=(row.owner_company==null)?'':String(row.owner_company).trim();\n  if(ownerCo && ownerCo.toLowerCase()!=='none'){ companyName=ownerCo; reasoning='[auto: own company-page post] '+String(reasoning||''); }\n  const _src=(companiesArr&&companiesArr.length)?companiesArr:((companyName&&companyName!=='NONE')?[{companyName,sentiment,reasoning}]:[]);\n  const company_names=_src.filter(c=>c&&c.companyName&&c.companyName!=='NONE').map(c=>({name:c.companyName,sentiment:(c.sentiment!=null?c.sentiment:null),reasoning:c.reasoning||''})).filter(c=>directSet.has(c.name)||(row.source==='company_page'&&c.name===ownerCo));\n  if(company_names.length){ companyName=company_names[0].name; sentiment=company_names[0].sentiment; reasoning=company_names[0].reasoning||reasoning; }\n  const isReal=companyName&&companyName!=='NONE'&&nameSet.has(companyName);\n  const hasVideo=post&&post.content&&post.content.type==='video';\n  const pw=isReal?computePW(post,companyName,sentiment):null;\n  upserts.push({activity_id:aid,companyName:companyName,author:post.author||{},text:post.text||'',title:post.title||'',totalReactions:Number(post.totalReactions||0),comments:Number(post.comments||0),reshares:Number(post.reshares||0),imageURL:post.imageURL||'',posted_at:post.posted_at||null,sentiment:sentiment,reasoning:reasoning,search_input:row.search_input||null,post_weight:pw,company_names:company_names,has_video:!!hasVideo});\n}\nlet written=0;\nif(upserts.length){ try{ await helpers.httpRequest({method:'POST',url:SB+'/linkedin_posts?on_conflict=activity_id',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:upserts,json:true}); written=upserts.length; }catch(e){ return [{json:{error:'upsert failed: '+(e&&e.message||e)}}]; } }\nif(doneIds.length){ try{ await helpers.httpRequest({method:'PATCH',url:SB+'/linkedin_raw?activity_id=in.('+doneIds.map(x=>'\"'+x+'\"').join(',')+')',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:{status:'done'},json:true}); }catch(e){} }\nconst attributed=upserts.filter(u=>u.post_weight!=null).length;\nconst refreshed=Object.keys(known).length;\nreturn [{json:{processed:batch.length,written:written,attributed:attributed,none:written-attributed,llmSkipped:refreshed}}];\n"
+   },
+   "id": "83a671a3-45d8-45b0-b69c-c6556f35d2b6",
+   "name": "Score + Write + Mark",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    96
+   ]
+  },
+  {
+   "parameters": {},
+   "id": "b4632cfa-8151-48f9-ac60-f530389b9b1b",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    192
+   ]
+  }
+ ],
+ "connections": {
+  "Fetch + Prep Batch": {
+   "main": [
+    [
+     {
+      "node": "LLM Attribution",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM Attribution": {
+   "main": [
+    [
+     {
+      "node": "Score + Write + Mark",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Fetch + Prep Batch",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Drain (4x/day post-scrape)": {
+   "main": [
+    [
+     {
+      "node": "Fetch + Prep Batch",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "saveDataSuccessExecution": "all",
+  "saveManualExecutions": true,
+  "callerPolicy": "workflowsFromSameOwner",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO"
+ },
+ "active": true
+}

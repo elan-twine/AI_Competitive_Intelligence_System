@@ -1,0 +1,523 @@
+{
+ "name": "SOV \u2014 Reddit",
+ "nodes": [
+  {
+   "id": "93463698-d6c2-4b3f-b5db-b267b2ff25d9",
+   "name": "Execute Workflow Trigger",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "inputSource": "passthrough"
+   }
+  },
+  {
+   "id": "03b11c22-4835-4c67-af4a-0ce46c0ee8d3",
+   "name": "Load Competitors",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    224,
+    96
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "getAll",
+    "tableId": "competitors",
+    "returnAll": true,
+    "filterType": "manual",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "active",
+       "condition": "eq",
+       "keyValue": "true"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "id": "360e7e5e-fba0-4378-99cd-78b0a9c62a59",
+   "name": "Load SOV Config",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    448,
+    96
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "getAll",
+    "tableId": "sov_config",
+    "returnAll": true,
+    "filterType": "manual",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "id",
+       "condition": "eq",
+       "keyValue": "1"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "executeOnce": true
+  },
+  {
+   "id": "d39828b2-626b-44c3-ab9c-d09a17eec1c4",
+   "name": "Build Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const competitors = $(\"Load Competitors\").all().map(i => i.json);\nconst cfgRow = $(\"Load SOV Config\").first();\nconst config = (cfgRow && cfgRow.json && cfgRow.json.config) ? cfgRow.json.config : {};\nconst active = competitors.filter(c => c.active !== false);\nconst companies = active.map(c => ({ name: c.name, keywords: Array.isArray(c.keywords)?c.keywords:[], definition: c.definition||'', collision_terms: Array.isArray(c.collision_terms)?c.collision_terms:[], aliases: Array.isArray(c.aliases) ? c.aliases : [], domain: c.domain || null, x_handle: c.x_handle || null, linkedin_urn: c.linkedin_urn || null, subreddits: Array.isArray(c.subreddits) ? c.subreddits : [], type: c.type || 'direct' }));\nconst linkedin_urns = companies.map(c => c.linkedin_urn).filter(Boolean);\nconst companyEnum = companies.map(c => c.name).join(\", \");\n// Fixed target subreddits (LOWERCASED for the prefilter allowlist). The prefilter drops any post whose\n// subreddit isn't in allSubreddits, so this MUST match the subs we actually search (bug fix 2026-07-05:\n// iam/entra/cybersecurityadvice were previously absent and their results were silently discarded).\nconst TARGET_SUBS = ['cybersecurity','iam','identitymanagement','information_security','entra','cybersecurityadvice'];\nconst allSubreddits = TARGET_SUBS.slice();\nreturn [{ json: { config, companies, linkedin_urns, companyEnum, allSubreddits, targetSubs: TARGET_SUBS } }];\n"
+   },
+   "executeOnce": true
+  },
+  {
+   "id": "b2b280ef-2e2a-4109-83b5-82cca896aebf",
+   "name": "Build Reddit Queries",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const ctx = $(\"Build Context\").first().json;\n// DIRECT competitors only. Search each name WITHIN each target subreddit; append DYNAMIC learned negations\n// from sov_config.redditNegations (per company). Actor supports 'subreddit:<sub> <query> -term'.\nconst companies = (ctx.companies || []).filter(c => c && (c.type || 'direct') === 'direct');\nconst cfg = ctx.config || {};\nconst NEG = (cfg.redditNegations && typeof cfg.redditNegations === 'object') ? cfg.redditNegations : {};\nconst SUBS = ['cybersecurity','iam','IdentityManagement','Information_Security','entra','CybersecurityAdvice'];\nconst seen = new Set();\nconst searchQueries = [];\nfor (const c of companies) {\n  const name = (c && c.name != null) ? String(c.name).trim() : \"\";\n  if (!name) continue;\n  const learned = Array.isArray(NEG[name]) ? NEG[name] : [];\n  let negStr = \"\"; for (const t of learned) { const tok = String(t || '').trim(); if (tok) negStr += ' -' + tok; }\n  for (const sub of SUBS) {\n    const q = 'subreddit:' + sub + ' \"' + name + '\"' + negStr;\n    if (seen.has(q)) continue;\n    seen.add(q);\n    searchQueries.push(q);\n  }\n}\nconst maxItems = (cfg.reddit && Number(cfg.reddit.maxItems)) || 200;\nconst postsPerSource = (cfg.reddit && Number(cfg.reddit.postsPerSource)) || 15;\nreturn [{ json: { searchQueries, sort: \"new\", time: \"week\", maxItems, postsPerSource } }];\n"
+   },
+   "executeOnce": true
+  },
+  {
+   "id": "6adeabe7-6c73-4b72-815b-abe30dc55251",
+   "name": "Apify Reddit (per query)",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    1120,
+    96
+   ],
+   "parameters": {
+    "resource": "Actors",
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "RSijjMBLS6g1W11GY"
+    },
+    "customBody": "={{ JSON.stringify({ searchQueries: $json.searchQueries, sort: $json.sort, time: $json.time, maxItems: $json.maxItems, postsPerSource: $json.postsPerSource, proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: [\"RESIDENTIAL\"] } }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "executeOnce": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "64447c18-ff65-48c4-8fdd-8dbc59e9a0cd",
+   "name": "Prep Reddit Batches",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1344,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "// Prefilter (dedup + subreddit allowlist + regex name-match) then chunk into batches of 50 (one item per\n// chunk) so the LLM node runs a few times, not once-per-post \u2014 bounded memory (OOM-safe Processor pattern).\nconst BATCH = 50, MAXTEXT = 600;\nconst ctx = $(\"Build Context\").first().json;\nconst companies = ctx.companies || [];\nconst companiesMeta = companies.map(c => ({ name: c.name, aliases: Array.isArray(c.aliases) ? c.aliases : [] }));\nconst companyEnum = companiesMeta.map(c => c.name).join(\", \");\nconst companyDefs = companies.map(c=>{const dom=c.domain?(' ('+c.domain+')'):'';const nots=(c.collision_terms&&c.collision_terms.length)?('. NOT: '+c.collision_terms.join('; ')):'';return c.name+dom+' \\u2014 '+(c.definition||'(no definition yet)')+nots;}).join('\\n\\n');\nconst allowed = (ctx.allSubreddits || []).map(s => s.toLowerCase());\nconst regexes = [];\nfor (const c of companies) { const terms = [c.name].concat(c.aliases||[]).filter(Boolean); for (const t of terms) { const esc = t.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\"); regexes.push({ company: c.name, rx: new RegExp(\"\\\\b\" + esc + \"(?:\u2019s|s)?\\\\b\", \"i\") }); } }\nconst seen = {}; const flat = [];\nfor (const item of $input.all()) { const p = item.json || {}; const permalink = p.permalink || p.url || \"\"; if (!permalink || seen[permalink]) continue; const sub = (p.subreddit || \"\").toLowerCase(); if (allowed.length && sub && !allowed.includes(sub)) continue; const content = [p.title||\"\", p.selfText||p.body||\"\", p.url||\"\", p.domain||\"\"].join(\" \"); const hit = regexes.find(r => r.rx.test(content)); if (!hit) continue; seen[permalink] = 1; flat.push({ permalink, title: p.title || \"\", selfText: p.selfText || p.body || \"\", url: p.url || \"\", subreddit: p.subreddit || \"\", score: Number(p.score||p.upVotes||0), numComments: Number(p.numComments||p.numberOfComments||0), createdAt: (p.createdAt || p.createdAtIso || (Number(p.createdUtc) ? new Date(Number(p.createdUtc) * 1000).toISOString() : null) || new Date().toISOString()), candidateCompany: hit.company }); }\nif (!flat.length) return [];\nconst out = [];\nfor (let i = 0; i < flat.length; i += BATCH) { const chunk = flat.slice(i, i + BATCH); const llmPosts = chunk.map(p => ({ permalink: p.permalink, title: String(p.title||\"\").slice(0,200), selfText: String(p.selfText||\"\").slice(0,MAXTEXT) })); out.push({ json: { chunkIndex: i / BATCH, companyEnum, companyDefs, companies: companiesMeta, llmPosts, full: chunk } }); }\nreturn out;\n"
+   }
+  },
+  {
+   "id": "ea5df127-7a8a-43ac-893d-a65f0b83db0c",
+   "name": "Upsert reddit_posts",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1568,
+    96
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/reddit_posts?on_conflict=permalink",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=representation"
+      }
+     ]
+    },
+    "sendBody": true,
+    "contentType": "json",
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ permalink: $json.permalink, title: $json.title, selfText: $json.selfText, url: $json.url, subreddit: $json.subreddit, score: $json.score, numComments: $json.numComments, createdAt: $json.createdAt }) }}",
+    "options": {}
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "053d2e50-b883-4dd7-9463-3442624e61ab",
+   "name": "Parse Reddit LLM",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2016,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  const txt = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n  let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) results.push({ json: e });\n}\nreturn results;"
+   }
+  },
+  {
+   "id": "7da9ac8e-d0b4-428d-a0af-1f06250acdb0",
+   "name": "Reddit Relevance Gate",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    2240,
+    96
+   ],
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": false,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "NONE",
+       "operator": {
+        "type": "string",
+        "operation": "notEquals"
+       }
+      },
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "aa554fcf-7e06-40e7-bcc5-e92b14798204",
+   "name": "Score + Write + Learn Reddit",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2464,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const helpers=this.helpers;\nconst SRK='<REDACTED_SUPABASE_JWT>';\nconst SB='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:SRK,Authorization:'Bearer '+SRK};\nconst ctx=$(\"Build Context\").first().json; const cfg=ctx.config||{};\nconst ew=(cfg.engagementWeights&&cfg.engagementWeights.Reddit)||{upvote:1,comment:3};\nconst clamp=cfg.sentimentClamp||{min:0.5,max:1.3}; const halfLife=(cfg.halfLifeDays&&cfg.halfLifeDays.Reddit)||10;\nconst nameSet=new Set((ctx.companies||[]).filter(c=>(c.type||'direct')!=='indirect').map(c=>c.name));\nfunction normTerm(t){ if(!t)return''; let s=String(t).toLowerCase().trim().replace(/^[@#$]/,''); if(!/^[a-z0-9_.\\-]{2,20}$/.test(s))return''; return s; }\nfunction sentMult(s){ if(s==null)return 1.0; const x=Math.max(-3,Math.min(3,Number(s))); return clamp.min+((x+3)/6)*(clamp.max-clamp.min); }\nfunction llmText(j){ if(j&&Array.isArray(j.choices)&&j.choices[0]){const ch=j.choices[0]; if(ch.message&&(ch.message.content||ch.message.reasoning))return ch.message.content||ch.message.reasoning; if(typeof ch.text==='string')return ch.text;} if(j&&typeof j.text==='string')return j.text; return ''; }\nfunction ageDays(t){ if(!t)return 0; const d=new Date(t); return isNaN(d)?0:Math.max(0,(Date.now()-d.getTime())/86400000); }\nconst full={}; for(const it of $('Prep Reddit Batches').all()){ for(const p of (it.json.full||[])) full[String(p.permalink)]=p; }\nconst llm={};\nfor(const it of $input.all()){ let raw=String(llmText(it.json)||'').replace(/```json/gi,'').replace(/```/g,'').trim(); if(!raw)continue; const a=raw.indexOf('['),b=raw.lastIndexOf(']'); const txt=(a!==-1&&b!==-1&&b>a)?raw.slice(a,b+1):raw; let parsed; try{parsed=JSON.parse(txt);}catch(e){continue;} for(const e of (Array.isArray(parsed)?parsed:[parsed])){ if(e&&e.permalink!=null) llm[String(e.permalink)]=e; } }\nconst rows=[]; const learn={};\nfor(const pl in full){\n  const p=full[pl]; const e=llm[pl]||{};\n  const _co=(e&&Array.isArray(e.companies))?e.companies:((e&&e.companyName)?[{companyName:e.companyName,sentiment:e.sentiment,reasoning:e.reasoning}]:[]);\n  const company_names=_co.filter(c=>c&&c.companyName&&nameSet.has(c.companyName)).map(c=>({name:c.companyName,sentiment:(c.sentiment!=null?c.sentiment:null),reasoning:c.reasoning||''}));\n  const companyName=company_names.length?company_names[0].name:'NONE';\n  const sentiment=(companyName!=='NONE'&&company_names[0].sentiment!=null)?company_names[0].sentiment:null;\n  const reasoning=company_names.length?(company_names[0].reasoning||''):'';\n  let post_weight=null;\n  if(companyName!=='NONE'){\n    const eng=((ew.upvote!=null?ew.upvote:1)*Math.max(0,Number(p.score||0)))+((ew.comment!=null?ew.comment:3)*Number(p.numComments||0));\n    const reach=Math.pow(Math.max(0,eng),49/50);\n    const decay=Math.pow(2,-ageDays(p.createdAt)/halfLife);\n    post_weight=parseFloat((reach*sentMult(sentiment)*decay).toFixed(6));\n  } else {\n    const term=normTerm(e.rejectTerm); const col=e.collidesWith;\n    if(term&&col&&nameSet.has(col)){ (learn[col]||(learn[col]=new Set())).add(term); }\n  }\n  rows.push({permalink:p.permalink,title:p.title,selfText:p.selfText,url:p.url,subreddit:p.subreddit,score:p.score,numComments:p.numComments,createdAt:p.createdAt,sentiment,reasoning,companyName,company_names,post_weight});\n}\nlet written=0;\nif(rows.length){ try{ await helpers.httpRequest({method:'POST',url:SB+'/reddit_posts?on_conflict=permalink',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:rows,json:true}); written=rows.length; }catch(err){ return [{json:{error:'upsert failed: '+(err&&err.message||err)}}]; } }\nlet learnedCount=0; const learnKeys=Object.keys(learn);\nif(learnKeys.length){ try{\n  const cfgRows=await helpers.httpRequest({method:'GET',url:SB+'/sov_config?select=config&id=eq.1',headers:H,json:true});\n  const conf=(cfgRows&&cfgRows[0]&&cfgRows[0].config)?cfgRows[0].config:{};\n  const neg=(conf.redditNegations&&typeof conf.redditNegations==='object')?conf.redditNegations:{};\n  for(const co of learnKeys){ const existing=new Set((Array.isArray(neg[co])?neg[co]:[]).map(x=>String(x).toLowerCase())); const own=new Set([co.toLowerCase()]); for(const w of String(co).toLowerCase().split(/\\s+/))own.add(w); for(const term of learn[co]){ if(existing.size>=25)break; if(existing.has(term)||own.has(term))continue; existing.add(term); learnedCount++; } neg[co]=Array.from(existing).slice(0,25); }\n  conf.redditNegations=neg;\n  await helpers.httpRequest({method:'PATCH',url:SB+'/sov_config?id=eq.1',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:{config:conf},json:true});\n}catch(e){} }\nconst attributed=rows.filter(r=>r.post_weight!=null).length;\nreturn [{json:{processed:rows.length,written,attributed,none:rows.length-attributed,learnedNegations:learnedCount}}];\n"
+   }
+  },
+  {
+   "id": "2a77efd6-186c-4dbc-be0c-3eb2598ca303",
+   "name": "Write Reddit post_weight",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    2688,
+    96
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "update",
+    "tableId": "reddit_posts",
+    "filterType": "manual",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "permalink",
+       "condition": "eq",
+       "keyValue": "={{ $json.permalink }}"
+      }
+     ]
+    },
+    "dataToSend": "defineBelow",
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "sentiment",
+       "fieldValue": "={{ $json.sentiment }}"
+      },
+      {
+       "fieldId": "reasoning",
+       "fieldValue": "={{ $json.reasoning }}"
+      },
+      {
+       "fieldId": "companyName",
+       "fieldValue": "={{ $json.companyName }}"
+      },
+      {
+       "fieldId": "post_weight",
+       "fieldValue": "={{ $json.post_weight }}"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "47b34c44-0908-46d2-abe3-087e3072d180",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    192
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "0366b153-0065-4e6f-bd74-0796cd973c62",
+   "name": "LLM Attribution Reddit",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1792,
+    96
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "contentType": "json",
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'gpt-4.1', temperature: 0, messages: [{ role: 'system', content: \"You are an expert sentiment + attribution analyst for a competitive share-of-voice tool covering identity/access-security companies. You receive a JSON ARRAY of Reddit posts, each with permalink, title, selfText. For EACH post identify which listed company it is about, EXCLUSIVELY among: \" + $json.companyEnum + \". Company definitions (identity + namesakes to reject): \" + ($json.companyDefs||'') + \". Aliases for disambiguation: \" + JSON.stringify($json.companies) + \".\\n\\nAttribute ONLY when the post genuinely concerns that specific organization (its product, people, funding, customers, or identity/access-security category); a shared name token in a generic or unrelated sense = NONE. If selfText is empty, use the title alone.\\n\\nDECISION PROCEDURE \u2014 apply to EVERY post BEFORE answering:\\n1) List each candidate company-name token that appears in the text, title, or post_url.\\n2) POSITIVE ANCHOR REQUIRED: to attribute a post to a listed company you MUST be able to point to a concrete, company-specific anchor IN THIS POST \u2014 its own website domain or LinkedIn handle; a product/feature unique to it; a named founder or employee; a funding round or acquisition tied to it; a named customer; OR the company named explicitly in ITS real context (identity security / IGA / SOC / the exact category in its definition below). If you cannot cite such an anchor, set companyName to NONE. A shared or similar-looking name token, by itself, is NEVER sufficient.\\n3) NAMES ARE EXACT \u2014 reject near-miss namesakes even inside an AI / security / privacy context: 'Lumo' (Proton's chatbot) is NOT 'Lumos'; 'Optiv' is NOT 'Opti'; '[24]7.ai' / '247.ai' / '7.ai' is NOT '7AI'; 'Torch.AI' is NOT 'Torch Security'; Amazon 'Blink' / 'Blink for Home' is NOT 'BlinkOps'; 'Luminous' / 'Lumo' is NOT 'Lumos'. If the post is about the OTHER named entity, set companyName to NONE.\\n4) If the token is used in a clearly different sense (a chatbot, a flower, a VPN, a game, a spell, a healthcare benchmark, a train, an airline, a mythological figure), or you are unsure which entity is meant, set companyName to NONE.\\nA wrong attribution to a namesake is far worse than a NONE \u2014 when in doubt, choose NONE.\\n\\nConcrete collisions to REJECT (set NONE): Lumos = NOT Proton Lumo chatbot, NOT Lumos Fiber/Networks ISP, NOT the Harry Potter spell, NOT Lumosity brain-games, NOT any crypto token; Surf AI = NOT Surf Air Mobility (aviation/Wheels Up), NOT the crypto token @SurfAI or asksurf.ai, NOT Surfshark VPN, NOT the Dutch research org SURF, NOT generic web-surfing; Twine = NOT Meta internal Twine/Tupperware cluster-management platform, NOT the Twine interactive-fiction tool, NOT the Python twine PyPI tool, NOT digital-twin research; 7AI = NOT 247.ai or [24]7.ai contact-center AI, NOT a top-7-AI-tools listicle; OFFROAD = NOT off-road/4x4/overlanding vehicles or off-road games; Console = NOT gaming consoles (PS5/Xbox/Switch) and NOT the developer/terminal console or console.log; Torch = NOT PyTorch, NOT Torch.AI defense data-orchestration, NOT a flashlight/Olympic torch/Torch browser; Opti = NOT Optiv the security integrator, NOT Optimizely; Orchid = NOT Orchid VPN/Orchid Protocol crypto (OXT), NOT the orchid flower; Linx = NOT LINX/Lynx physical-security or alarm firms, NOT the word links; Cerby = NOT Cerberus the mythological dog; Redblock = NOT Redblock Realty or the YouTube ad-blocker.\\n\\nFor a NONE post that collides with a listed company name or token, ALSO return collidesWith (the listed company name it resembles) and rejectTerm (ONE distinctive lowercase junk token from the post that best identifies the collision - a keyword, subreddit, or product name; no spaces; otherwise an empty string). For attributed posts set collidesWith and rejectTerm to empty strings.\\n\\nSentiment is an integer -3..3 (negative..positive). Output ONLY a valid JSON array, one element per input post, each with exactly: permalink (the input permalink), companies (an array of EVERY listed company genuinely named AND anchored in the post; each element = { companyName (a listed name), sentiment (int -3..3 for THIS company), reasoning (one sentence naming THIS company's anchor) }; [] if none), collidesWith (a listed name or empty), rejectTerm (a lowercase token or empty).\" }, { role: 'user', content: JSON.stringify($json.llmPosts) }] }) }}",
+    "options": {}
+   },
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 5,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "m4FUdT4FgRFOHRKl",
+     "name": "Dustin's OpenAi account"
+    }
+   }
+  },
+  {
+   "id": "80747c2b-23dd-48aa-b821-af621f1a775e",
+   "name": "Weekly Thu 5:25",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    384
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "weeks",
+       "weeksInterval": 1,
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 5,
+       "triggerAtMinute": 25
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Execute Workflow Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load Competitors": {
+   "main": [
+    [
+     {
+      "node": "Load SOV Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load SOV Config": {
+   "main": [
+    [
+     {
+      "node": "Build Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Context": {
+   "main": [
+    [
+     {
+      "node": "Build Reddit Queries",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Reddit Queries": {
+   "main": [
+    [
+     {
+      "node": "Apify Reddit (per query)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify Reddit (per query)": {
+   "main": [
+    [
+     {
+      "node": "Prep Reddit Batches",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse Reddit LLM": {
+   "main": [
+    [
+     {
+      "node": "Reddit Relevance Gate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Weekly Thu 5:25": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Prep Reddit Batches": {
+   "main": [
+    [
+     {
+      "node": "LLM Attribution Reddit",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM Attribution Reddit": {
+   "main": [
+    [
+     {
+      "node": "Score + Write + Learn Reddit",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner",
+  "saveDataSuccessExecution": "all",
+  "saveExecutionProgress": false,
+  "saveManualExecutions": true
+ },
+ "active": true
+}

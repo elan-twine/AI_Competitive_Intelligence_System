@@ -1,0 +1,780 @@
+{
+ "name": "Competitor Brief Generator",
+ "nodes": [
+  {
+   "parameters": {
+    "formTitle": "Twine Competitor Briefing",
+    "formFields": {
+     "values": [
+      {
+       "fieldLabel": "Competitor Name",
+       "placeholder": "e.g. CrowdStrike",
+       "requiredField": true
+      },
+      {
+       "fieldLabel": "Competitor URL",
+       "placeholder": "e.g. https://www.crowdstrike.com/",
+       "requiredField": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.formTrigger",
+   "typeVersion": 2.5,
+   "position": [
+    -160,
+    176
+   ],
+   "id": "f44dee9e-d724-4e57-bfdb-fce873c41793",
+   "name": "Start - Enter Competitor",
+   "webhookId": "be1f4e69-4328-4176-923e-54c7d6d5cc23"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.firecrawl.dev/v1/crawl",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={\n  \"url\": \"{{ $json.competitor_url }}\",\n  \"limit\": 10,\n  \"scrapeOptions\": {\n    \"formats\": [\"markdown\"],\n    \"onlyMainContent\": true\n  },\n  \"includePaths\": [\"/\", \"/about\", \"/product\", \"/solutions\", \"/pricing\", \"/platform\", \"/features\"]\n}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    208,
+    0
+   ],
+   "id": "5a7afdae-3b8a-455d-8845-5427f7239c18",
+   "name": "Firecrawl - Scrape Website",
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "qT0DBGnJbtPp9lpU",
+     "name": "Firecrawl API"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "amount": 30
+   },
+   "type": "n8n-nodes-base.wait",
+   "typeVersion": 1.1,
+   "position": [
+    416,
+    0
+   ],
+   "id": "508cd2d5-3160-4be3-81a5-fa0a7113aa8f",
+   "name": "Wait",
+   "webhookId": "9c5106b6-0e63-4055-8bbb-76ab84b03923"
+  },
+  {
+   "parameters": {
+    "url": "=https://api.firecrawl.dev/v1/crawl/{{ $('Firecrawl - Scrape Website').item.json.id }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "=httpHeaderAuth",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    624,
+    0
+   ],
+   "id": "f3faba9b-a055-44fc-85d4-fecd7be3b4ee",
+   "name": "Firecrawl - Fetch Results",
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "qT0DBGnJbtPp9lpU",
+     "name": "Firecrawl API"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const pages = $input.item.json.data || [];\nconst combined = pages.map(page => {\n  return `## ${page.metadata?.title || page.url}\\n${page.markdown}`;\n}).join('\\n\\n---\\n\\n');\n\n// competitor_name here carries the URL (used for Firecrawl/Serper/LLM domain-based analysis).\n// The user-entered LABEL is preserved separately on Normalize Input and applied downstream.\nreturn [{\n  json: {\n    competitor_name: $('Normalize Input').item.json.competitor_url,\n    scraped_content: combined\n  }\n}];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    832,
+    0
+   ],
+   "id": "de9562a8-f864-45fb-8dbc-554b59ca8fbf",
+   "name": "Firecrawl - Extract Content"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://google.serper.dev/search",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={\n  \"q\": \"{{ $json.competitor_name }} cybersecurity flagship platform products features 2026\",\n  \"num\": 10,\n  \"gl\": \"us\",\n  \"hl\": \"en\"\n}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1040,
+    0
+   ],
+   "id": "5b44766d-aded-406b-a496-11818504939c",
+   "name": "Serper - Competitor Search",
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "Box3hXLG2uXCWhn6",
+     "name": "Twine Serper Account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const results = $input.item.json.organic || [];\nconst summary = results.map((r, i) =>\n  `${i+1}. ${r.title}\\n   ${r.link}\\n   ${r.snippet}`\n).join('\\n\\n');\n\nreturn [{ \n  json: {\n    competitor_name: $('Firecrawl - Extract Content').item.json.competitor_name,\n    scraped_content: $('Firecrawl - Extract Content').item.json.scraped_content,\n    serper_results: summary\n  }\n}];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1248,
+    0
+   ],
+   "id": "60cec2db-ce34-4ec3-8d87-012cfc510f2b",
+   "name": "Serper - Extract Results"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "HTTP-Referer",
+       "value": "https://twinesecurity.com"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.payload) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1632,
+    0
+   ],
+   "id": "186be3e3-49d9-425e-ae7b-845340b46586",
+   "name": "LLM 1 - Extract Competitor Profile",
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "eivPsVZtPRmoUz7e",
+     "name": "OpenAI API"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const choice = $input.item.json.choices?.[0];\nconst raw = choice?.message?.content;\n\nif (!raw) {\n  throw new Error('OpenAI returned empty content. Full response: ' + JSON.stringify($input.item.json).substring(0, 300));\n}\n\nlet profile;\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  const jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\n  if (!jsonMatch) throw new Error('No JSON object found');\n  profile = JSON.parse(jsonMatch[0]);\n} catch(e) {\n  throw new Error('Failed to parse: ' + e.message + ' | Raw: ' + raw.substring(0, 200));\n}\n\n// LABEL must be the user-entered Competitor Name (from Normalize Input),\n// NOT the LLM/domain-derived profile.company_name. This fixes mislabeled briefings.\nreturn [{\n  json: {\n    competitor_profile: profile,\n    competitor_name: $('Normalize Input').item.json.competitor_name\n  }\n}];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2000,
+    0
+   ],
+   "id": "7a940a72-afc1-4025-a311-8267c44ec3d2",
+   "name": "Parse - Competitor Profile"
+  },
+  {
+   "parameters": {
+    "jsCode": "const allData = $input.item.json;\nconst competitor = allData.competitor_name;\nconst scraped = allData.scraped_content;\nconst serper = allData.serper_results;\n\n// Extract domain name cleanly for display\nconst competitorClean = competitor.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0];\n\nconst payload = {\n  model: \"gpt-4o-mini\",\n  max_tokens: 2000,\n  messages: [\n    {\n      role: \"system\",\n      content: `You are a competitive intelligence analyst with deep knowledge of the cybersecurity industry. \nYou have two sources of information: scraped website content and search results provided below. \nIMPORTANT: If any field would be empty based on the provided content, use your own training knowledge about ${competitorClean} to fill it in. \nNever leave an array empty if you know the answer. Always make your best effort to populate every field.\nRespond with valid JSON only \u2014 no markdown fences, no extra text.`\n    },\n    {\n      role: \"user\",\n      content: `Analyze ${competitorClean} and return ONLY this JSON structure with no other text.\n      \nCRITICAL INSTRUCTIONS:\n- \"flagship_models\" should list their main product platforms or solutions (e.g. for CrowdStrike this would be [\"Falcon Platform\"])\n- \"product_focus_areas\" should list all major product categories they sell\n- \"target_industries\" should list industries they specifically market to\n- \"target_customers\" should describe the types of companies/personas they sell to\n- \"notable_customers\" should list any well-known companies that use them\n- \"recent_news\" should list 2-3 recent notable events, funding rounds, or announcements\n- \"funding_info\" should describe their funding status or if they are publicly traded\n- If the scraped content or search results don't contain this info, use your own knowledge to fill it in\n\nReturn this exact JSON structure:\n{\n  \"company_name\": \"\",\n  \"core_positioning\": \"\",\n  \"target_customers\": [],\n  \"target_industries\": [],\n  \"product_focus_areas\": [],\n  \"key_themes\": [],\n  \"category_classification\": \"\",\n  \"pricing_signals\": \"\",\n  \"recent_news\": [],\n  \"funding_info\": \"\",\n  \"notable_customers\": [],\n  \"flagship_models\": [],\n  \"api_availability\": \"\",\n  \"developer_ecosystem\": \"\"\n}\n\nWEBSITE CONTENT:\n${scraped ? scraped.substring(0, 4000) : 'No scraped content available - rely on your training knowledge'}\n\nSEARCH RESULTS:\n${serper ? serper.substring(0, 2000) : 'No search results available - rely on your training knowledge'}`\n    }\n  ]\n};\n\nreturn [{ json: { payload, competitor_name: competitor } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1456,
+    0
+   ],
+   "id": "9effbc31-c93a-41bf-be59-ea0567ce98c2",
+   "name": "Build LLM 1 Payload"
+  },
+  {
+   "parameters": {
+    "jsCode": "const profile = $input.item.json.competitor_profile;\nconst competitor = $input.item.json.competitor_name;\n\n// Clean up competitor name for display\nconst competitorClean = competitor.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0];\n\n// --- Twine Share-of-Voice signals (best-effort; MUST NOT break brief generation) ---\nlet sovBlock = 'No Share-of-Voice data is available for this competitor yet.';\ntry {\n  const SRK = '<REDACTED_SUPABASE_JWT>';\n  const SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\n  const H = { apikey: SRK, Authorization: 'Bearer ' + SRK };\n  const nameGuess = String(competitor || '').replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0].split('.')[0].trim();\n  if (nameGuess) {\n    const like = encodeURIComponent('%' + nameGuess + '%');\n    const weekly = await this.helpers.httpRequest({ method: 'GET', url: SB + '/sov_weekly?company=ilike.' + like + '&select=company,week_start,overall,sentiment_pct&order=week_start.desc&limit=6', headers: H, json: true });\n    const rows = Array.isArray(weekly) ? weekly : [];\n    if (rows.length) {\n      const company = rows[0].company;\n      const latest = rows[0];\n      const prev = rows.find(r => r.week_start !== latest.week_start);\n      const trend = prev ? (latest.overall > prev.overall + 0.5 ? 'RISING' : (latest.overall < prev.overall - 0.5 ? 'FALLING' : 'FLAT')) : 'n/a';\n      const sent = (typeof latest.sentiment_pct === 'number') ? (((latest.sentiment_pct / 100) * 6 - 3).toFixed(1)) : 'n/a';\n      const likeCo = encodeURIComponent('%' + company + '%');\n      let poi = [];\n      try { poi = await this.helpers.httpRequest({ method: 'GET', url: SB + '/posts_of_interest?author=ilike.' + likeCo + '&select=summary,relevance_reason,date&order=date.desc&limit=6', headers: H, json: true }); } catch (e) {}\n      const themes = (Array.isArray(poi) ? poi : []).map(p => '  - ' + String(p.summary || p.relevance_reason || '').slice(0, 180)).filter(s => s.trim() !== '-').join('\\n');\n      sovBlock = 'SOV / social signals for ' + company + ' (from the Twine Share-of-Voice tracker across the identity-security peer set):\\n'\n        + '- Latest weekly Share of Voice: ' + Number(latest.overall || 0).toFixed(1) + '% (recent trend: ' + trend + (prev ? (', was ' + Number(prev.overall || 0).toFixed(1) + '%') : '') + ').\\n'\n        + '- Sentiment of external mentions: ' + sent + ' on a -3 (very negative) to +3 (very positive) scale.\\n'\n        + (themes ? ('- Recent notable posts / content themes they are pushing:\\n' + themes) : '- No standout posts captured recently.');\n    }\n  }\n} catch (e) { /* SOV must never block the brief */ }\n\nconst payload = {\n  model: \"gpt-4o-mini\",\n  max_tokens: 3000,\n  messages: [\n    {\n      role: \"system\",\n      content: `You are a senior competitive intelligence strategist at Twine Security with deep knowledge of the cybersecurity industry.\nYou are analyzing a competitor profile that was automatically extracted \u2014 some fields may be incomplete or empty.\nIMPORTANT: If any field in the competitor profile is empty or missing, use your own training knowledge about ${competitorClean} to fill the gaps before doing your analysis.\nNever leave an array empty if you can populate it with meaningful intelligence.\nOutput ONLY a valid JSON object. No thinking, no reasoning, no explanation. Just the JSON.`\n    },\n    {\n      role: \"user\",\n      content: `Here is Twine Security's positioning:\n---\nTwine Security is an AI-native cybersecurity company that automates security operations workflows. Our AI employees (called Twines) handle tasks like alert triage, threat investigation, compliance tracking, and security posture management \u2014 reducing manual burden for lean security teams. We target mid-market to enterprise companies that are under-resourced in security headcount. Key differentiators: fully autonomous AI agents (not copilots), deep integrations across the security stack, and fast time-to-value.\n---\n\nCompetitor profile (some fields may be incomplete \u2014 use your knowledge of ${competitorClean} to fill gaps):\n${JSON.stringify(profile, null, 2)}\n\nTwine's internal Share-of-Voice / social intelligence on this competitor \u2014 use it to judge their MARKETING strategy and momentum (which channels and content types they lean on, the themes they push, whether their mindshare is rising or falling):\n${sovBlock}\n\nCRITICAL INSTRUCTIONS FOR EACH FIELD:\n- \"competitor_strengths\": List their genuine strongest advantages in the market \u2014 be specific, not generic\n- \"competitor_weaknesses\": List real weaknesses or gaps, especially where Twine has an advantage\n- \"points_of_differentiation\": List specific ways Twine Security is different or better \u2014 be concrete\n- \"overlap_risk_areas\": List areas where both companies directly compete for the same buyers\n- \"threat_level\": Score as LOW, MEDIUM, HIGH, or CRITICAL based on how directly they compete with Twine\n- \"threat_rationale\": Write 2-3 sentences explaining the threat level score with specific reasoning\n- \"positioning_gaps_for_twine\": List specific gaps or weaknesses in Twine's positioning that this competitor exposes\n- \"battle_card_notes\": Write specific talking points a Twine salesperson could use when competing against this company \u2014 be actionable and concrete\n- \"marketing_strategy\": Using the Share-of-Voice/social signals above (and the profile), give 3-5 SPECIFIC observations about this competitor's MARKETING strategy and momentum \u2014 the channels and content types they lean on (webinars, guides, events, thought leadership, ads, etc.), the themes/narratives they push, whether their share of voice is rising or falling, and a concrete suggested response for Twine. If no SOV data is available, infer from the profile and prefix each item with \"(inferred)\".\n\nReturn ONLY this JSON with no other text:\n{\n  \"competitor_strengths\": [\"specific strength 1\", \"specific strength 2\"],\n  \"competitor_weaknesses\": [\"specific weakness 1\", \"specific weakness 2\"],\n  \"points_of_differentiation\": [\"specific differentiator 1\", \"specific differentiator 2\"],\n  \"overlap_risk_areas\": [\"specific overlap 1\", \"specific overlap 2\"],\n  \"threat_level\": \"HIGH\",\n  \"threat_rationale\": \"detailed explanation here\",\n  \"positioning_gaps_for_twine\": [\"specific gap 1\", \"specific gap 2\"],\n  \"battle_card_notes\": [\"actionable talking point 1\", \"actionable talking point 2\"],\n  \"marketing_strategy\": [\"specific marketing observation + Twine response 1\", \"specific marketing observation 2\"]\n}`\n    }\n  ]\n};\n\nreturn [{ json: { payload, competitor_name: competitor } }];\n"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2192,
+    0
+   ],
+   "id": "8318e9b0-e2a3-4823-98c4-152e6ac84912",
+   "name": "Build LLM 2 Payload"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "HTTP-Referer",
+       "value": "https://twinesecurity.com"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.payload) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    2384,
+    0
+   ],
+   "id": "1ee82d72-8951-4f73-9f6d-d331e1c3f59e",
+   "name": "LLM 2 - Comparative Analysis",
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "eivPsVZtPRmoUz7e",
+     "name": "OpenAI API"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const choice = $input.item.json.choices?.[0];\nconst raw = choice?.message?.content;\n\nif (!raw) {\n  throw new Error('OpenAI returned empty content. Full response: ' + JSON.stringify($input.item.json).substring(0, 300));\n}\n\nlet analysis;\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  const jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\n  if (!jsonMatch) throw new Error('No JSON object found');\n  analysis = JSON.parse(jsonMatch[0]);\n} catch(e) {\n  throw new Error('Failed to parse: ' + e.message + ' | Raw: ' + raw.substring(0, 200));\n}\n\nconst profile = $('Parse - Competitor Profile').item.json.competitor_profile;\nconst competitor = $('Parse - Competitor Profile').item.json.competitor_name;\n\nreturn [{\n  json: {\n    competitor_name: competitor,\n    profile,\n    analysis\n  }\n}];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2768,
+    0
+   ],
+   "id": "04a34a95-068e-45a8-a3e0-9a131f1a5742",
+   "name": "Parse - Comparative Analysis"
+  },
+  {
+   "parameters": {
+    "jsCode": "const { competitor_name, profile, analysis } = $input.item.json;\nconst date = new Date().toISOString().split('T')[0];\n\nconst safeList = (arr, prefix = '\u2022') => {\n  if (!arr || !Array.isArray(arr) || arr.length === 0) return `  ${prefix} Not available`;\n  return arr.map(item => `  ${prefix} ${item}`).join('\\n');\n};\n\nconst threatEmoji = {\n  LOW: '\ud83d\udfe2', MEDIUM: '\ud83d\udfe1', HIGH: '\ud83d\udfe0', CRITICAL: '\ud83d\udd34'\n}[analysis?.threat_level] || '\u26aa';\n\nconst docContent = `COMPETITOR BRIEFING REPORT\n${(competitor_name || 'Unknown').toUpperCase()}\nGenerated by Twine Security Competitor Briefing Workflow | ${date}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nTHREAT LEVEL: ${threatEmoji} ${analysis?.threat_level || 'UNKNOWN'}\n${analysis?.threat_rationale || 'No rationale provided'}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n1. EXECUTIVE SUMMARY\n${profile?.core_positioning || 'Not available'}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n2. POSITIONING SNAPSHOT\nCategory: ${profile?.category_classification || 'Not available'}\nCore Claim: ${profile?.core_positioning || 'Not available'}\nPricing Signals: ${profile?.pricing_signals || 'Not publicly available'}\nAPI Availability: ${profile?.api_availability || 'Not available'}\nDeveloper Ecosystem: ${profile?.developer_ecosystem || 'Not available'}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n3. FLAGSHIP MODELS\n${safeList(profile?.flagship_models)}\n\n4. PRODUCT OVERVIEW\n${safeList(profile?.product_focus_areas)}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n5. TARGET CUSTOMERS & INDUSTRIES\nIndustries: ${profile?.target_industries?.length ? profile.target_industries.join(', ') : 'Broad \u2014 consumer, enterprise, developer'}\nCustomer Types: ${profile?.target_customers?.length ? profile.target_customers.join(', ') : 'Consumers, developers, enterprises'}\nNotable Customers: ${profile?.notable_customers?.length ? profile.notable_customers.join(', ') : 'Not specified'}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n6. STRENGTHS & WEAKNESSES\n\nSTRENGTHS\n${safeList(analysis?.competitor_strengths, '\u2713')}\n\nWEAKNESSES\n${safeList(analysis?.competitor_weaknesses, '\u2717')}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n7. DIFFERENTIATION VS. TWINE SECURITY\n\nPOINTS OF DIFFERENTIATION\n${safeList(analysis?.points_of_differentiation, '\u2192')}\n\nOVERLAP RISK AREAS\n${safeList(analysis?.overlap_risk_areas, '\u26a0')}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n8. BATTLE CARD NOTES\n${safeList(analysis?.battle_card_notes, '\u2605')}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n9. POSITIONING GAPS FOR TWINE TO ADDRESS\n${safeList(analysis?.positioning_gaps_for_twine, '\u25b3')}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n10. RECENT NEWS & FUNDING\nFunding: ${profile?.funding_info || 'No data found'}\n${safeList(profile?.recent_news)}\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nTwine Security \u00b7 Confidential \u00b7 ${date}`;\n\nreturn [{\n  json: {\n    competitor_name: competitor_name || 'Unknown',\n    threat_level: analysis?.threat_level || 'UNKNOWN',\n    date,\n    doc_title: `Competitor Briefing: ${competitor_name || 'Unknown'} \u2014 ${date}`,\n    doc_content: docContent\n  }\n}];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2976,
+    0
+   ],
+   "id": "a43cee44-a3dd-4cff-be02-3241106b74cd",
+   "name": "Report - Build Briefing"
+  },
+  {
+   "parameters": {
+    "folderId": "1CtulrZi9CKy-Wx6m5X90Fw0I9luLhLjc",
+    "title": "={{ $('Report - Build Briefing').item.json.doc_title }}"
+   },
+   "type": "n8n-nodes-base.googleDocs",
+   "typeVersion": 2,
+   "position": [
+    3600,
+    0
+   ],
+   "id": "73e6c3f3-c40c-4ca8-8032-5cb8f399aa04",
+   "name": "Create a document",
+   "credentials": {
+    "googleDocsOAuth2Api": {
+     "id": "3rCwORxvrbz3gPLH",
+     "name": "Google Docs account 2"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "documentURL": "={{ $json.id }}",
+    "actionsUi": {
+     "actionFields": [
+      {
+       "action": "insert",
+       "text": "={{ $('Report - Build Briefing').item.json.doc_content }}"
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.googleDocs",
+   "typeVersion": 2,
+   "position": [
+    3776,
+    0
+   ],
+   "id": "9c8ccba2-57f6-47c0-ba08-808676a2a222",
+   "name": "Update a document",
+   "credentials": {
+    "googleDocsOAuth2Api": {
+     "id": "3rCwORxvrbz3gPLH",
+     "name": "Google Docs account 2"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "amount": 20
+   },
+   "type": "n8n-nodes-base.wait",
+   "typeVersion": 1.1,
+   "position": [
+    1824,
+    0
+   ],
+   "id": "5a70fba7-a6a0-4f01-96ec-04a1aa07d269",
+   "name": "Wait2",
+   "webhookId": "7d03adfd-3ea1-4c1d-8187-237aae46a0dd"
+  },
+  {
+   "parameters": {
+    "amount": 20
+   },
+   "type": "n8n-nodes-base.wait",
+   "typeVersion": 1.1,
+   "position": [
+    2576,
+    0
+   ],
+   "id": "7df81fbd-91eb-4d0b-ad40-37da9c885ec5",
+   "name": "Wait3",
+   "webhookId": "dba64f91-ccf5-453f-b411-310b6f138e4d"
+  },
+  {
+   "parameters": {
+    "content": "## LinkedIn Post by Company URN\nThis node gets linkedin posts. Get company URNs with this link. Use their linkedin page urls as the fields of the tool. \nTool: [CompURNGetter](https://console.apify.com/actors/ipHw77V2NMJPy8sbS/input)",
+    "height": 240
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "position": [
+    752,
+    816
+   ],
+   "typeVersion": 1,
+   "id": "23fb43e8-0eb7-4bab-be14-d1d5f508e5da",
+   "name": "Sticky Note5"
+  },
+  {
+   "parameters": {
+    "jsCode": "const competitor_name = $input.item.json.competitor_name;\nconst threat_level = $input.item.json.threat_level;\nconst date = $input.item.json.date;\nconst full_report = $input.item.json.doc_content;\n\n// Pull profile and analysis from upstream nodes\nconst profile = $('Parse - Comparative Analysis').item.json.profile;\nconst analysis = $('Parse - Comparative Analysis').item.json.analysis;\n\nconst supabase_payload = {\n  competitor_name: competitor_name || '',\n  competitor_url: $('Normalize Input').item.json.competitor_url || '',\n  threat_level: threat_level || '',\n  threat_rationale: analysis?.threat_rationale || '',\n  core_positioning: profile?.core_positioning || '',\n  category_classification: profile?.category_classification || '',\n  pricing_signals: profile?.pricing_signals || '',\n  funding_info: profile?.funding_info || '',\n  product_focus_areas: profile?.product_focus_areas || [],\n  target_customers: profile?.target_customers || [],\n  target_industries: profile?.target_industries || [],\n  notable_customers: profile?.notable_customers || [],\n  recent_news: profile?.recent_news || [],\n  competitor_strengths: analysis?.competitor_strengths || [],\n  competitor_weaknesses: analysis?.competitor_weaknesses || [],\n  points_of_differentiation: analysis?.points_of_differentiation || [],\n  overlap_risk_areas: analysis?.overlap_risk_areas || [],\n  battle_card_notes: analysis?.battle_card_notes || [],\n  positioning_gaps_for_twine: analysis?.positioning_gaps_for_twine || [],\n  marketing_strategy: analysis?.marketing_strategy || [],\n  full_report: full_report || ''\n};\n\nreturn [{\n  json: {\n    supabase_payload,\n    competitor_name,\n    threat_level,\n    date,\n    doc_title: $input.item.json.doc_title,\n    doc_content: full_report\n  }\n}];\n"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3168,
+    0
+   ],
+   "id": "44484ee9-a268-477a-b98d-9ca4fec02b5e",
+   "name": "Supabase - Build Payload"
+  },
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "e5c7839b-e076-4e2a-8de3-1db5fdfb750d",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2.1,
+   "position": [
+    -160,
+    0
+   ],
+   "id": "262acfbf-93d1-4944-a00c-18d7fb548d81",
+   "name": "Webhook - Single",
+   "webhookId": "e5c7839b-e076-4e2a-8de3-1db5fdfb750d"
+  },
+  {
+   "parameters": {
+    "tableId": "competitor_briefings",
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "competitor_name",
+       "fieldValue": "={{ $json.supabase_payload.competitor_name }}"
+      },
+      {
+       "fieldId": "competitor_url",
+       "fieldValue": "={{ $json.supabase_payload.competitor_url }}"
+      },
+      {
+       "fieldId": "threat_level",
+       "fieldValue": "={{ $json.supabase_payload.threat_level }}"
+      },
+      {
+       "fieldId": "threat_rationale",
+       "fieldValue": "={{ $json.supabase_payload.threat_rationale }}"
+      },
+      {
+       "fieldId": "core_positioning",
+       "fieldValue": "={{ $json.supabase_payload.core_positioning }}"
+      },
+      {
+       "fieldId": "category_classification",
+       "fieldValue": "={{ $json.supabase_payload.category_classification }}"
+      },
+      {
+       "fieldId": "pricing_signals",
+       "fieldValue": "={{ $json.supabase_payload.pricing_signals }}"
+      },
+      {
+       "fieldId": "funding_info",
+       "fieldValue": "={{ $json.supabase_payload.funding_info }}"
+      },
+      {
+       "fieldId": "product_focus_areas",
+       "fieldValue": "={{ $json.supabase_payload.product_focus_areas }}"
+      },
+      {
+       "fieldId": "target_customers",
+       "fieldValue": "={{ $json.supabase_payload.target_customers }}"
+      },
+      {
+       "fieldId": "target_industries",
+       "fieldValue": "={{ $json.supabase_payload.target_industries }}"
+      },
+      {
+       "fieldId": "notable_customers",
+       "fieldValue": "={{ $json.supabase_payload.notable_customers }}"
+      },
+      {
+       "fieldId": "recent_news",
+       "fieldValue": "={{ $json.supabase_payload.recent_news }}"
+      },
+      {
+       "fieldId": "competitor_strengths",
+       "fieldValue": "={{ $json.supabase_payload.competitor_strengths }}"
+      },
+      {
+       "fieldId": "competitor_weaknesses",
+       "fieldValue": "={{ $json.supabase_payload.competitor_weaknesses }}"
+      },
+      {
+       "fieldId": "points_of_differentiation",
+       "fieldValue": "={{ $json.supabase_payload.points_of_differentiation }}"
+      },
+      {
+       "fieldId": "overlap_risk_areas",
+       "fieldValue": "={{ $json.supabase_payload.overlap_risk_areas }}"
+      },
+      {
+       "fieldId": "battle_card_notes",
+       "fieldValue": "={{ $json.supabase_payload.battle_card_notes }}"
+      },
+      {
+       "fieldId": "positioning_gaps_for_twine",
+       "fieldValue": "={{ $json.supabase_payload.positioning_gaps_for_twine }}"
+      },
+      {
+       "fieldId": "full_report",
+       "fieldValue": "={{ $json.supabase_payload.full_report }}"
+      }
+     ]
+    }
+   },
+   "id": "b501299e-b8b2-4ed8-b81f-e9fb7bd33ee1",
+   "name": "Supabase - Save Briefing",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    3376,
+    0
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "id": "f78b8700-a481-4f84-aa65-153dbeb1eb26",
+   "name": "Normalize Input",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    16,
+    88
+   ],
+   "parameters": {
+    "jsCode": "// Shared normalization for BOTH triggers.\n// Form trigger 'Start - Enter Competitor' puts fields at $json['Competitor Name'] / $json['Competitor URL'].\n// Webhook 'Webhook - Single' puts the POSTed JSON body at $json.body (sometimes top-level).\n// Output a consistent shape: { competitor_name, competitor_url } regardless of which trigger fired.\nconst j = $input.item.json || {};\nconst body = j.body || {};\n\nconst pick = (...keys) => {\n  for (const src of [j, body]) {\n    for (const k of keys) {\n      const v = src && src[k];\n      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();\n    }\n  }\n  return '';\n};\n\nconst competitor_name = pick('Competitor Name', 'competitor_name', 'competitor', 'company', 'name');\nconst competitor_url = pick('Competitor URL', 'competitor_url', 'url', 'URL');\n\nif (!competitor_url) {\n  throw new Error('Normalize Input: missing Competitor URL. Got keys: ' + JSON.stringify(Object.keys(j)) + ' body keys: ' + JSON.stringify(Object.keys(body)));\n}\n\nreturn [{ json: { competitor_name, competitor_url } }];"
+   }
+  }
+ ],
+ "connections": {
+  "Firecrawl - Scrape Website": {
+   "main": [
+    [
+     {
+      "node": "Wait",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Wait": {
+   "main": [
+    [
+     {
+      "node": "Firecrawl - Fetch Results",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Firecrawl - Fetch Results": {
+   "main": [
+    [
+     {
+      "node": "Firecrawl - Extract Content",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Firecrawl - Extract Content": {
+   "main": [
+    [
+     {
+      "node": "Serper - Competitor Search",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Serper - Competitor Search": {
+   "main": [
+    [
+     {
+      "node": "Serper - Extract Results",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Serper - Extract Results": {
+   "main": [
+    [
+     {
+      "node": "Build LLM 1 Payload",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM 1 - Extract Competitor Profile": {
+   "main": [
+    [
+     {
+      "node": "Wait2",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build LLM 1 Payload": {
+   "main": [
+    [
+     {
+      "node": "LLM 1 - Extract Competitor Profile",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse - Competitor Profile": {
+   "main": [
+    [
+     {
+      "node": "Build LLM 2 Payload",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build LLM 2 Payload": {
+   "main": [
+    [
+     {
+      "node": "LLM 2 - Comparative Analysis",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM 2 - Comparative Analysis": {
+   "main": [
+    [
+     {
+      "node": "Wait3",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse - Comparative Analysis": {
+   "main": [
+    [
+     {
+      "node": "Report - Build Briefing",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Report - Build Briefing": {
+   "main": [
+    [
+     {
+      "node": "Supabase - Build Payload",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Create a document": {
+   "main": [
+    [
+     {
+      "node": "Update a document",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Wait2": {
+   "main": [
+    [
+     {
+      "node": "Parse - Competitor Profile",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Wait3": {
+   "main": [
+    [
+     {
+      "node": "Parse - Comparative Analysis",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Supabase - Build Payload": {
+   "main": [
+    [
+     {
+      "node": "Supabase - Save Briefing",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Supabase - Save Briefing": {
+   "main": [
+    [
+     {
+      "node": "Create a document",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Start - Enter Competitor": {
+   "main": [
+    [
+     {
+      "node": "Normalize Input",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Webhook - Single": {
+   "main": [
+    [
+     {
+      "node": "Normalize Input",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Normalize Input": {
+   "main": [
+    [
+     {
+      "node": "Firecrawl - Scrape Website",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "binaryMode": "separate",
+  "availableInMCP": true,
+  "timeSavedMode": "fixed",
+  "timezone": "America/New_York",
+  "callerPolicy": "workflowsFromSameOwner",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "saveDataSuccessExecution": "all",
+  "saveManualExecutions": true
+ },
+ "active": true
+}

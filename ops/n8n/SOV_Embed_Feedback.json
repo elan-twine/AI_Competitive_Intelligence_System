@@ -1,0 +1,119 @@
+{
+ "name": "SOV \u2014 Embed Feedback",
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "cronExpression",
+       "expression": "50 6 * * *"
+      }
+     ]
+    }
+   },
+   "id": "2aeb0503-b83d-454c-834b-3d6eeb0b1ef4",
+   "name": "Daily 06:50",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const base = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst jwt = '<REDACTED_SUPABASE_JWT>';\nconst H = { apikey: jwt, Authorization: 'Bearer ' + jwt };\nconst labeled = await this.helpers.httpRequest({ method: 'GET', url: base + '/post_feedback?select=activity_id,company,verdict,updated_at&verdict=in.(up,down)', headers: H, json: true });\nconst existing = await this.helpers.httpRequest({ method: 'GET', url: base + '/poi_vectors?select=activity_id,verdict', headers: H, json: true });\nconst existMap = new Map();\nfor (const e of (existing || [])) existMap.set(String(e.activity_id), e.verdict);\nconst labeledSet = new Set((labeled || []).map(l => String(l.activity_id)));\nconst pending = [];\nfor (const l of (labeled || [])) {\n  const id = String(l.activity_id);\n  if (!existMap.has(id) || existMap.get(id) !== l.verdict) pending.push(l);\n}\nconst purge = [];\nfor (const id of existMap.keys()) if (!labeledSet.has(id)) purge.push(id);\nfor (let i = 0; i < purge.length; i += 100) {\n  const chunk = purge.slice(i, i + 100);\n  const list = chunk.map(x => encodeURIComponent(x)).join(',');\n  await this.helpers.httpRequest({ method: 'DELETE', url: base + '/poi_vectors?activity_id=in.(' + list + ')', headers: H, json: true });\n}\nif (!pending.length) return [];\nconst textMap = new Map();\nconst pendIds = pending.map(p => String(p.activity_id));\nfor (let i = 0; i < pendIds.length; i += 100) {\n  const chunk = pendIds.slice(i, i + 100);\n  const list = chunk.map(x => encodeURIComponent(x)).join(',');\n  const rows = await this.helpers.httpRequest({ method: 'GET', url: base + '/linkedin_posts?select=activity_id,text,companyName&activity_id=in.(' + list + ')', headers: H, json: true });\n  for (const r of (rows || [])) textMap.set(String(r.activity_id), { text: r.text, companyName: r.companyName });\n}\nconst out = [];\nfor (const p of pending) {\n  const id = String(p.activity_id);\n  const info = textMap.get(id);\n  if (!info || !info.text || !String(info.text).trim()) continue;\n  out.push({ json: { activity_id: p.activity_id, company: p.company || info.companyName || null, verdict: p.verdict, text: info.text } });\n}\nreturn out;"
+   },
+   "id": "0a36c1aa-19a3-4058-8dfd-a13a5f5f44d5",
+   "name": "Fetch Pending",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/embeddings",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.text) }}\n}",
+    "options": {}
+   },
+   "id": "18308770-b560-41e2-8aa2-b202c1536c67",
+   "name": "Embed (OpenAI)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    448,
+    0
+   ],
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const base = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst jwt = '<REDACTED_SUPABASE_JWT>';\nconst H = { apikey: jwt, Authorization: 'Bearer ' + jwt, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' };\nconst items = $input.all();\nconst pend = $('Fetch Pending').all();\nconst rows = [];\nconst now = new Date().toISOString();\nfor (let i = 0; i < items.length; i++) {\n  const resp = items[i].json;\n  const emb = resp && resp.data && resp.data[0] && resp.data[0].embedding;\n  if (!emb || !Array.isArray(emb)) continue;\n  const src = pend[i] && pend[i].json;\n  if (!src) continue;\n  rows.push({ activity_id: src.activity_id, company: src.company, verdict: src.verdict, post_text: src.text, embedding: '[' + emb.join(',') + ']', updated_at: now });\n}\nfor (let i = 0; i < rows.length; i += 50) {\n  const chunk = rows.slice(i, i + 50);\n  await this.helpers.httpRequest({ method: 'POST', url: base + '/poi_vectors?on_conflict=activity_id', headers: H, body: chunk, json: true });\n}\nreturn [{ json: { embedded: rows.length } }];"
+   },
+   "id": "38d39948-835e-4972-b63c-fd449242c667",
+   "name": "Upsert Vectors",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    0
+   ]
+  }
+ ],
+ "connections": {
+  "Daily 06:50": {
+   "main": [
+    [
+     {
+      "node": "Fetch Pending",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fetch Pending": {
+   "main": [
+    [
+     {
+      "node": "Embed (OpenAI)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Embed (OpenAI)": {
+   "main": [
+    [
+     {
+      "node": "Upsert Vectors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate"
+ },
+ "active": true
+}

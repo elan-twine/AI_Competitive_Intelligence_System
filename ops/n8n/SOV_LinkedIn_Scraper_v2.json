@@ -1,0 +1,206 @@
+{
+ "name": "SOV \u2014 LinkedIn Scraper v2",
+ "nodes": [
+  {
+   "id": "98a8855d-cefb-4736-b04c-0662e463dc4a",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    80
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "34271c2a-39e6-4b81-b842-e136ef74c465",
+   "name": "Build Queries",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    192
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "// Light: build one item per Apify query (keyword per direct company + company-page per URN).\nconst helpers=this.helpers;\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst BASE='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\nconst DATE_FILTER='past-24h';   // 'past-24h' daily; 'past-week' backfill\nconst TOTAL=250;                 // actor auto-paginates up to this many (cap, not target)\nconst KW={'Lumos':['Lumos'],'Opti':['Opti IAM','Opti Identity'],'OFFROAD':['Offroad Security'],'7AI':['7AI'],'Console':['Console security'],'Oak - Identity Security OS':['Oak identity','Oak Security','oak.id']};\nconst comps=await helpers.httpRequest({method:'GET',url:BASE+'/competitors?select=name,linkedin_urn,type,active,keywords,definition,collision_terms&active=eq.true',headers:H,json:true});\nconst active=(comps||[]).filter(c=>c.active!==false);\nconst items=[];\nfor(const c of active){\n  const isDirect=(c.type||'direct')!=='indirect';\n  if(isDirect){ const kws=(c.keywords&&c.keywords.length)?c.keywords:(KW[c.name]||[String(c.name)]); for(const kw of kws){ items.push({json:{source:'keyword',search_input:kw,owner_company:null,body:{keyword:kw,date_filter:DATE_FILTER,sort_type:'date_posted',total_posts:TOTAL}}}); } }\n  const urn=c.linkedin_urn?String(c.linkedin_urn):'';\n  if(urn){ items.push({json:{source:'company_page',search_input:c.name,owner_company:c.name,body:{company_urns:urn,date_filter:DATE_FILTER,sort_type:'date_posted',total_posts:TOTAL}}}); }\n}\nreturn items;\n"
+   }
+  },
+  {
+   "id": "ee637c51-b7e1-4345-aa6a-40079ae37946",
+   "name": "Done",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    0
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const helpers=this.helpers;\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst BASE='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\n// Honest counts. queries: Build Queries ran ONCE before the SplitInBatches loop, so its\n// .all() length is the true number of queries built (the old code summed the loop node\n// reference, which after the loop only exposes the LAST iteration -> always '1 query').\nlet queries=0; try{ queries=$('Build Queries').all().length; }catch(e){}\n// rows_written: raw rows that landed in the last ~15 min = this run (scrapes are daily + isolated).\nlet rows_written=0;\ntry{ const since=new Date(Date.now()-15*60000).toISOString(); const arr=await helpers.httpRequest({method:'GET',url:BASE+'/linkedin_raw?select=activity_id&scraped_at=gte.'+encodeURIComponent(since)+'&limit=2000',headers:H,json:true}); rows_written=Array.isArray(arr)?arr.length:0; }catch(e){}\nconst status=(queries>0)?'success':'error';\nconst now=new Date().toISOString();\ntry{ await helpers.httpRequest({method:'POST',url:BASE+'/scrape_runs',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:{platform:'LinkedIn',started_at:now,finished_at:now,window_to:now,rows_written:rows_written,status:status,note:'scraper v2 daily past-24h ('+queries+' queries)'},json:true}); }catch(e){}\nreturn [{json:{scraperDone:true,queries,rows_written,status}}];\n"
+   }
+  },
+  {
+   "id": "4d24584e-c9a9-45a5-b9fa-690d80b3bba8",
+   "name": "Apify Scrape",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    672,
+    192
+   ],
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "5QnEH5N71IK2mFLrP"
+    },
+    "customBody": "={{ JSON.stringify($json.body) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "onError": "continueRegularOutput",
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   }
+  },
+  {
+   "id": "ea7abefd-391f-470a-a322-cc7d513a476c",
+   "name": "Flatten + Upsert Raw",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    272
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "// One query's posts (<=250), transient. Flatten + upsert to linkedin_raw. Metadata from the current batch item (batchSize 1).\nconst helpers=this.helpers;\nconst KEY='<REDACTED_SUPABASE_JWT>';\nconst BASE='https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H={apikey:KEY,Authorization:'Bearer '+KEY};\nconst meta=$('Loop Queries').first().json||{};\nconst source=meta.source||'keyword'; const search_input=meta.search_input||null; const owner=meta.owner_company||null;\nfunction flatten(t){ if(!t||!t.activity_id) return null; const stats=t.stats||{}; const article=(t.content&&t.content.article)?t.content.article:{}; return {activity_id:t.activity_id,post_url:t.post_url||'',text:t.text||'',full_urn:t.full_urn||'',author:t.author||{},totalReactions:stats.total_reactions||0,comments:stats.comments||0,reshares:stats.shares||0,posted_at:(t.posted_at&&t.posted_at.date)?t.posted_at.date:null,hashtags:t.hashtags||[],content:t.content||{},is_reshare:!!t.is_reshare,metadata:t.metadata||{},search_input:search_input,title:article.title||'',imageURL:article.thumbnail_url||'',source:source}; }\nconst seen={}; const rows=[];\nfor(const item of $input.all()){ const t=item.json||{}; const f=flatten(t); if(f&&!seen[f.activity_id]){ seen[f.activity_id]=1; rows.push({activity_id:f.activity_id,raw:f,source:source,search_input:search_input,owner_company:owner,status:'pending'}); } }\nlet n=0;\nif(rows.length){ try{ await helpers.httpRequest({method:'POST',url:BASE+'/linkedin_raw?on_conflict=activity_id',headers:Object.assign({},H,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'}),body:rows,json:true}); n=rows.length; }catch(e){ return [{json:{query:search_input,error:String(e&&e.message||e)}}]; } }\nreturn [{json:{query:search_input,source:source,upserted:n}}];\n"
+   }
+  },
+  {
+   "id": "7ca9804d-216e-4bde-be5d-472b2d99db4c",
+   "name": "Loop Queries",
+   "type": "n8n-nodes-base.splitInBatches",
+   "typeVersion": 3,
+   "position": [
+    448,
+    192
+   ],
+   "parameters": {
+    "batchSize": 1
+   }
+  },
+  {
+   "id": "8c464e42-74f7-48a6-a9e5-d93c33bf7bd4",
+   "name": "Daily 5:00",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    272
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "days",
+       "daysInterval": 1,
+       "triggerAtHour": 5,
+       "triggerAtMinute": 0
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Build Queries",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Queries": {
+   "main": [
+    [
+     {
+      "node": "Loop Queries",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify Scrape": {
+   "main": [
+    [
+     {
+      "node": "Flatten + Upsert Raw",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Flatten + Upsert Raw": {
+   "main": [
+    [
+     {
+      "node": "Loop Queries",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Loop Queries": {
+   "main": [
+    [
+     {
+      "node": "Done",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Apify Scrape",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Daily 5:00": {
+   "main": [
+    [
+     {
+      "node": "Build Queries",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "saveManualExecutions": true,
+  "callerPolicy": "workflowsFromSameOwner",
+  "saveDataSuccessExecution": "all",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO"
+ },
+ "active": true
+}

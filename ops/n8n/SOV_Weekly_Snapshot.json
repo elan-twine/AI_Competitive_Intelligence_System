@@ -1,0 +1,284 @@
+{
+ "name": "SOV \u2014 Weekly Snapshot",
+ "nodes": [
+  {
+   "parameters": {
+    "inputSource": "passthrough"
+   },
+   "id": "7a0e7120-42d1-4bef-9e72-de95a87059d8",
+   "name": "Execute Workflow Trigger",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "competitors",
+    "returnAll": true,
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "active",
+       "condition": "eq",
+       "keyValue": "true"
+      }
+     ]
+    }
+   },
+   "id": "c3fa95a4-8510-43bc-812c-5af9507b6c75",
+   "name": "Load Competitors",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    224,
+    192
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "sov_config",
+    "returnAll": true,
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "id",
+       "condition": "eq",
+       "keyValue": "1"
+      }
+     ]
+    }
+   },
+   "id": "82fa356c-a94a-4040-9c36-a1cdeb8a64ae",
+   "name": "Load SOV Config",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    448,
+    192
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const competitors = $(\"Load Competitors\").all().map(i => i.json);\nconst cfgRow = $(\"Load SOV Config\").first();\nconst config = (cfgRow && cfgRow.json && cfgRow.json.config) ? cfgRow.json.config : {};\nconst active = competitors.filter(c => c.active !== false);\nconst companies = active.map(c => ({ name: c.name, aliases: Array.isArray(c.aliases) ? c.aliases : [], domain: c.domain || null, x_handle: c.x_handle || null, linkedin_urn: c.linkedin_urn || null, subreddits: Array.isArray(c.subreddits) ? c.subreddits : [], type: c.type || 'direct' }));\nconst linkedin_urns = companies.map(c => c.linkedin_urn).filter(Boolean);\nconst companyEnum = companies.map(c => c.name).join(\", \");\nconst allSubreddits = Array.from(new Set([].concat(...companies.map(c => c.subreddits)).concat([\"cybersecurity\",\"netsec\",\"asknetsec\",\"devsecops\",\"hacking\",\"information_security\",\"security\",\"identitymanagement\",\"sysadmin\",\"itmanagers\",\"blueteamsec\"]))).filter(Boolean);\nreturn [{ json: { config, companies, linkedin_urns, companyEnum, allSubreddits } }];\n"
+   },
+   "id": "295dd376-8494-4d5d-b74e-c57b89f048b7",
+   "name": "Build Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Compute SOV Snapshot \u2014 dual-write (sov_weekly unchanged + rolling 7d/30d -> sov_daily).\n// 2026-07-06: sov_daily now RE-DERIVES the trailing 8 days each run (not just today), so\n// weekly-cadence platforms (Reddit/X/News) that land in a batch backfill onto their real\n// post dates -> smooth daily curve, no Thursday sawtooth. DB-only; still 1 execution/day.\n// 2026-07-08 (OOM fix v2): aggregation moved SERVER-SIDE to the Postgres RPC sov_board_agg.\n// 2026-07-08 (MINDSHARE MODEL): score(c) = \u03a3_platform mult[platform] \u00d7 wsum(c,platform);\n//   weighted_pct(c) = 100 \u00d7 score(c) / \u03a3 score over DIRECT companies.\n// 2026-07-12 (CUMULATIVE DAILY): each re-derived day ALSO gets an end-of-day all-time\n//   cumulative board written to sov_daily with window_days=0 (reuses computeBoard(null,asOf)).\nconst helpers = this.helpers;\nconst SRK = '<REDACTED_SUPABASE_JWT>';\nconst SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H = { apikey: SRK, Authorization: 'Bearer ' + SRK };\n\nconst ctx = $('Build Context').first().json; const cfg = ctx.config || {};\nconst comps = ctx.companies || [];\nconst allNames = comps.map(c => c.name).filter(Boolean);\nconst allNameSet = new Set(allNames);\nconst directSet = new Set(comps.filter(c => (c.type || 'direct') !== 'indirect').map(c => c.name));\nconst platformMultipliers = cfg.platformMultipliers || { LinkedIn:1, 'Google News':30, Reddit:3, X:1 };\nconst overallW = cfg.overallWeights || { unweighted:0.20, weighted:0.80, sentiment:0.0 };\nconst enabled = new Set(Array.isArray(cfg.enabledPlatforms) ? cfg.enabledPlatforms : ['LinkedIn','Google News','Reddit','X']);\n\nconst NOW = Date.now();\nconst platformKeys = ['LinkedIn','Google News','Reddit','X'].filter(p => enabled.has(p));\n\n// windowDays=null -> all-time as-of asOfMs (or NOW). windowDays + asOfMs -> trailing window.\nasync function computeBoard(windowDays, asOfMs) {\n  const as_of = new Date(asOfMs != null ? asOfMs : Date.now()).toISOString();\n  const window_days = (windowDays != null ? windowDays : null);\n  let aggRows;\n  try {\n    aggRows = await helpers.httpRequest({ method:'POST', url: SB + '/rpc/sov_board_agg', headers: Object.assign({}, H, { 'Content-Type':'application/json' }), body: { as_of: as_of, window_days: window_days }, json:true });\n  } catch (e) { aggRows = []; }\n  const agg = {};\n  for (const platform of platformKeys) { agg[platform] = {}; }\n  for (const row of (Array.isArray(aggRows) ? aggRows : [])) {\n    const platform = row.platform;\n    if (!agg[platform]) continue;               // platform not enabled -> skip\n    const name = row.company;\n    if (!name || name === 'NONE') continue;\n    if (!allNameSet.has(name)) continue;\n    const pw = Number(row.wsum); if (!isFinite(pw)) continue;\n    const cnt = Number(row.cnt) || 0;\n    if (!agg[platform][name]) agg[platform][name] = { pw:0, cntw:0, count:0, sentSum:0, sentCount:0 };\n    const A = agg[platform][name];\n    A.pw += pw; A.cntw += cnt; A.count += cnt;\n    A.sentSum += (Number(row.sent_sum) || 0); A.sentCount += (Number(row.sent_cnt) || 0);\n  }\n\n  // MINDSHARE: score(c) = \u03a3_platform mult[platform] \u00d7 pw(c,platform); denom = DIRECT companies.\n  const scoreBy = {}; let directScoreSum = 0;\n  for (const p of platformKeys) {\n    const m = (platformMultipliers[p] != null && isFinite(Number(platformMultipliers[p]))) ? Number(platformMultipliers[p]) : 1;\n    for (const name of Object.keys(agg[p])) {\n      scoreBy[name] = (scoreBy[name] || 0) + m * agg[p][name].pw;\n    }\n  }\n  for (const name of Object.keys(scoreBy)) { if (directSet.has(name)) directScoreSum += scoreBy[name]; }\n\n  let grandCntw = 0; const cntwBy = {}; const cntBy = {}; const sentSumBy = {}; const sentCntBy = {};\n  for (const platform of platformKeys) {\n    for (const name of Object.keys(agg[platform])) {\n      const A = agg[platform][name];\n      cntwBy[name] = (cntwBy[name] || 0) + A.cntw;\n      cntBy[name]  = (cntBy[name]  || 0) + A.count;\n      sentSumBy[name] = (sentSumBy[name] || 0) + A.sentSum;\n      sentCntBy[name] = (sentCntBy[name] || 0) + A.sentCount;\n      if (directSet.has(name)) grandCntw += A.cntw;\n    }\n  }\n\n  const rows = [];\n  for (const name of allNames) {\n    const score = scoreBy[name] || 0;\n    const weighted_pct = parseFloat((directScoreSum > 0 ? (score / directScoreSum) * 100 : 0).toFixed(4));\n    const unweighted_pct = parseFloat((grandCntw > 0 ? ((cntwBy[name] || 0) / grandCntw) * 100 : 0).toFixed(4));\n    const avgSent = (sentCntBy[name] > 0) ? (sentSumBy[name] / sentCntBy[name]) : 0;\n    const sentiment_pct = parseFloat((((avgSent + 3) / 6) * 100).toFixed(4));\n    const overall = parseFloat((((overallW.weighted!=null?overallW.weighted:0.80) * weighted_pct) + ((overallW.unweighted!=null?overallW.unweighted:0.20) * unweighted_pct) + ((overallW.sentiment!=null?overallW.sentiment:0.0) * sentiment_pct)).toFixed(4));\n    rows.push({ company: name, overall, weighted_pct, unweighted_pct, sentiment_pct, posts_count: (cntBy[name] || 0) });\n  }\n  return rows;\n}\n\nfunction isoThursday(d){ const dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); const back = (dt.getUTCDay() - 4 + 7) % 7; dt.setUTCDate(dt.getUTCDate() - back); return dt.toISOString().slice(0,10); }\nconst week_start = isoThursday(new Date());\nconst weeklyMetrics = await computeBoard(null);\nconst weeklyRows = weeklyMetrics.map(r => Object.assign({ week_start }, r));\n\nconst snapshot_date = new Date(NOW).toISOString().slice(0,10);\nconst DAY = 86400000;\nconst EPOCH = '2026-06-22';  // clean-history start \u2014 never write pre-model days\nconst dailySummary = {};\n// Re-derive the trailing 8 days each run (7d window + 1 edge day) so weekly-cadence\n// data backfills onto its true dates. i=0 reproduces today's row exactly (as-of NOW).\nfor (let i = 0; i < 8; i++) {\n  const asOfMs = NOW - i * DAY;\n  const snap_date = new Date(asOfMs).toISOString().slice(0,10);\n  if (snap_date < EPOCH) continue;\n  for (const wd of [7, 30]) {\n    try {\n      const m = await computeBoard(wd, asOfMs);\n      const dailyRows = m.map(r => ({ snapshot_date: snap_date, company: r.company, window_days: wd, overall: r.overall, weighted_pct: r.weighted_pct, sentiment_pct: r.sentiment_pct, posts_count: r.posts_count }));\n      await helpers.httpRequest({ method: 'POST', url: SB + '/sov_daily?on_conflict=snapshot_date,company,window_days', headers: Object.assign({}, H, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }), body: dailyRows, json: true });\n      dailySummary[snap_date + '_w' + wd] = dailyRows.length;\n    } catch (e) { dailySummary[snap_date + '_w' + wd] = 'ERR: ' + (e && e.message ? e.message : e); }\n  }\n  // window_days=0 = all-time CUMULATIVE board as-of END-OF-DAY D (23:59:59.999 UTC),\n  // so a daily-cumulative standings series accumulates going forward (frontend trend line).\n  // Reuses the SAME computeBoard(null, asOf) path as the weekly/all-time board\n  // (window_days=null at the RPC = all-time as-of). Written with window_days=0 so it\n  // coexists with the 7/30 rows under the same on_conflict key.\n  try {\n    const endOfDayMs = Date.parse(snap_date + 'T23:59:59.999Z');\n    const m0 = await computeBoard(null, endOfDayMs);\n    const cumRows = m0.map(r => ({ snapshot_date: snap_date, company: r.company, window_days: 0, overall: r.overall, weighted_pct: r.weighted_pct, sentiment_pct: r.sentiment_pct, posts_count: r.posts_count }));\n    await helpers.httpRequest({ method: 'POST', url: SB + '/sov_daily?on_conflict=snapshot_date,company,window_days', headers: Object.assign({}, H, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }), body: cumRows, json: true });\n    dailySummary[snap_date + '_w0'] = cumRows.length;\n  } catch (e) { dailySummary[snap_date + '_w0'] = 'ERR: ' + (e && e.message ? e.message : e); }\n}\n\nreturn [{ json: { week_start, snapshot_date, rows: weeklyRows, sov_daily: dailySummary } }];"
+   },
+   "id": "75c8b176-9276-445d-8b32-3962305cc789",
+   "name": "Compute SOV Snapshot",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1120,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/sov_weekly?on_conflict=week_start,company",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.rows) }}",
+    "options": {}
+   },
+   "id": "25a8946b-a89f-478e-b81a-8c770785df29",
+   "name": "Write sov_weekly",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1344,
+    192
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "parameters": {},
+   "id": "cfee496d-6aa7-453b-887c-a7dbbd0ff39a",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    192
+   ]
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "triggerAtHour": 6,
+       "triggerAtMinute": 45
+      }
+     ]
+    }
+   },
+   "id": "b733b35d-c549-45cb-a544-2777bce26740",
+   "name": "Daily 6:45",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    384
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// === Freshness Guard (n8n Code node, Run Once for All Items) ===\n// Runs AFTER Build Context and BEFORE Compute SOV Snapshot on the SNAPSHOT path.\n// Ensures we never re-publish a STALE board. Daily model: LinkedIn is the daily\n// signal (must be fresh); News is WEEKLY by design so it gets a wider tolerance.\n// If LinkedIn is stale/absent (or News is ancient), throw + abort before Compute.\nconst helpers = this.helpers;\nconst KEY = '<REDACTED_SUPABASE_JWT>';\nconst BASE = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H = { apikey: KEY, Authorization: 'Bearer ' + KEY };\n\nconst THRESHOLD_DAYS = 8;       // LinkedIn: daily scrape -> should always be <2d\nconst NEWS_THRESHOLD_DAYS = 10; // News is weekly by design -> tolerate a full cycle + article lag\n\nfunction ageDays(t) { if (!t) return null; const d = new Date(t); return isNaN(d) ? null : Math.max(0, (Date.now() - d.getTime()) / 86400000); }\n\nasync function newest(table, tsCol) {\n  let arr;\n  try {\n    arr = await helpers.httpRequest({\n      method: 'GET',\n      url: BASE + '/' + table + '?select=' + tsCol + '&order=' + tsCol + '.desc.nullslast&limit=1',\n      headers: H,\n      json: true,\n    });\n  } catch (e) {\n    throw new Error('Freshness Guard: failed reading ' + table + ' (' + (e && e.message ? e.message : e) + ') \u2014 aborting snapshot (fail closed)');\n  }\n  const rows = Array.isArray(arr) ? arr : [];\n  if (!rows.length) return { ts: null, age: null };\n  const ts = rows[0][tsCol];\n  return { ts: ts, age: ageDays(ts) };\n}\n\nconst li = await newest('linkedin_posts', 'posted_at');\nconst gn = await newest('googlenews', 'publishedAt');\n\nconsole.log('Freshness Guard: LinkedIn newest posted_at=' + li.ts + ' (age ' + (li.age == null ? 'n/a' : li.age.toFixed(2)) + 'd, thr ' + THRESHOLD_DAYS + 'd), News newest publishedAt=' + gn.ts + ' (age ' + (gn.age == null ? 'n/a' : gn.age.toFixed(2)) + 'd, thr ' + NEWS_THRESHOLD_DAYS + 'd)');\n\nif (li.age == null || li.age > THRESHOLD_DAYS) {\n  throw new Error('Freshness Guard: LinkedIn data stale/absent (newest=' + li.ts + ') \u2014 aborting snapshot to avoid a stale board');\n}\nif (gn.age == null || gn.age > NEWS_THRESHOLD_DAYS) {\n  throw new Error('Freshness Guard: News data stale/absent (newest=' + gn.ts + ') \u2014 aborting snapshot to avoid a stale board');\n}\n\n// Both fresh -> pass input through unchanged.\nreturn $input.all();\n"
+   },
+   "id": "11e9111c-7e2b-40f3-906a-b4b1cbb26d5b",
+   "name": "Freshness Guard",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    192
+   ]
+  }
+ ],
+ "connections": {
+  "Execute Workflow Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load Competitors": {
+   "main": [
+    [
+     {
+      "node": "Load SOV Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load SOV Config": {
+   "main": [
+    [
+     {
+      "node": "Build Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Compute SOV Snapshot": {
+   "main": [
+    [
+     {
+      "node": "Write sov_weekly",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Context": {
+   "main": [
+    [
+     {
+      "node": "Freshness Guard",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Freshness Guard": {
+   "main": [
+    [
+     {
+      "node": "Compute SOV Snapshot",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Daily 6:45": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner"
+ },
+ "active": true
+}

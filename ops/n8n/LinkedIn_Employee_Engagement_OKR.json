@@ -1,0 +1,492 @@
+{
+ "name": "LinkedIn Employee Engagement \u2014 Weekly (OKR)",
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "weeks",
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 12
+      }
+     ]
+    }
+   },
+   "id": "ce65cd22-4e31-4f17-a757-e3b423f83a4a",
+   "name": "Every Thursday 12:00",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    304
+   ]
+  },
+  {
+   "parameters": {
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/linkedin_posts",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "httpHeaderAuth",
+    "sendQuery": true,
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "author->>name",
+       "value": "eq.Twine Security"
+      },
+      {
+       "name": "posted_at",
+       "value": "=gte.{{ $now.startOf('day').minus({ days: ($now.weekday + 3) % 7 }).minus({ weeks: 1 }).toISO() }}"
+      },
+      {
+       "name": "posted_at",
+       "value": "=lt.{{ $now.startOf('day').minus({ days: ($now.weekday + 3) % 7 }).toISO() }}"
+      },
+      {
+       "name": "select",
+       "value": "activity_id,posted_at,totalReactions,text,full_urn"
+      },
+      {
+       "name": "order",
+       "value": "posted_at.desc"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "33bc0a47-6a13-4ba0-bc90-f211cb0b7b0b",
+   "name": "Get Twine posts (Supabase)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    224,
+    304
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "dKAr5wx2rnvTPYOY",
+     "name": "Supabase API"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const rows = $input.all().map(i => i.json);\nconst posts = [];\nconst postMeta = [];\nfor (const r of rows) {\n  const url = 'https://www.linkedin.com/feed/update/urn:li:activity:' + r.activity_id + '/';\n  posts.push(url);\n  postMeta.push({ activity_id: r.activity_id, url: url, posted_at: r.posted_at, text: (r.text || '').slice(0, 60) });\n}\nreturn [{ json: { posts: posts, postMeta: postMeta, postCount: posts.length } }];"
+   },
+   "id": "9782a04d-3847-452d-b7ef-e462d9c38700",
+   "name": "Build post URLs",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    448,
+    304
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 1
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.postCount }}",
+       "operator": {
+        "type": "number",
+        "operation": "gt"
+       },
+       "rightValue": 0
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "id": "2b4e317d-3c1c-4ea2-a1cb-95c0feea23e9",
+   "name": "Any posts?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    672,
+    304
+   ],
+   "disabled": true
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.apify.com/v2/acts/harvestapi~linkedin-post-reactions/run-sync-get-dataset-items",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBearerAuth",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={ \"posts\": {{ JSON.stringify($json.posts) }}, \"maxItems\": 100, \"reactionTypeFilter\": [\"ALL\"], \"profileScraperMode\": \"main\" }",
+    "options": {
+     "timeout": 300000
+    }
+   },
+   "id": "b12ef784-1521-4cb2-8614-39e1e7a944ef",
+   "name": "Scrape reactions (Apify)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    896,
+    208
+   ],
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "LLPghAk926Hh8qyh",
+     "name": "Apify OAuth2 API"
+    },
+    "httpHeaderAuth": {
+     "id": "kJiRUrCDMiS2xgC4",
+     "name": "Apify Auth"
+    },
+    "httpBearerAuth": {
+     "id": "1IgwugBfpb4F3Ipb",
+     "name": "Bearer Auth account 2"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "// ===== Roster + headcount come from Supabase (public.linkedin_roster_config),\n// editable from the SOV dashboard. The baked-in list below is only a fallback\n// so the metric never breaks if the config fetch returns nothing. =====\nconst FALLBACK_ROSTER = [\"Omri Green\",\"Nadav Erez\",\"Yiftach Keshet\",\"Yuval Carmel\",\"Benny Porat\",\"Guilad Regev\",\"Ron Kormanek\",\"Alona Liechtenstein\",\"Justin Woody\",\"Ben Ofer\",\"Charly Setbon\",\"Ofir Tal-Friedman\",\"Yasmin Hefer\",\"Liad Shachoach\",\"Chen Fradkin\",\"Alon Danoch\",\"Matan Coriat\",\"Daniel Shalev\",\"Dustin Rabin\",\"Nadav Misgav\",\"Ariel Zinman\",\"Noa Milshtein\",\"Omer Movshovits\",\"Danielle Hersonsky Sarid\",\"Miki Chernyak\",\"Dotan Reis\",\"Yaniv Wolfus\",\"Elan Smyla\",\"Maayan Arbely\",\"Tanya Gershnov\",\"Danny Nia\",\"Lior Krupnik\",\"Omer Kaplan\",\"Akiva Adler\",\"Noam Bar Uryan\",\"Nadav Barak\",\"Peleg Dvir\",\"Ittay Toledo\"];;\nlet ROSTER = FALLBACK_ROSTER;\nlet HEADCOUNT = FALLBACK_ROSTER.length;\ntry {\n  const cfg = $('Get roster config (Supabase)').first().json;\n  if (cfg) {\n    if (Array.isArray(cfg.roster) && cfg.roster.length) ROSTER = cfg.roster;\n    const hc = Number(cfg.headcount);\n    HEADCOUNT = (Number.isFinite(hc) && hc > 0) ? hc : ROSTER.length;\n  }\n} catch (e) { /* keep fallback */ }\n// ===================================================\n\nfunction normName(s) {\n  return String(s == null ? '' : s)\n    .normalize('NFKC')\n    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '')\n    .trim()\n    .toLowerCase();\n}\n\nconst rosterSet = new Set(ROSTER.map(normName));\n\nconst meta = $('Build post URLs').first().json.postMeta || [];\nconst reactions = $input.all().map(i => i.json);\n\nconst byPost = {};\nfor (const rx of reactions) {\n  const key = rx.query && rx.query.post;\n  if (!key) continue;\n  if (!byPost[key]) byPost[key] = [];\n  byPost[key].push(rx);\n}\n\nconst postCount = meta.length;\nlet sumMembers = 0;\nconst out = [];\n\nfor (const m of meta) {\n  const list = byPost[m.url] || [];\n  const seen = new Set();\n  for (const rx of list) {\n    const actor = rx.actor || {};\n    const nn = normName(actor.name);\n    if (nn && rosterSet.has(nn)) seen.add(nn);\n  }\n  const members = seen.size;\n  sumMembers += members;\n  const rate_pct = Math.round(members / HEADCOUNT * 100);\n  const date = (m.posted_at || '').slice(0, 10);\n  const label = (m.text || '').slice(0, 40);\n  out.push({ json: { date: date, label: label, members: members, headcount: HEADCOUNT, rate_pct: rate_pct, postCount: postCount } });\n}\n\n// The measured week is the COMPLETED Thursday-anchored week (the SOV default:\n// week starts Thursday 00:00, ends Wednesday 23:59 \u2014 unless a metric\n// explicitly specifies otherwise).\nconst thisThu = $now.startOf('day').minus({ days: ($now.weekday + 3) % 7 });\nconst wkStart = thisThu.minus({ weeks: 1 });   // the COMPLETED Thu-anchored week (Thu 00:00 ... Wed 23:59)\nconst wkEnd = wkStart.plus({ days: 6 });\nconst week_start = wkStart.toFormat('yyyy-MM-dd');\nconst weekly_avg_pct = postCount > 0 ? Math.round(sumMembers / (HEADCOUNT * postCount) * 100) : null;\nfor (const item of out) {\n  item.json.weekly_avg_pct = weekly_avg_pct;\n  item.json.week_start = week_start;\n}\n\nreturn out;"
+   },
+   "id": "7236a5d2-878f-462a-8b9c-ce9dd79cef82",
+   "name": "Compute metrics",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1120,
+    208
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const rows = $input.all().map(i => i.json);\nconst postCount = $('Build post URLs').first().json.postCount;\n// SOV default week: Thursday 00:00 -> Wednesday 23:59 (the completed one).\nconst thisThu = $now.startOf('day').minus({ days: ($now.weekday + 3) % 7 });\nconst wkStart = thisThu.minus({ weeks: 1 });   // the COMPLETED Thu-anchored week (Thu 00:00 ... Wed 23:59)\nconst wkEnd = wkStart.plus({ days: 6 });\nconst weekStartStr = wkStart.toFormat('MMM d');\nconst weekEndStr = wkEnd.toFormat('MMM d');\nconst headcount = rows.length ? rows[0].headcount : 38;\nconst weeklyAvg = rows.length ? rows[0].weekly_avg_pct : null;\n\nlet msg = '';\nmsg += '\\ud83d\\udcca LinkedIn employee engagement \\u2014 week of ' + weekStartStr + '\\u2013' + weekEndStr + ' (Thu\\u2013Wed)\\n';\nmsg += postCount + ' company posts.\\n';\nmsg += '\\n';\nfor (const r of rows) {\n  msg += '\\u2022 ' + r.date + ' (' + r.label + '): ' + r.members + '/' + headcount + ' = ' + r.rate_pct + '%\\n';\n}\nmsg += '\\n';\nmsg += 'Weekly avg engagement per post: ' + weeklyAvg + '%\\n';\nmsg += 'Members = name-match to the ' + headcount + '-person staff roster.\\n';\nmsg += 'Source: SOV Supabase + live LinkedIn reactions.';\nreturn [{ json: { slackText: msg, pct: weeklyAvg, headcount: headcount, post_count: postCount, week_start: wkStart.toFormat('yyyy-MM-dd') } }];\n"
+   },
+   "id": "393138bf-e0b0-4706-9ee8-5775dcbbdf1a",
+   "name": "Format Slack message",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1344,
+    208
+   ]
+  },
+  {
+   "parameters": {
+    "authentication": "oAuth2",
+    "select": "user",
+    "user": {
+     "__rl": true,
+     "value": "U07GYAZ62E9",
+     "mode": "list",
+     "cachedResultName": "dustin"
+    },
+    "text": "={{ $json.slackText }}",
+    "otherOptions": {
+     "includeLinkToWorkflow": false
+    }
+   },
+   "id": "ff24358e-4fa9-4ec7-bb48-61f11718da3d",
+   "name": "DM Dustin",
+   "type": "n8n-nodes-base.slack",
+   "typeVersion": 2.5,
+   "position": [
+    1568,
+    304
+   ],
+   "webhookId": "641f16a7-e9c9-42f3-8f6d-a112cd0a661a",
+   "credentials": {
+    "slackOAuth2Api": {
+     "id": "aaseRx8hiavPyH7k",
+     "name": "Dustin Slack"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "// SOV default week: Thursday 00:00 -> Wednesday 23:59 (the completed one).\nconst thisThu = $now.startOf('day').minus({ days: ($now.weekday + 3) % 7 });\nconst wkStart = thisThu.minus({ weeks: 1 });   // the COMPLETED Thu-anchored week (Thu 00:00 ... Wed 23:59)\nconst wkEnd = wkStart.plus({ days: 6 });\nconst range = wkStart.toFormat('MMM d') + '\\u2013' + wkEnd.toFormat('MMM d');\nlet headcount = 38;\ntry { const cfg = $('Get roster config (Supabase)').first().json; const hc = Number(cfg && cfg.headcount); if (Number.isFinite(hc) && hc > 0) headcount = hc; } catch (e) { /* keep fallback */ }\nconst msg = '\\ud83d\\udcca LinkedIn employee engagement \\u2014 week of ' + range + ' (Thu\\u2013Wed): no company posts \\u2014 N/A (week not counted toward averages).';\n// pct NULL (not 0): no-post weeks are N/A and excluded from any average\n// (SQL AVG skips nulls) and from week-over-week comparisons (Elan, 2026-08-03).\nreturn [{ json: { slackText: msg, pct: null, headcount: headcount, post_count: 0, week_start: wkStart.toFormat('yyyy-MM-dd') } }];\n"
+   },
+   "id": "731af355-9809-4c8d-824c-c463174c80c8",
+   "name": "Format no-posts message",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1344,
+    400
+   ]
+  },
+  {
+   "parameters": {
+    "content": "## Re-bind credentials before activating\nThis workflow was created in Dustin's project, but the referenced credentials live in Elan's project and will NOT resolve at runtime across projects. Elan must open each node below and re-select the credential in the n8n UI:\n- Get Twine posts (Supabase) -> httpHeaderAuth \"Supabase API\" (dKAr5wx2rnvTPYOY)\n- Scrape reactions (Apify) -> apifyOAuth2Api \"Apify OAuth2 API\" (LLPghAk926Hh8qyh)\n- DM Dustin -> slackOAuth2Api \"Slack OAuth2 API\" (qnZtXBwMt2ZcMSsj)",
+    "height": 684,
+    "width": 1620,
+    "color": 3
+   },
+   "id": "e338f3f2-a87e-4efe-aac4-55f3ad696387",
+   "name": "Sticky Note 501a0528",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    128,
+    -224
+   ]
+  },
+  {
+   "parameters": {
+    "content": "## LinkedIn Employee Engagement \u2014 Weekly (OKR)\n**Leave INACTIVE for human review.**\n\n1. Creds to bind in UI (see red note): Supabase (dKAr5wx2rnvTPYOY), Apify (LLPghAk926Hh8qyh), Slack (qnZtXBwMt2ZcMSsj).\n2. Metric = name-match to the 38-person staff ROSTER. The ROSTER array and HEADCOUNT (= ROSTER.length = 38) live at the top of the \"Compute metrics\" Code node \u2014 edit the roster there.\n3. Metric 1 (per post) = distinct roster members who reacted \u00f7 38, whole %. Metric 2 (weekly) = the average of the per-post Metric-1 rates across the week's posts.\n4. Timezone: set workflow Settings -> Timezone = Asia/Jerusalem so the Monday 08:00 trigger fires in Israel time.",
+    "height": 680,
+    "width": 292,
+    "color": 4
+   },
+   "id": "038d04c3-bcae-448f-a6b9-8a5fec475a24",
+   "name": "Sticky Note 72680a79",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -160,
+    -224
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://sheets.googleapis.com/v4/spreadsheets/150Lbsi3JrZUyjrDdNn2vmze3VOM7PaW7jPjbc0OZYWU/values:batchUpdate",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "googleSheetsOAuth2Api",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={ \"valueInputOption\": \"USER_ENTERED\", \"data\": [{ \"range\": \"'OKR Dashboard what benny wants'!J35\", \"values\": [[ {{ $('Compute metrics').first().json.weekly_avg_pct / 100 }} ]] },{ \"range\": \"'OKR Dashboard what benny wants'!N35\", \"values\": [[ \"{{ $now.toFormat('yyyy-MM-dd') }}\" ]] }] }",
+    "options": {}
+   },
+   "id": "6876f53a-4cd1-4b5d-a244-f8ffc9b03fa4",
+   "name": "Write KR-21 to OKR sheet",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1568,
+    128
+   ],
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "KmeJdPBXr6TUDM6S",
+     "name": "Google Sheets OAuth2 API"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/linkedin_engagement",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Prefer",
+       "value": "return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={ \"pct\": {{ $json.pct }}, \"headcount\": {{ $json.headcount }}, \"post_count\": {{ $json.post_count }}, \"week_start\": \"{{ $json.week_start }}\" }",
+    "options": {}
+   },
+   "id": "c9d2e3f4-2222-4b33-9d44-0000000000b2",
+   "name": "Write engagement to Supabase",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1184,
+    832
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "6oZFYZZQx1zxGI0A",
+     "name": "Supabase service_role"
+    },
+    "supabaseApi": {
+     "id": "QGpCCtVJkreROJ3W",
+     "name": "Supabase account 2"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/linkedin_roster_config",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "httpHeaderAuth",
+    "sendQuery": true,
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "id",
+       "value": "eq.1"
+      },
+      {
+       "name": "select",
+       "value": "headcount,roster"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "967afecd-4e6c-4e1b-97f2-be257d48d6a0",
+   "name": "Get roster config (Supabase)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    0,
+    480
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "dKAr5wx2rnvTPYOY",
+     "name": "Supabase API"
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Get Twine posts (Supabase)": {
+   "main": [
+    [
+     {
+      "node": "Build post URLs",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build post URLs": {
+   "main": [
+    [
+     {
+      "node": "Any posts?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Any posts?": {
+   "main": [
+    [
+     {
+      "node": "Scrape reactions (Apify)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Format no-posts message",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Scrape reactions (Apify)": {
+   "main": [
+    [
+     {
+      "node": "Compute metrics",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Compute metrics": {
+   "main": [
+    [
+     {
+      "node": "Format Slack message",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Format Slack message": {
+   "main": [
+    [
+     {
+      "node": "DM Dustin",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Write KR-21 to OKR sheet",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Write engagement to Supabase",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Format no-posts message": {
+   "main": [
+    [
+     {
+      "node": "DM Dustin",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Write engagement to Supabase",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Every Thursday 12:00": {
+   "main": [
+    [
+     {
+      "node": "Get roster config (Supabase)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Get roster config (Supabase)": {
+   "main": [
+    [
+     {
+      "node": "Get Twine posts (Supabase)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner",
+  "timezone": "Asia/Jerusalem"
+ },
+ "active": true
+}

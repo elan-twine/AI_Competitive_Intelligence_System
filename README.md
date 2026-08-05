@@ -123,6 +123,7 @@ bundle — the browser only ever uses the anon key.
 ├── wrangler.jsonc      Worker config, public vars, cron triggers
 ├── supabase/migrations schema history (0001…)
 ├── ops/
+│   ├── n8n/            sanitized exports of the live pipeline workflows (DR copy)
 │   ├── scripts/        evals, backfills, parity checks, smoke tests
 │   └── migrations/     dated operational migrations (run in the Supabase SQL editor)
 ├── HANDOFF.md          operating manual — read this first
@@ -196,12 +197,14 @@ seen in production and how to detect each.
 | File | Contents |
 |---|---|
 | [HANDOFF.md](HANDOFF.md) | **operating manual** — access, schedules, failure modes, cost, open items |
+| [CLAUDE.md](CLAUDE.md) | orientation for AI agents — auto-loaded by Claude Code; the rules that must not be broken |
 | [docs/SOV_METHODOLOGY.md](docs/SOV_METHODOLOGY.md) | full scoring methodology and research basis |
 | [docs/DECISIONS_LOG.md](docs/DECISIONS_LOG.md) | every product/design decision, newest first |
 | [docs/CLOUDFLARE_DEPLOY.md](docs/CLOUDFLARE_DEPLOY.md) | deployment specifics |
 | [docs/PRODUCT.md](docs/PRODUCT.md) | product intent and design principles |
 | [docs/SOV_PROJECT_STATE.md](docs/SOV_PROJECT_STATE.md) | historical build state |
 | `ops/scripts/` | evals, backfills, parity checks, smoke suite |
+| [`ops/n8n/`](ops/n8n/) | sanitized exports of all 21 live n8n workflows — the scraping/scoring logic |
 
 ---
 

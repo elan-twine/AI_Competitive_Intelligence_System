@@ -1,0 +1,190 @@
+{
+ "name": "SOV \u2014 Posts of Interest",
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "weeks",
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 7
+      }
+     ]
+    }
+   },
+   "id": "a90294af-ac1b-4de1-8579-f058940e6914",
+   "name": "Weekly (Thu 07:00)",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "\nconst SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst KEY = '<REDACTED_SUPABASE_JWT>';\nconst H = { apikey: KEY, Authorization: 'Bearer ' + KEY };\nconst now = new Date();\nconst DAY = 86400000;\nconst _d0 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));\nconst weekEnd = new Date(_d0.getTime() - ((_d0.getUTCDay() - 4 + 7) % 7) * DAY);\nconst weekStart = new Date(weekEnd.getTime() - 7 * DAY);\nconst since = weekStart.toISOString();\nconst until = weekEnd.toISOString();\nconst sel = 'activity_id,post_url,text,posted_at,companyName,totalReactions,comments,reshares,is_reshare,title';\nconst url = SB + '/linkedin_posts?select=' + sel +\n  '&companyName=neq.NONE&companyName=not.is.null' +\n  '&posted_at=gte.' + encodeURIComponent(since) +\n  '&posted_at=lt.' + encodeURIComponent(until) +\n  '&order=posted_at.desc&limit=200';\nconst raw = await this.helpers.httpRequest({ method: 'GET', url, headers: H, json: true });\nconst rows = Array.isArray(raw) ? raw : [];\nconst seen = new Set();\nconst posts = [];\nfor (const r of rows) {\n  const id = String(r.activity_id || '');\n  if (id && seen.has(id)) continue;\n  if (id) seen.add(id);\n  posts.push({\n    idx: posts.length,\n    company: r.companyName,\n    posted_at: r.posted_at,\n    reactions: Number(r.totalReactions) || 0,\n    comments: Number(r.comments) || 0,\n    reshares: Number(r.reshares) || 0,\n    is_reshare: !!r.is_reshare,\n    url: r.post_url || '',\n    source_id: id || null,\n    text: String(r.text || '').replace(/\\s+/g, ' ').slice(0, 600),\n  });\n}\nif (!posts.length) return [];\nconst period_start = weekStart.toISOString().slice(0, 10);\nconst promptPosts = posts.map(p => ({\n  idx: p.idx, company: p.company, posted_at: p.posted_at,\n  reactions: p.reactions, comments: p.comments, reshares: p.reshares,\n  is_reshare: p.is_reshare, text: p.text,\n}));\nconst openaiBody = {\n  model: 'gpt-4.1',\n  temperature: 0.3,\n  response_format: { type: 'json_object' },\n  messages: [\n    { role: 'system', content: \"You are a competitive-intelligence marketing analyst for Twine Security, an identity-security startup (non-human identity / IAM / agentic identity). Each week you review competitors' LinkedIn posts and produce the \\\"Posts of Interest\\\" digest the marketing team walks in its review meeting.\\n\\nYou are given a JSON array of competitor posts from the past week (each has idx, company, posted_at, engagement counts, is_reshare, and truncated text). Reproduce the team's manual curation exactly:\\n\\n1. SELECT only the strategically notable posts. A post makes the list only if it shows a deliberate, resourced, or novel go-to-market move worth noticing, benchmarking, or copying: a released asset (guide/report/video/infographic), a product/funding/partnership announcement, third-party or earned coverage, an award, real spend (booths/billboards/events), a positioning or messaging shift, an executive amplification chain, an engagement outlier for the company's size, or a tactical detail worth stealing. When a post is borderline, keep it only if you can name a concrete reason; otherwise drop it.\\n2. COLLAPSE repetitive posting into a single line. If a company made several near-identical posts (e.g. seven Identiverse booth posts), emit ONE entry with collapsed_count set to the number, idx set to the list of their indices, and a summary that says so.\\n3. REJECT the unremarkable silently: routine reposts, generic event RSVPs with no angle, off-category noise, and non-milestones nobody would care about. Do not echo rejected posts.\\n4. For each selected line write: \\n   - summary: terse, present-tense, house style '<Company> <verb> \\\"<exact title in quotes>\\\"' (e.g. 'Lumos releases Identity Agent Force and advertises all their agents'). Describe the artifact/action, not a paraphrase of the body.\\n   - post_type: exactly ONE of: Thought Leadership, Event, Webinar, Campaign, Video, Award, Earned Media, Exec Commentary, Networking Event, Product, Partnership, Research, Positioning Shift, Funding, Distribution Tactic, Hiring, Milestone, Customer Story, Seasonal, Community, Interactive, Post.\\n   - relevance_reason: one sentence naming why it is on the list.\\n   - strategic_angle: one-two sentences of what this means for Twine and a concrete suggested response, in the voice of a marketer briefing the team. This is the most important field: be specific and actionable, never generic.\\n   - primary_idx: the idx of the single post whose url/engagement best represents the line (for collapsed lines, pick the strongest one).\\n\\nBe selective: a good week is ~15-25 lines, not everything. Return ONLY a JSON object of the form {\\\"selected\\\":[{\\\"idx\\\":<int or [ints]>,\\\"primary_idx\\\":<int>,\\\"company\\\":<string>,\\\"post_type\\\":<string>,\\\"summary\\\":<string>,\\\"relevance_reason\\\":<string>,\\\"strategic_angle\\\":<string>,\\\"collapsed_count\\\":<int>}]} with no prose.\" },\n    { role: 'user', content: 'Competitor posts from the past week (JSON):\\n' + JSON.stringify(promptPosts) },\n  ],\n};\nreturn [{ json: { period_start, count: posts.length, posts, openaiBody } }];\n"
+   },
+   "id": "776f0ca4-8375-4f7a-a1e9-8989a89f570f",
+   "name": "Fetch Attributed Posts",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.openaiBody) }}",
+    "options": {
+     "timeout": 120000
+    }
+   },
+   "id": "f52b0ea3-8749-4acf-bbe4-6d495b2c2e2b",
+   "name": "Curate (LLM)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.3,
+   "position": [
+    896,
+    0
+   ],
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "\nconst SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst KEY = '<REDACTED_SUPABASE_JWT>';\nconst H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' };\nconst llm = $input.first().json;\nlet content = '';\nif (llm && llm.choices && llm.choices[0] && llm.choices[0].message) content = llm.choices[0].message.content || '';\nelse if (llm && llm.message && llm.message.content) content = llm.message.content;\nelse if (typeof llm === 'string') content = llm;\nlet parsed = { selected: [] };\ntry { parsed = JSON.parse(content); } catch (e) { parsed = { selected: [] }; }\nconst selected = Array.isArray(parsed.selected) ? parsed.selected : [];\nconst src = $('Fetch Attributed Posts').first().json;\nconst posts = (src && src.posts) || [];\nconst period_start = src && src.period_start;\nconst byIdx = new Map(posts.map(p => [p.idx, p]));\nlet tasteByIdx = {};\ntry { tasteByIdx = $('RAG Taste + Build Prompt').first().json.tasteByIdx || {}; } catch (e) { tasteByIdx = {}; }\n// Canonical taxonomy \u2014 the LLM occasionally drifts (e.g. 'Guide'); map strays\n// to the closest canonical type so the frontend badge colors always resolve.\nconst TYPES = ['Thought Leadership','Event','Webinar','Campaign','Video','Award','Earned Media','Exec Commentary','Networking Event','Product','Partnership','Research','Positioning Shift','Funding','Distribution Tactic','Hiring','Milestone','Customer Story','Seasonal','Community','Interactive','Post'];\nconst ALIAS = { 'guide':'Thought Leadership','report':'Thought Leadership','blog':'Thought Leadership','ebook':'Thought Leadership','whitepaper':'Thought Leadership','conference':'Event','integration':'Partnership','ad':'Campaign','advertisement':'Campaign','podcast':'Video','rebrand':'Positioning Shift' };\nfunction normType(t) {\n  const s = String(t || '').trim();\n  if (TYPES.includes(s)) return s;\n  const a = ALIAS[s.toLowerCase()];\n  if (a) return a;\n  const hit = TYPES.find(x => x.toLowerCase() === s.toLowerCase());\n  return hit || 'Post';\n}\nconst outRows = [];\nfor (const s of selected) {\n  let primaryIdx = s.primary_idx;\n  if (primaryIdx == null) primaryIdx = Array.isArray(s.idx) ? s.idx[0] : s.idx;\n  const p = byIdx.get(Number(primaryIdx));\n  if (!p) continue;\n  const taste_score = (tasteByIdx && tasteByIdx[primaryIdx] !== undefined) ? tasteByIdx[primaryIdx] : null;\n  outRows.push({\n    platform: 'LinkedIn',\n    author: s.company || p.company,\n    date: p.posted_at,\n    url: p.url,\n    source_id: p.source_id,\n    summary: String(s.summary || ''),\n    relevance_reason: String(s.relevance_reason || ''),\n    strategic_angle: String(s.strategic_angle || ''),\n    post_type: normType(s.post_type),\n    collapsed_count: Math.max(1, Number(s.collapsed_count) || 1),\n    reactions: p.reactions, comments: p.comments, reshares: p.reshares,\n    period_start,\n    taste_score,\n  });\n}\nif (!outRows.length) return [{ json: { written: 0, candidates: posts.length, selected: selected.length } }];\nlet ok = false, errText = '';\ntry {\n  await this.helpers.httpRequest({ method: 'POST', url: SB + '/posts_of_interest?on_conflict=platform,source_id', headers: H, body: outRows, json: true });\n  ok = true;\n} catch (e) { errText = String((e && e.message) || e).slice(0, 400); }\nreturn [{ json: { written: ok ? outRows.length : 0, ok, candidates: posts.length, selected: selected.length, error: errText, period_start } }];\n"
+   },
+   "id": "0aebefdb-372a-4991-b6f1-5f4ba761f256",
+   "name": "Build + Upsert Posts of Interest",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1120,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/embeddings",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'text-embedding-3-small', input: $json.posts.map(p => p.text) }) }}",
+    "options": {
+     "timeout": 120000
+    }
+   },
+   "id": "b1e7c2a1-0001-4a11-9c01-poiembed00001",
+   "name": "Embed Candidates",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.3,
+   "position": [
+    448,
+    0
+   ],
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const base = $('Fetch Attributed Posts').first().json;\nconst posts = Array.isArray(base.posts) ? base.posts : [];\n\nlet embData = null;\ntry { embData = $('Embed Candidates').first().json.data; } catch (e) {}\nif (!embData) { try { embData = $('Embed Candidates').first().json.body?.data; } catch (e) {} }\n\nif (!embData || !Array.isArray(embData) || embData.length !== posts.length) {\n  return [{ json: { ...base, tasteByIdx: {} } }];\n}\n\nconst BASE = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst KEY = '<REDACTED_SUPABASE_JWT>';\nconst headers = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };\n\nconst tasteByIdx = {};\nconst upSeen = [];\nconst downSeen = [];\n\nfor (let i = 0; i < posts.length; i++) {\n  let emb = null;\n  try { emb = embData[i].embedding; } catch (e) { emb = null; }\n  if (!emb || !Array.isArray(emb)) { continue; }\n  const embStr = '[' + emb.join(',') + ']';\n\n  let neighbours = [];\n  try {\n    const resp = await this.helpers.httpRequest({\n      method: 'POST',\n      url: BASE + '/rpc/match_poi_vectors',\n      headers,\n      body: { query_embedding: embStr, match_count: 8 },\n      json: true,\n    });\n    if (Array.isArray(resp)) neighbours = resp;\n    else if (resp && Array.isArray(resp.body)) neighbours = resp.body;\n    else neighbours = [];\n  } catch (e) { neighbours = []; }\n\n  let num = 0, den = 0;\n  for (const n of neighbours) {\n    const sim = Number(n.similarity);\n    if (!(sim >= 0.15)) continue;\n    const sign = n.verdict === 'up' ? 1 : (n.verdict === 'down' ? -1 : 0);\n    if (sign === 0) continue;\n    num += sim * sign;\n    den += sim;\n    if (n.verdict === 'up') upSeen.push({ text: n.post_text, sim });\n    else if (n.verdict === 'down') downSeen.push({ text: n.post_text, sim });\n  }\n  if (den > 0) {\n    tasteByIdx[posts[i].idx] = Math.round((num / den) * 100) / 100;\n  }\n}\n\nfunction topDistinct(arr) {\n  arr.sort((a, b) => b.sim - a.sim);\n  const seen = new Set();\n  const out = [];\n  for (const x of arr) {\n    if (!x.text) continue;\n    if (seen.has(x.text)) continue;\n    seen.add(x.text);\n    out.push(x.text);\n    if (out.length >= 4) break;\n  }\n  return out;\n}\nconst upEx = topDistinct(upSeen);\nconst downEx = topDistinct(downSeen);\n\nfunction clip(t) { return (t || '').slice(0, 160); }\n\nconst origSys = base.openaiBody.messages[0].content;\nlet taste = '\\n\\n---\\nTEAM TASTE \u2014 learned from the team\\'s past \ud83d\udc4d/\ud83d\udc4e on these weekly digests. Treat as guidance, not a hard rule.\\n';\nif (upEx.length) {\n  taste += 'Posts the team found INTERESTING (\ud83d\udc4d) looked like:\\n';\n  taste += upEx.map(t => '- \"' + clip(t) + '\"').join('\\n') + '\\n';\n}\nif (downEx.length) {\n  taste += 'Posts they found NOT interesting (\ud83d\udc4e) looked like:\\n';\n  taste += downEx.map(t => '- \"' + clip(t) + '\"').join('\\n') + '\\n';\n}\ntaste += 'Each candidate below also carries a \"taste\" hint in [-1..+1]: higher = more similar to past \ud83d\udc4d picks, negative = more like \ud83d\udc4e. Prefer high-taste, genuinely novel posts; be skeptical of low or negative-taste posts unless clearly notable on their own merits.';\nconst augSystem = origSys + taste;\n\nconst promptPosts = posts.map(p => {\n  const o = {\n    idx: p.idx,\n    company: p.company,\n    posted_at: p.posted_at,\n    reactions: p.reactions,\n    comments: p.comments,\n    reshares: p.reshares,\n    is_reshare: p.is_reshare,\n    text: p.text,\n  };\n  if (tasteByIdx[p.idx] !== undefined && tasteByIdx[p.idx] !== null) o.taste = tasteByIdx[p.idx];\n  return o;\n});\n\nconst openaiBody = {\n  ...base.openaiBody,\n  messages: [\n    { role: 'system', content: augSystem },\n    { role: 'user', content: 'Competitor posts from the past week (JSON):\\n' + JSON.stringify(promptPosts) },\n  ],\n};\n\nreturn [{ json: { period_start: base.period_start, count: base.count, posts: base.posts, openaiBody, tasteByIdx } }];"
+   },
+   "id": "b1e7c2a1-0002-4a11-9c02-poirag0000002",
+   "name": "RAG Taste + Build Prompt",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    0
+   ]
+  }
+ ],
+ "connections": {
+  "Weekly (Thu 07:00)": {
+   "main": [
+    [
+     {
+      "node": "Fetch Attributed Posts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Curate (LLM)": {
+   "main": [
+    [
+     {
+      "node": "Build + Upsert Posts of Interest",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fetch Attributed Posts": {
+   "main": [
+    [
+     {
+      "node": "Embed Candidates",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Embed Candidates": {
+   "main": [
+    [
+     {
+      "node": "RAG Taste + Build Prompt",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "RAG Taste + Build Prompt": {
+   "main": [
+    [
+     {
+      "node": "Curate (LLM)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner"
+ },
+ "active": true
+}
