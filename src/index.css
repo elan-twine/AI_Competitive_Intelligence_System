@@ -103,6 +103,11 @@ body {
   --accent: #DBFE02;
   --accent-dark: #DBFE02;
   --on-accent: #0B0D00;
+  /* Pinned explicitly: dark previously inherited :root's --border, which was
+     `transparent` — when light mode gained a real cream border color, dark
+     started inheriting it and every card grew a pale outline. */
+  --border: transparent;
+  --border-hover: #DBFE02;
   --accent-dim: rgba(219, 254, 2, 0.1);
   --positive: #34D399;
   --negative: #F87171;
