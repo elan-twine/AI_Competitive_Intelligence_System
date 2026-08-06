@@ -49,10 +49,10 @@ Elan/Justin — see §9.
 |---|---|---|
 | **n8n** | all scrapers + scoring | ⚠️ MCP/CLI is authed as **Dustin** already. Instance transfer still pending. |
 | **Supabase** (`addwjngdezmmnxddulll`) | database | org transfer pending |
-| **Cloudflare** | Worker + hosting | account is **justin@twinesecurity.com** |
+| **Cloudflare** | Worker + hosting | stays on **justin@twinesecurity.com** (by design, not a pending transfer) |
 | **Apify** | all scraping (~$60/mo) | transfer pending |
-| **OpenAI** | attribution LLM | Twine's key (Elan's personal keys must be revoked — §9) |
-| **Anthropic** | dashboard assistant | Twine's key |
+| **OpenAI** | attribution LLM | ✅ Dustin has access. Twine's key `…1XQA` is the live one; Elan's personal `…P7QA` to be revoked (§9) |
+| **Anthropic** | dashboard assistant | ✅ Dustin has access |
 | **GitHub** | `elan-twine/AI_Competitive_Intelligence_System` | org ownership transfer pending |
 | **Google Cloud** | dashboard "Continue with Google" OAuth | ✅ **DONE** — project "Twine Scheduler", transferred to Dustin |
 
@@ -339,10 +339,11 @@ easiest way to break it. In particular:
    delete.** It's a 78-node map of essentially the whole system in one place, and
    the retired pre-split rollback path. Exported to `ops/n8n/retired/` as a backup,
    but keep the n8n copy archived: the export is a reference, not a restore.
-4. **Ownership is already in place:** Dustin is an **owner** on Supabase, n8n, and
-   Apify, and a **collaborator** on GitHub (that's intentional and sufficient).
-   Remaining: OpenAI / Anthropic account access, and Cloudflare (the account is
-   justin@twinesecurity.com).
+4. **Ownership is already in place.** Dustin is an **owner** on Supabase, n8n, and
+   Apify; a **collaborator** on GitHub (intentional and sufficient); and has
+   **OpenAI + Anthropic access** (sent 2026-08-06). Nothing further is owed —
+   Cloudflare intentionally stays on **justin@twinesecurity.com**, which is that
+   account's normal home, not an outstanding transfer.
 
 **Product decisions waiting:**
 5. **Define OKR target %s** for "Mentions This Week" and KR-21 — the cards show
