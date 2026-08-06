@@ -1,0 +1,475 @@
+{
+ "name": "SOV \u2014 LinkedIn",
+ "nodes": [
+  {
+   "id": "d141f586-8992-458d-be03-3fd2a964e27f",
+   "name": "Execute Workflow Trigger",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "inputSource": "passthrough"
+   }
+  },
+  {
+   "id": "be06219e-91e7-4aec-a4fd-87ec6ffbe6dd",
+   "name": "Load Competitors",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    224,
+    96
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "getAll",
+    "tableId": "competitors",
+    "returnAll": true,
+    "filterType": "manual",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "active",
+       "condition": "eq",
+       "keyValue": "true"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "id": "6f6211ee-c5d9-4e4b-bc40-4a2c8b62450a",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    192
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "1a253209-c77b-4ce8-9a61-115fc0dc6fc0",
+   "name": "Load SOV Config",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    448,
+    96
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "getAll",
+    "tableId": "sov_config",
+    "returnAll": true,
+    "filterType": "manual",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "id",
+       "condition": "eq",
+       "keyValue": "1"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "executeOnce": true
+  },
+  {
+   "id": "1fdb38f0-c94d-4041-b98b-13180b899390",
+   "name": "Build Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    672,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const competitors = $(\"Load Competitors\").all().map(i => i.json);\nconst cfgRow = $(\"Load SOV Config\").first();\nconst config = (cfgRow && cfgRow.json && cfgRow.json.config) ? cfgRow.json.config : {};\nconst active = competitors.filter(c => c.active !== false);\nconst companies = active.map(c => ({ name: c.name, aliases: Array.isArray(c.aliases) ? c.aliases : [], domain: c.domain || null, x_handle: c.x_handle || null, linkedin_urn: c.linkedin_urn || null, subreddits: Array.isArray(c.subreddits) ? c.subreddits : [], type: c.type || 'direct' }));\nconst linkedin_urns = companies.map(c => c.linkedin_urn).filter(Boolean);\nconst companyEnum = companies.map(c => c.name).join(\", \");\nconst allSubreddits = Array.from(new Set([].concat(...companies.map(c => c.subreddits)).concat([\"cybersecurity\",\"netsec\",\"asknetsec\",\"devsecops\",\"hacking\",\"information_security\",\"security\",\"identitymanagement\",\"sysadmin\",\"itmanagers\",\"blueteamsec\"]))).filter(Boolean);\nreturn [{ json: { config, companies, linkedin_urns, companyEnum, allSubreddits } }];"
+   },
+   "executeOnce": true
+  },
+  {
+   "id": "57284f83-53fa-46e4-b85c-5e9195cfd156",
+   "name": "Build LinkedIn Company Items",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const ctx = $('Build Context').first().json;\nconst config = ctx.config || {};\nconst companies = (ctx.companies || []).filter(c => c && c.name);\nconst companyEnum = ctx.companyEnum || '';\n// Per-company LinkedIn search keyword overrides (specific names cut generic-word junk -> cheaper Apify).\n// Default = the full company name. Opti gets TWO queries. (Console provisional: confirm.)\nconst KW = { 'Lumos': ['Lumos'], 'Opti': ['Opti IAM','Opti Identity'], 'OFFROAD': ['Offroad Security'], '7AI': ['7AI'], 'Console': ['Console security'] };\nconst out = [];\nfor (const c of companies) {\n  const kws = KW[c.name] || [String(c.name)];\n  for (const kw of kws) {\n    out.push({ json: { name: c.name, keyword: kw, aliases: c.aliases || [], linkedin_urn: c.linkedin_urn || '', type: c.type || 'direct', config: config, companies: companies, companyEnum: companyEnum } });\n  }\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "471d480d-eaa5-4b4e-b761-e7792ed1c422",
+   "name": "Dispatch LinkedIn Per-Company",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.3,
+   "position": [
+    1120,
+    96
+   ],
+   "parameters": {
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "UBDKpvYUIZfDKS9y"
+    },
+    "workflowInputs": {
+     "mappingMode": "defineBelow",
+     "value": {},
+     "matchingColumns": [],
+     "schema": [],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": true
+    },
+    "mode": "each",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   }
+  },
+  {
+   "id": "3163bda7-fba7-4c4a-bc3b-4de6e7435a2c",
+   "name": "LinkedIn Done",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1344,
+    96
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "return [{ json: { ok: true, dispatched: $input.all().length } }];"
+   }
+  },
+  {
+   "id": "fa20a9f8-b7a6-4e73-b035-d9d31090859b",
+   "name": "Filter Needs URN",
+   "type": "n8n-nodes-base.filter",
+   "typeVersion": 2.3,
+   "position": [
+    448,
+    320
+   ],
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.active }}",
+       "rightValue": "={{ true }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      },
+      {
+       "leftValue": "={{ $json.linkedin_url }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      },
+      {
+       "leftValue": "={{ $json.linkedin_urn }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "empty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "541f1308-3c14-4f52-a144-fa6b25556eeb",
+   "name": "Apify Resolve URN",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    672,
+    320
+   ],
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "ipHw77V2NMJPy8sbS"
+    },
+    "customBody": "={{ JSON.stringify({ identifier: $input.all().map(i => i.json.linkedin_url).filter(Boolean) }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "673ac930-b812-4a35-93d1-9ab29ae67e64",
+   "name": "Match URNs",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    320
+   ],
+   "parameters": {
+    "mode": "runOnceForAllItems",
+    "jsCode": "const needs = $(\"Filter Needs URN\").all().map(i => i.json);\nfunction norm(u){ return String(u||\"\").trim().toLowerCase().replace(/\\/+$/,\"\"); }\nfunction slugFromUrl(u){ const m = norm(u).match(/\\/company\\/([^\\/?#]+)/); return m ? m[1] : null; }\nfunction looksSlugDerived(name, slug){\n  const n = String(name||\"\").trim();\n  if (!n) return true; // missing\n  if (slug) {\n    const slugWords = slug.replace(/-/g, ' ').toLowerCase().trim();\n    if (n.toLowerCase() === slug.toLowerCase()) return true; // exact slug\n    if (n.toLowerCase() === slugWords) return true; // hyphen-stripped slug\n  }\n  // heuristic: a real display name usually has a space or capital letter; pure lowercase single token = slug-ish\n  if (!/\\s/.test(n) && n === n.toLowerCase() && /[-_]/.test(n)) return true;\n  return false;\n}\nfunction extractDomain(r){\n  const bi = r.basic_info || {};\n  const cand = r.website || r.domain || bi.website || bi.domain || (bi.websites && bi.websites[0]) || null;\n  if (!cand) return null;\n  try { const u = new URL(String(cand).match(/^https?:\\/\\//) ? cand : ('https://' + cand)); return u.hostname.replace(/^www\\./, '').toLowerCase(); } catch(e) { return String(cand).replace(/^https?:\\/\\//,'').replace(/^www\\./,'').split('/')[0].toLowerCase() || null; }\n}\nconst out = [];\nfor (const item of $input.all()) {\n  const r = item.json || {};\n  const bi = r.basic_info || {};\n  const urn = r.company_urn || bi.company_urn || null;\n  if (!urn) continue;\n  const ident = norm(r.input_identifier);\n  const slug = bi.universal_name ? norm(bi.universal_name) : null;\n  let comp = needs.find(c => norm(c.linkedin_url) === ident);\n  if (!comp && slug) comp = needs.find(c => slugFromUrl(c.linkedin_url) === slug);\n  if (!comp && ident) comp = needs.find(c => norm(c.linkedin_url).indexOf(ident) !== -1 || ident.indexOf(norm(c.linkedin_url)) !== -1);\n  if (!comp) continue;\n  const urlSlug = slug || slugFromUrl(comp.linkedin_url);\n  const actorName = (bi.name && String(bi.name).trim()) ? String(bi.name).trim() : null;\n  const actorDomain = extractDomain(r);\n  // Only override name when current is missing/slug-derived and we have a real actor name\n  const finalName = (actorName && looksSlugDerived(comp.name, urlSlug)) ? actorName : comp.name;\n  // Only set domain when current is missing/empty and actor gave one\n  const currentDomain = (comp.domain && String(comp.domain).trim()) ? String(comp.domain).trim().toLowerCase().replace(/^www\\./,'') : null;\n  const finalDomain = currentDomain || actorDomain || null;\n  out.push({ json: { name: finalName, match_url: comp.linkedin_url, linkedin_url: comp.linkedin_url, linkedin_urn: String(urn), domain: finalDomain } });\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "e09961ac-5a8b-4589-96d1-4379f36d18dc",
+   "name": "Update competitors linkedin_urn",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    1120,
+    320
+   ],
+   "parameters": {
+    "resource": "row",
+    "operation": "update",
+    "tableId": "competitors",
+    "filterType": "manual",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "linkedin_url",
+       "condition": "eq",
+       "keyValue": "={{ $json.match_url }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "linkedin_urn",
+       "fieldValue": "={{ $json.linkedin_urn }}"
+      },
+      {
+       "fieldId": "name",
+       "fieldValue": "={{ $json.name }}"
+      },
+      {
+       "fieldId": "domain",
+       "fieldValue": "={{ $json.domain }}"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "2bfd7153-7f40-49c5-b73b-ecb956c06cb5",
+   "name": "Weekly Thursday 5:00",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    0,
+    384
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "weeks",
+       "weeksInterval": 1,
+       "triggerAtDay": [
+        4
+       ],
+       "triggerAtHour": 5,
+       "triggerAtMinute": 0
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Execute Workflow Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load Competitors": {
+   "main": [
+    [
+     {
+      "node": "Load SOV Config",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Filter Needs URN",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load SOV Config": {
+   "main": [
+    [
+     {
+      "node": "Build Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Context": {
+   "main": [
+    [
+     {
+      "node": "Build LinkedIn Company Items",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build LinkedIn Company Items": {
+   "main": [
+    [
+     {
+      "node": "Dispatch LinkedIn Per-Company",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Dispatch LinkedIn Per-Company": {
+   "main": [
+    [
+     {
+      "node": "LinkedIn Done",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Filter Needs URN": {
+   "main": [
+    [
+     {
+      "node": "Apify Resolve URN",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify Resolve URN": {
+   "main": [
+    [
+     {
+      "node": "Match URNs",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Match URNs": {
+   "main": [
+    [
+     {
+      "node": "Update competitors linkedin_urn",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Weekly Thursday 5:00": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner",
+  "saveDataSuccessExecution": "none",
+  "saveExecutionProgress": false,
+  "saveManualExecutions": false,
+  "saveDataErrorExecution": "all"
+ },
+ "active": false
+}

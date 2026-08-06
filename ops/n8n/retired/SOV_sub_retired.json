@@ -1,0 +1,809 @@
+{
+ "name": "SOV \u2014 LinkedIn (sub)",
+ "nodes": [
+  {
+   "id": "dd6f6cfd-254c-447d-a929-357ee3930293",
+   "name": "Execute Workflow Trigger",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    176
+   ],
+   "parameters": {
+    "inputSource": "passthrough"
+   }
+  },
+  {
+   "id": "082bf513-285d-4722-91f0-317bf9be1a1b",
+   "name": "Build Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    224,
+    176
+   ],
+   "parameters": {
+    "jsCode": "return $input.all();"
+   }
+  },
+  {
+   "id": "f52429be-662d-42c6-827a-2c453efcd765",
+   "name": "Mentions Gate (direct only)",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    448,
+    80
+   ],
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": false,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.type }}",
+       "rightValue": "direct",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       }
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "244d2d73-5873-4579-b69f-6f290f9979f7",
+   "name": "Apify LinkedIn Paginated",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    672,
+    80
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.apify.com/v2/acts/5QnEH5N71IK2mFLrP/run-sync-get-dataset-items",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "Bearer <REDACTED_APIFY_TOKEN>"
+      }
+     ]
+    },
+    "sendBody": true,
+    "bodyParameters": {
+     "parameters": [
+      {
+       "name": "keyword",
+       "value": "={{ $json.keyword }}"
+      },
+      {
+       "name": "date_filter",
+       "value": "past-week"
+      },
+      {
+       "name": "limit",
+       "value": "={{ 50 }}"
+      },
+      {
+       "name": "page_number",
+       "value": "={{ 1 }}"
+      },
+      {
+       "name": "sort_type",
+       "value": "date_posted"
+      }
+     ]
+    },
+    "options": {
+     "pagination": {
+      "pagination": {
+       "parameters": {
+        "parameters": [
+         {
+          "type": "body",
+          "name": "page_number",
+          "value": "={{ $pageCount + 1 }}"
+         }
+        ]
+       },
+       "paginationCompleteWhen": "other",
+       "completeExpression": "={{ $response.body.length < 50 }}",
+       "limitPagesFetched": true,
+       "maxRequests": 5,
+       "requestInterval": 300
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "d527fd8f-7696-4401-aad4-5c194e8f9e7a",
+   "name": "Flatten LinkedIn",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    80
+   ],
+   "parameters": {
+    "jsCode": "const out = [];\nfor (const item of $input.all()) { const t = item.json || {}; if (!t.activity_id) continue; const stats = t.stats || {}; const article = (t.content && t.content.article) ? t.content.article : {}; out.push({ json: { activity_id: t.activity_id, post_url: t.post_url || '', text: t.text || '', full_urn: t.full_urn || '', author: t.author || {}, totalReactions: stats.total_reactions || 0, comments: stats.comments || 0, reshares: stats.shares || 0, posted_at: (t.posted_at && t.posted_at.date) ? t.posted_at.date : null, hashtags: t.hashtags || [], content: t.content || {}, is_reshare: !!t.is_reshare, metadata: t.metadata || {}, search_input: t.search_input || {}, title: article.title || '', imageURL: article.thumbnail_url || '', source: 'keyword' } }); }\nreturn out;"
+   }
+  },
+  {
+   "id": "31706c24-358f-4787-86ed-b291dc93a53c",
+   "name": "Merge LinkedIn Streams",
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    1120,
+    176
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "867bac10-861f-4437-b0b1-400c8e93c990",
+   "name": "Build LinkedIn URN Queries",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    448,
+    272
+   ],
+   "parameters": {
+    "jsCode": "const ctx = $('Build Context').first().json;\nconst urn = ctx.linkedin_urn ? String(ctx.linkedin_urn) : '';\nconst company_urns = urn;\nconst urnMap = {};\nif (urn) urnMap[urn] = ctx.name;\nreturn [{ json: { company_urns, urnMap } }];"
+   },
+   "executeOnce": true
+  },
+  {
+   "id": "2cbb0ce8-a99d-4a77-8fe6-71ce9e5abeb7",
+   "name": "Apify LinkedIn Company Posts",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    672,
+    272
+   ],
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "value": "5QnEH5N71IK2mFLrP",
+     "mode": "id"
+    },
+    "customBody": "={{ JSON.stringify({ date_filter: \"past-week\", company_urns: $json.company_urns, limit: 50, sort_type: \"date_posted\" }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "executeOnce": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "5ca618ac-81ab-4098-8c53-95fb07d52da6",
+   "name": "Flatten LinkedIn Company",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    896,
+    272
+   ],
+   "parameters": {
+    "jsCode": "const urnMap = $('Build LinkedIn URN Queries').first().json.urnMap || {};\nconst out = [];\nfor (const item of $input.all()) {\n  const t = item.json || {};\n  if (!t.activity_id) continue;\n  const stats = t.stats || {};\n  const article = (t.content && t.content.article) ? t.content.article : {};\n  const author = t.author || {};\n  const cn = urnMap[String(author.profile_id || '')] || null;\n  out.push({ json: { activity_id: t.activity_id, post_url: t.post_url || '', text: t.text || '', full_urn: t.full_urn || '', author: author, totalReactions: stats.total_reactions || 0, comments: stats.comments || 0, reshares: stats.shares || 0, posted_at: (t.posted_at && t.posted_at.date) ? t.posted_at.date : null, hashtags: t.hashtags || [], content: t.content || {}, is_reshare: !!t.is_reshare, metadata: t.metadata || {}, search_input: t.search_input || {}, title: article.title || '', imageURL: article.thumbnail_url || '', source: 'company_page', companyHint: cn } });\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "a07f4d88-724a-4fe0-89f2-78430225ce28",
+   "name": "Dedup LinkedIn by activity_id",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1344,
+    176
+   ],
+   "parameters": {
+    "jsCode": "const items = $input.all().map(i => i.json);\nconst map = new Map();\nfor (const r of items) {\n  const id = r.activity_id;\n  if (!id) continue;\n  const ex = map.get(id);\n  if (!ex) { map.set(id, r); continue; }\n  if (ex.source !== 'company_page' && r.source === 'company_page') map.set(id, r);\n}\nreturn Array.from(map.values()).map(j => ({ json: j }));"
+   }
+  },
+  {
+   "id": "eb43649d-65fe-4064-aacb-2eeccfd1a22a",
+   "name": "LinkedIn Has activity_id",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    1568,
+    0
+   ],
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.activity_id }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "exists",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "e74225a3-964b-40a3-b803-c794136ae5a9",
+   "name": "Upsert linkedin_posts",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1792,
+    0
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/linkedin_posts?on_conflict=activity_id",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "<REDACTED_SUPABASE_JWT>"
+      },
+      {
+       "name": "Authorization",
+       "value": "Bearer <REDACTED_SUPABASE_JWT>"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=representation"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ activity_id: $json.activity_id, post_url: $json.post_url, text: $json.text, full_urn: $json.full_urn, author: $json.author, totalReactions: $json.totalReactions, comments: $json.comments, reshares: $json.reshares, posted_at: $json.posted_at, hashtags: $json.hashtags, content: $json.content, is_reshare: $json.is_reshare, metadata: $json.metadata, search_input: $json.search_input, title: $json.title, imageURL: $json.imageURL }) }}",
+    "options": {}
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "e5bffaf2-45e1-48ef-913a-47e880d22517",
+   "name": "Is Company Page",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    1568,
+    272
+   ],
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.source }}",
+       "rightValue": "company_page",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       }
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "b438906c-7d6a-4f54-86b1-9d1427b8024a",
+   "name": "Force Company-Page Score",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2464,
+    176
+   ],
+   "parameters": {
+    "jsCode": "const ctx = $('Build Context').first().json;\nconst cn = ctx.name;\nconst out = [];\nfor (const item of $input.all()) {\n  const r = item.json || {};\n  out.push({ json: { activity_id: r.activity_id, companyName: cn, sentiment: null, reasoning: 'company self-post (auto-accepted)' } });\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "b93eb6ba-c2a0-46de-a449-b69c8b2bd1d4",
+   "name": "Merge Scored",
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    2688,
+    272
+   ],
+   "parameters": {
+    "mode": "append"
+   }
+  },
+  {
+   "id": "5aee2d70-47a0-4cd1-b60a-b99a2daab092",
+   "name": "Parse LinkedIn LLM",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2016,
+    368
+   ],
+   "parameters": {
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  const txt = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n  let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) results.push({ json: e });\n}\nreturn results;"
+   }
+  },
+  {
+   "id": "3af4ae09-914c-4501-879b-1c9d96f89cc9",
+   "name": "Fix Company-Page Attribution",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2240,
+    368
+   ],
+   "parameters": {
+    "jsCode": "const dd = $('Dedup LinkedIn by activity_id').all().map(i => i.json);\nconst byId = {};\nfor (const p of dd) byId[p.activity_id] = p;\nconst out = [];\nfor (const item of $input.all()) {\n  const r = Object.assign({}, item.json);\n  const src = byId[r.activity_id];\n  if (src && src.source === 'company_page') {\n    if (!r.companyName || r.companyName === 'NONE') r.companyName = src.companyHint || r.companyName;\n  }\n  out.push({ json: r });\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "d405cbc6-ce67-453e-a0dc-ee08a39be9e0",
+   "name": "LinkedIn Relevance Gate",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    2464,
+    368
+   ],
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": false,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "NONE",
+       "operator": {
+        "type": "string",
+        "operation": "notEquals"
+       }
+      },
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "6fac3c5c-0b8d-4cf1-bf1f-cbd2ba4fe09b",
+   "name": "Compute LinkedIn post_weight",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2912,
+    272
+   ],
+   "parameters": {
+    "jsCode": "const helpers = this.helpers;\nconst SRK = '<REDACTED_SUPABASE_JWT>';\nconst SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\n// classifier cache (author_affiliation): employees only -> \"competitor|profile_id\"\nconst EMP = {};\ntry {\n  const aff = await helpers.httpRequest({ method: 'GET', url: SB + '/author_affiliation?select=profile_id,competitor&verdict=eq.employee', headers: { apikey: SRK, Authorization: 'Bearer ' + SRK }, json: true });\n  for (const a of (aff || [])) { if (a && a.profile_id && a.competitor) EMP[String(a.competitor).trim().toLowerCase() + '|' + String(a.profile_id)] = true; }\n} catch (e) { /* table absent/unreachable -> fall back to URN+headline heuristic */ }\n\nconst ctx = $('Build Context').first().json; const cfg = ctx.config || {};\nconst ew = (cfg.engagementWeights && cfg.engagementWeights.LinkedIn) || { reaction:1, comment:3, reshare:10, image:1.5 };\nconst clamp = cfg.sentimentClamp || { min:0.5, max:1.3 };\nconst halfLife = (cfg.halfLifeDays && cfg.halfLifeDays.LinkedIn) || 14;\n// TERNARY author model (2026-07-02): company (own page/URN) B1 M1 \u00b7 employee (classifier/headline) B2 M1.2 \u00b7 external B5 M2\nconst AB = cfg.authorBaseline || { company:1.0, employee:2.0, external:5.0 };   // additive presence floor\nconst AEM = cfg.authorEngMult || { company:1.0, employee:1.2, external:2.0 };   // engagement multiplier (external = new eyes)\nconst companies = ctx.companies || [];\nconst urnSet = new Set(companies.map(c => String(c.linkedin_urn||'')).filter(Boolean));\nconst posts = $('Dedup LinkedIn by activity_id').all().map(i=>i.json);\nconst results = [];\nfor (const item of $input.all()) {\n  const r = item.json;\n  const post = posts.find(p => p.activity_id === r.activity_id) || {};\n  const reactions = Number(post.totalReactions||0);\n  const comments = Number(post.comments||0);\n  const reshares = Number(post.reshares||0);\n  const hasImage = post.imageURL && String(post.imageURL).length > 0;\n  let eng = ((ew.reaction!=null?ew.reaction:1)*reactions) + ((ew.comment!=null?ew.comment:3)*comments) + ((ew.reshare!=null?ew.reshare:10)*reshares);\n  if (hasImage) eng += (ew.image!=null?ew.image:1.5);\n  const reach = Math.pow(eng, 49/50); // near-linear reach\n  // sentMult: company-page self-posts (no self-sentiment) and unscored sentiment -> neutral 1.0; else 0.5..1.3\n  const sentMult = (post.source === 'company_page' || r.sentiment == null) ? 1.0 : (clamp.min + ((Math.max(-3,Math.min(3,Number(r.sentiment)))+3)/6)*(clamp.max-clamp.min));\n  const author = post.author || {};\n  const headline = String(author.headline||'').toLowerCase();\n  const authorUrn = String(author.profile_id||'');\n  const cn = String(r.companyName||'');\n  let authorType;\n  if (post.source === 'company_page') authorType = 'company';\n  else if (authorUrn && urnSet.has(authorUrn)) authorType = 'company';\n  else if (authorUrn && cn && cn !== 'NONE' && EMP[cn.toLowerCase() + '|' + authorUrn]) authorType = 'employee'; // classifier-confirmed employee\n  else if (cn && cn !== 'NONE' && headline.indexOf(cn.toLowerCase()) !== -1) authorType = 'employee'; // headline names the company\n  else authorType = 'external';\n  const B = (authorType === 'company') ? (AB.company!=null?AB.company:1.0) : (authorType === 'employee') ? (AB.employee!=null?AB.employee:2.0) : (AB.external!=null?AB.external:5.0);\n  const M = (authorType === 'company') ? (AEM.company!=null?AEM.company:1.0) : (authorType === 'employee') ? (AEM.employee!=null?AEM.employee:1.2) : (AEM.external!=null?AEM.external:2.0);\n  let ageDays = 0; if (post.posted_at) { const d = new Date(post.posted_at); if (!isNaN(d)) ageDays = Math.max(0,(Date.now()-d.getTime())/86400000); }\n  const timeDecay = ageDays <= 7 ? 1 : Math.pow(2, -ageDays/halfLife); // 7-day grace, matches Weekly Decay Refresh\n  const post_weight = (B + reach * M) * sentMult * timeDecay;\n  results.push({ json: { activity_id: r.activity_id, sentiment: r.sentiment, reasoning: r.reasoning, companyName: r.companyName, authorType: authorType, post_weight: parseFloat(post_weight.toFixed(6)) } });\n}\nreturn results;\n"
+   }
+  },
+  {
+   "id": "0a8e297a-7099-4da8-9fe2-332037e0b406",
+   "name": "Write LinkedIn post_weight",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    3136,
+    272
+   ],
+   "parameters": {
+    "operation": "update",
+    "tableId": "linkedin_posts",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "activity_id",
+       "condition": "eq",
+       "keyValue": "={{ $json.activity_id }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "sentiment",
+       "fieldValue": "={{ $json.sentiment }}"
+      },
+      {
+       "fieldId": "reasoning",
+       "fieldValue": "={{ $json.reasoning }}"
+      },
+      {
+       "fieldId": "companyName",
+       "fieldValue": "={{ $json.companyName }}"
+      },
+      {
+       "fieldId": "post_weight",
+       "fieldValue": "={{ $json.post_weight }}"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "6733cf25-892e-4b4c-90ae-edd0e3303ed3",
+   "name": "Cache New Authors",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3360,
+    272
+   ],
+   "parameters": {
+    "jsCode": "// Weekly classify-new-authors: grow the author_affiliation cache with authors seen\n// this run that aren't cached yet. Heuristic only (URN/headline); unknowns are\n// cached as 'ambiguous' (treated as external for scoring) so a periodic profile-\n// scrape pass resolves them. Scrape/LLM are intentionally NOT run in-flow (cost).\n// Terminal branch off 'Write LinkedIn post_weight' \u2014 never blocks scoring.\nconst helpers = this.helpers;\nconst SRK = '<REDACTED_SUPABASE_JWT>';\nconst SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H = { apikey: SRK, Authorization: 'Bearer ' + SRK };\nconst now = new Date().toISOString();\n\nconst ctx = $('Build Context').first().json;\nconst companies = (ctx.companies || []);\nconst urnSet = new Set(companies.map(c => String(c.linkedin_urn||'')).filter(Boolean));\n\n// existing cache keys (so we only classify NEW authors)\nlet existing = new Set();\ntry {\n  const aff = await helpers.httpRequest({ method:'GET', url: SB + '/author_affiliation?select=key', headers: H, json: true });\n  for (const a of (aff || [])) if (a && a.key) existing.add(String(a.key));\n} catch (e) { return [{ json: { cached: 0, note: 'cache read failed: ' + (e.message || e) } }]; }\n\n// attributed posts this run (companyName set) joined to their author object\nconst attributed = $('Compute LinkedIn post_weight').all().map(i=>i.json);\nconst byId = {}; for (const p of $('Dedup LinkedIn by activity_id').all().map(i=>i.json)) byId[p.activity_id] = p;\n\nconst rows = {}; // pid -> verdict row (dedupe within run)\nfor (const r of attributed) {\n  const cn = String(r.companyName||'');\n  if (!cn || cn === 'NONE') continue;\n  const post = byId[r.activity_id] || {};\n  const a = post.author || {};\n  const pid = String(a.profile_id||'');\n  if (!pid || urnSet.has(pid)) continue;          // no id, or the company page itself\n  if (existing.has(pid) || rows[pid]) continue;    // already cached / already handled this run\n  const head = String(a.headline||'').toLowerCase();\n  const verdict = (head && head.indexOf(cn.toLowerCase()) !== -1) ? 'employee' : 'ambiguous';\n  rows[pid] = { key: pid, name: a.name || null, profile_id: pid, competitor: cn, verdict: verdict, employer: (verdict === 'employee' ? cn : null), method: 'heuristic', checked_at: now };\n}\nconst list = Object.values(rows);\nif (!list.length) return [{ json: { cached: 0 } }];\nconst hh = Object.assign({}, H, { 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' });\ntry { await helpers.httpRequest({ method:'POST', url: SB + '/author_affiliation?on_conflict=key', headers: hh, body: list, json: true }); }\ncatch (e) { return [{ json: { cached: 0, error: (e.message || String(e)) } }]; }\nreturn [{ json: { cached: list.length, employee: list.filter(r=>r.verdict==='employee').length, ambiguous: list.filter(r=>r.verdict==='ambiguous').length } }];\n"
+   },
+   "executeOnce": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "9377a971-6d7a-4d7b-8959-34c543e80b21",
+   "name": "Return Summary",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3584,
+    272
+   ],
+   "parameters": {
+    "jsCode": "const co = ($('Build Context').first().json && $('Build Context').first().json.name) || 'unknown';\nlet linkedinWritten = 0; try { linkedinWritten = $('Write LinkedIn post_weight').all().length; } catch(e){}\nreturn [{ json: { company: co, linkedinWritten: linkedinWritten, ok: true } }];"
+   }
+  },
+  {
+   "id": "08b5ae71-bf6c-4ddd-951b-a14be699375c",
+   "name": "LLM Attribution HTTP",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1792,
+    368
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.openai.com/v1/chat/completions",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "openAiApi",
+    "sendBody": true,
+    "contentType": "json",
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'gpt-4.1', temperature: 0, messages: [{ role: 'system', content: \"You are an expert linguistic analyst. Analyze sentiment using an integer scale -3..3. Identify the main company discussed or the authoring company EXCLUSIVELY among: \" + ($(\"Build Context\").first().json.companyEnum) + \". Aliases and domains for disambiguation: \" + (JSON.stringify($(\"Build Context\").first().json.companies)) + \".\\n\\nCOMPANY DEFINITIONS \u2014 A post is \\\"about\\\" a company only if it concerns the specific organization below (its product, funding, people, customers, category). REJECT posts that merely share the name token but match a NOT entry or the generic/unrelated senses.\\n\\nOrchid Security (orchid.security) \u2014 enterprise identity security platform using LLMs/AI to discover unmanaged self-hosted/SaaS apps, map their auth/authz (\\\"identity dark matter\\\"), and bring ungoverned access under IAM/IGA/PAM; founded 2023 (SF/Tel Aviv), $36M seed (Team8, Intel Capital). NOT: Orchid Labs/Orchid Protocol/Orchid VPN (orchid.com) decentralized crypto VPN; the OXT token; the orchid flower/plant; \\\"Orchid\\\" as a generic name/brand.\\n\\nLinx Security (linx.security) \u2014 AI-native identity security & governance (IGA) platform building an identity graph across human, non-human (service accounts, API keys, bots), and AI-agent identities; offers Modern IGA, ISPM, Just-In-Time access, lifecycle automation, and \\\"Linx Autopilot.\\\" NOT: LINX Security (linx-security.com) Chicago physical-security firm; LINX Security Solutions/Team LINX (teamlinx.com) physical integrator; Lynx Security (lynxsecurity.com); Lynx Systems (lynxsystems.net) home/commercial alarms; Honeywell LYNX Touch panels; LINX Predator Elite intrusion-detection; Linx low-code/Twenty57 dev tool; \\\"linx\\\" as a misspelling of \\\"links.\\\"\\n\\nTwine Security (twinesecurity.com) \u2014 builds autonomous \\\"AI Digital Employees\\\" for cybersecurity; first product \\\"Alex\\\" is an AI agent for IAM that detects, analyzes, plans, and autonomously remediates identity/access issues end-to-end. NOT: Meta's internal \\\"Twine\\\" (aka Tupperware) container-orchestration/cluster-management platform powering Facebook/Instagram/WhatsApp/Messenger + AI infra at hyperscale (confirmed real collision \u2014 Meta engineers' LinkedIn posts/headlines literally say \\\"Twine\\\"); Twine (twinery.org) interactive-fiction authoring tool; Twine (twine.com) freelancer/AI-collaboration marketplace (has its own /security page); ACCESS Twine for Smart Home; \\\"digital twin\\\" security research; the Python \\\"twine\\\" PyPI tool / generic twine/string references.\\n\\nSurf AI (surf.ai) \u2014 agentic security operations platform ingesting identity, cloud, security, data, HR, and IT signals into a living context graph, then deploying AI agents to discover, prioritize, and remediate exposures with human oversight. NOT: Surf Air Mobility (SRFM, aviation/private-jet company \u2014 \\\"Enterprise BrokerOS\\\", Wheels Up partnership; confirmed real collision, floods the \\\"Surf AI\\\" keyword via aviation press); crypto token project \\\"@SurfAI\\\"/asksurf.ai (Surf/asksurf.ai, $15M DCG Dec 2025 \u2014 heavy social-media volume, non-English posts, Web3/trading language; confirmed real collision, was inflating the board before cleanup); Surfshark consumer VPN; SurfingTech/Surfing.ai dataset provider; Surf Security secure-browser vendor; \\\"SURF\\\" (surf.nl) Dutch education-sector IT cooperative; generic \\\"surf the web\\\"/ocean-surfing/surf-lifestyle references.\\n\\nOpti (opti.ai) \u2014 AI-native IAM and identity-governance (IGA) platform that ingests/normalizes all identities (human, non-human, AI agents), uses domain-trained LLMs to detect excessive privilege/misconfig/risky access, and automates least-privilege remediation, access reviews, and lifecycle workflows. NOT: Optiv (optiv.com) cybersecurity integrator (nearest false positive \u2014 also identity security); OPTI Software (dental); OPTI Systems (opti.ro, Romanian integrator); OptiSigns (digital signage); OptiRTC (stormwater); AiOpti (marketing attribution); Optura (optura.ai healthcare); Opti Market AI; Optimizely (nicknamed \\\"Opti\\\"); FactoryTalk Optix (Rockwell); \\\"opti\\\" prefix (optical/optimization).\\n\\nLumos (lumos.com) \u2014 AI-driven IGA platform deploying autonomous AI agents (\\\"Identity Agent Force,\\\" AI core \\\"Albus\\\") to govern access across human, non-human, and AI-agent identities; automates access reviews, JML lifecycle, role mining, JIT access, and NHI discovery (customers: Mars, Roku, Netskope, Mimecast, Marqeta). NOT: Proton's \\\"Lumo\\\" AI chatbot/assistant (the single biggest collision \u2014 Proton Lumo 2.0 launch coverage floods the \\\"Lumos\\\" keyword); Lumos Fiber/Lumos Networks ISP (confirmed real employee posting under this name); Lumos Business Finance (UK finance broker); Lumo Digital Outdoor (NZ out-of-home advertising); Lumos Laboratories Nigeria Limited (renewable energy/green hydrogen); Lumos Diagnostics (medical); Lumos Helmet (smart bike helmets, Bell Helmets ecosystem); Lumos Foundation (J.K. Rowling charity); Lumosity/Lumos Labs (brain games); the Harry Potter \\\"Lumos\\\" spell; Lumo/Luminous Robotics; Lumo the UK train operator; Lumo Wallet (crypto); Lumo Kodit/Lumo Homes (housing); Lumo Conservancy (Kenya); Gernika-Lumo (Basque town); HOMO-LUMO (chemistry).\\n\\nCerby (cerby.com) \u2014 identity automation/security platform extending IAM to \\\"disconnected\\\"/nonstandard apps (no SAML, OIDC, SCIM, or APIs) by adding SSO, credential automation, lifecycle provisioning, MFA, and PAM on top of an existing IdP (Okta, Entra, Ping, SailPoint); customers include Ford, L'Or\u00e9al, Colgate-Palmolive, Fox, Mattel. NOT: Cerberus / \\\"Cerby\\\" the three-headed mythological dog; Cerby (Arcadia Quest board-game pet); \\\"Cerby\\\" as a surname/given name; Derby/Corby/Kirby fuzzy-match collisions.\\n\\nRedblock (redblock.ai) \u2014 agentic AI platform for identity security that automates last-mile IAM/IGA/PAM tasks (JML lifecycle, entitlement changes, access revocation, orphan cleanup, password rotation) inside \\\"disconnected\\\" apps lacking APIs/SCIM/connectors, using computer-vision AI agents that operate app UIs; extends SailPoint, Okta, Saviynt, CyberArk, Entra. NOT: Redblock Realty (redblock.com) real estate; RedBlock YouTube-ad-blocker extension; Volvo Redblock engine; RedBlocks Technologies (staffing); Redblock Industries (shower shelves); RED Blocks (crypto real estate); Roblox \\\"red block\\\" references.\\n\\nTorch Security (torch.security) \u2014 universal IGA platform using agentic AI to govern identities across ALL apps, especially the ~90% of \\\"disconnected\\\" apps (mainframes, homegrown/legacy, niche SaaS) via its AI \\\"Identity Bridge\\\" connector framework; governs human and non-human identities, surfaces shadow/orphaned/over-privileged access, automates lifecycle, runs access-review campaigns. NOT: Torchsec Technologies (torchsec.com) MSSP; Torch.AI (torch.ai) defense data-orchestration; Torch Technologies (torchtechnologies.com) defense contractor; Torch.io (its /security page); generic \\\"torch\\\" (flashlight/flame), Olympic torch, Torch browser, PyTorch.\\n\\nOFFROAD (offroad.ai) \u2014 agentic identity security platform deploying autonomous AI agents to discover, investigate, and remediate IAM risks across human, non-human/machine, and AI-agent identities; integrates 90+ cloud/SaaS/on-prem sources into an \\\"Identity Fabric\\\" map. NOT: off-road/4x4/overlanding vehicles (Jeep, Toyota, Ford, INEOS Grenadier, Polaris); off-road accessory brands (ARB, Wheeler's, Offroad Trading Co); off-road driving games (Offroad Outlaws, Off The Road, etc.); ohauth.ai (a separate OAuth tool released by Offroad).\\n\\nBlinkOps (blinkops.com) \u2014 agentic security automation platform (branded \\\"Blink\\\") for building/deploying no-code autonomous \\\"micro-agents\\\" plus 8,000+ prebuilt workflows to automate SecOps (alert triage, incident response, cloud security, compliance, IAM); a next-gen SOAR/\\\"agentic SOC\\\" ($50M Series B, 2025). NOT: Blink Smart Security/Blink for Home (Amazon home cameras \u2014 high risk, same short-name in physical security); Blink browser engine (Chromium); Blink Health (pharmacy); Blink Charging (BLNK, EV); generic \\\"blink\\\"/\\\"ops\\\"/SecOps terms.\\n\\n7AI (7ai.com) \u2014 agentic security platform deploying autonomous \\\"swarming\\\" AI agents to run SOC work end-to-end (alert ingest/triage, enrichment, investigation, threat hunting, automated response), eliminating 95-99% of false positives; founded 2024 by Cybereason co-founders Lior Div (CEO) and Yonatan Striem-Amit (CTO), Boston, $130M Series A (Index, Blackstone) + $36M seed. NOT: [24]7.ai / \\\"247.ai\\\" / \\\"7.ai\\\" contact-center conversational AI (most dangerous collision); the literal phrase \\\"7 AI\\\" in listicles (\\\"7 AI tools/trends/agents\\\"); Salesforce Agentforce; Figure AI; generic \\\"agentic AI\\\"/\\\"AI SOC\\\" competitors (Dropzone, Prophet, Simbian, Radiant).\\n\\nConsole (console.com) \u2014 AI-native ITSM platform: employees message its AI agent in Slack and it auto-resolves IT support/ops requests (password resets, app access, onboarding/offboarding, device orders, group membership) via Okta, Google Workspace, M365, Slack; founded 2024 SF by Andrei Serban and Neal Chandra, backed by Thrive Capital. NOT identity security (though IAM-adjacent via its Access Governance module). NOT: Console Connect (consoleconnect.com, PCCW Global network/SASE); a generic \\\"security console\\\"/admin dashboard; gaming consoles (PS5, Xbox, Switch) and \\\"console security\\\" content; Console Enterprises; the developer/terminal \\\"console\\\" (DevTools, console.log); Console.dev and other \\\"Console\\\" dev-tooling brands.\\n\\nSTRICT ATTRIBUTION RULE: Attribute a post to a company ONLY if it is GENUINELY about that specific organization per its definition above (its product, people, funding, customers, or category). If the post merely shares a name token and matches a 'NOT:' entry or a generic/unrelated sense, set companyName to NONE. Concrete collisions to REJECT (set NONE): Lumos = NOT Proton's \\\"Lumo\\\" chatbot, NOT Lumos Fiber/Business Finance/Digital Outdoor/Laboratories Nigeria, NOT solar/fiber networks/Harry-Potter spell/brain-game; Surf AI = NOT Surf Air Mobility (the airline/\\\"BrokerOS\\\"/Wheels Up), NOT crypto token \\\"@SurfAI\\\"/asksurf.ai, NOT Surfshark VPN, NOT generic web-surfing; Twine = NOT Meta's internal \\\"Twine\\\"/Tupperware cluster-management platform, NOT 'digital twin' research, NOT the Twine interactive-fiction tool, NOT the Python twine PyPI tool; 7AI = NOT 247.ai/[24]7.ai contact-center AI, NOT a 'top 7 AI tools' listicle; OFFROAD = NOT off-road/4x4/overlanding vehicles or off-road driving games; Console = NOT gaming consoles (PS5/Xbox/Switch) or the developer/terminal 'console'/console.log; Torch = NOT PyTorch, NOT Torch.AI defense data-orchestration, NOT a flashlight/Olympic-torch/Torch-browser; Opti = NOT Optiv (the cybersecurity integrator is a different company), NOT Optimizely; Orchid = NOT Orchid VPN/Orchid Protocol crypto, NOT the orchid flower.\\n\\nCompanies often post about themselves with we/our without naming themselves: inspect post_url domain/handle to attribute. If not relevant to a listed company or cybersecurity, set companyName to NONE. Input: array of objects with activity_id,text,title,post_url. Output ONLY a valid JSON array, each element with exactly: activity_id, companyName (a listed name or NONE), sentiment (int -3..3), reasoning (one sentence).\" }, { role: 'user', content: JSON.stringify($json) }] }) }}"
+   },
+   "credentials": {
+    "openAiApi": {
+     "id": "m4FUdT4FgRFOHRKl",
+     "name": "Dustin's OpenAi account"
+    }
+   },
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  }
+ ],
+ "connections": {
+  "Execute Workflow Trigger": {
+   "main": [
+    [
+     {
+      "node": "Build Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Context": {
+   "main": [
+    [
+     {
+      "node": "Mentions Gate (direct only)",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Build LinkedIn URN Queries",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mentions Gate (direct only)": {
+   "main": [
+    [
+     {
+      "node": "Apify LinkedIn Paginated",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify LinkedIn Paginated": {
+   "main": [
+    [
+     {
+      "node": "Flatten LinkedIn",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Flatten LinkedIn": {
+   "main": [
+    [
+     {
+      "node": "Merge LinkedIn Streams",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Merge LinkedIn Streams": {
+   "main": [
+    [
+     {
+      "node": "Dedup LinkedIn by activity_id",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build LinkedIn URN Queries": {
+   "main": [
+    [
+     {
+      "node": "Apify LinkedIn Company Posts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify LinkedIn Company Posts": {
+   "main": [
+    [
+     {
+      "node": "Flatten LinkedIn Company",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Flatten LinkedIn Company": {
+   "main": [
+    [
+     {
+      "node": "Merge LinkedIn Streams",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  },
+  "Dedup LinkedIn by activity_id": {
+   "main": [
+    [
+     {
+      "node": "LinkedIn Has activity_id",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Is Company Page",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LinkedIn Has activity_id": {
+   "main": [
+    [
+     {
+      "node": "Upsert linkedin_posts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Is Company Page": {
+   "main": [
+    [
+     {
+      "node": "Force Company-Page Score",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "LLM Attribution HTTP",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Force Company-Page Score": {
+   "main": [
+    [
+     {
+      "node": "Merge Scored",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  },
+  "Merge Scored": {
+   "main": [
+    [
+     {
+      "node": "Compute LinkedIn post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse LinkedIn LLM": {
+   "main": [
+    [
+     {
+      "node": "Fix Company-Page Attribution",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fix Company-Page Attribution": {
+   "main": [
+    [
+     {
+      "node": "LinkedIn Relevance Gate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LinkedIn Relevance Gate": {
+   "main": [
+    [
+     {
+      "node": "Merge Scored",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Compute LinkedIn post_weight": {
+   "main": [
+    [
+     {
+      "node": "Write LinkedIn post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write LinkedIn post_weight": {
+   "main": [
+    [
+     {
+      "node": "Cache New Authors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Cache New Authors": {
+   "main": [
+    [
+     {
+      "node": "Return Summary",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM Attribution HTTP": {
+   "main": [
+    [
+     {
+      "node": "Parse LinkedIn LLM",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner",
+  "saveDataSuccessExecution": "none",
+  "saveExecutionProgress": false,
+  "saveManualExecutions": false
+ },
+ "active": false
+}
