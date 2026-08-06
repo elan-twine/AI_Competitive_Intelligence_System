@@ -22,7 +22,7 @@ the orientation layer.
 | Scrapers/scoring pipeline | lives in n8n; **sanitized exports in `ops/n8n/`** (read these to understand the logic), IDs in `HANDOFF.md` §3 |
 | Evals, backfills, migrations | `ops/scripts/`, `ops/migrations/` |
 
-## The five rules that matter most
+## The rules that matter most
 
 1. **Verify with data, never with run logs.** This pipeline fails *silently*. A
    green n8n run has repeatedly meant "wrote nothing" — twice from Apify actors
@@ -37,7 +37,11 @@ the orientation layer.
 4. **`sov_config` PATCH replaces the entire `config` object.** A partial patch once
    wiped every other key in production. GET the full config → merge one key
    client-side → PATCH the whole object → re-GET and diff.
-5. **Cadence and scrape-window always change together.** Daily cadence + a 7-day
+5. **Never rotate a working credential.** The Supabase `service_role` JWT is
+   embedded in ~17 n8n workflow code nodes — rotating it breaks the whole pipeline
+   until every one is edited and re-published. Read existing keys from the source
+   system; don't regenerate them.
+6. **Cadence and scrape-window always change together.** Daily cadence + a 7-day
    window re-scrapes the same week every day (~7× cost); weekly cadence + a 1-day
    window silently loses 6 of every 7 days. This has bitten the News workflow twice.
 
