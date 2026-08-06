@@ -4,8 +4,11 @@ These are **not** part of the live pipeline. They are the pre-split architecture
 kept as the documented rollback path: if the split pipeline ever needs to be
 reverted, the rollback is to re-publish these.
 
-They are exported here (credentials redacted) so the n8n copies can be deleted
-without losing the rollback path.
+They are exported here (credentials redacted) as a **reference backup**.
+
+⚠️ **`SOV_Workflow_v2` should be ARCHIVED in n8n, not deleted** (Elan, 2026-08-06):
+it maps essentially the whole system in one place and is the pre-split rollback
+path. These exports are a reference, not a restore mechanism.
 
 | Workflow | ID | Nodes |
 |---|---|---|

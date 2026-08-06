@@ -49,20 +49,21 @@ Elan/Justin — see §9.
 |---|---|---|
 | **n8n** | all scrapers + scoring | ⚠️ MCP/CLI is authed as **Dustin** already. Instance transfer still pending. |
 | **Supabase** (`addwjngdezmmnxddulll`) | database | org transfer pending |
-| **Cloudflare** | Worker + hosting | account is **justin@twinesecurity.com** |
+| **Cloudflare** | Worker + hosting | stays on **justin@twinesecurity.com** (by design, not a pending transfer) |
 | **Apify** | all scraping (~$60/mo) | transfer pending |
-| **OpenAI** | attribution LLM | Twine's key (Elan's personal keys must be revoked — §9) |
-| **Anthropic** | dashboard assistant | Twine's key |
+| **OpenAI** | attribution LLM | ✅ Dustin has access. Twine's key `…1XQA` is the live one; Elan's personal `…P7QA` to be revoked (§9) |
+| **Anthropic** | dashboard assistant | ✅ Dustin has access |
 | **GitHub** | `elan-twine/AI_Competitive_Intelligence_System` | org ownership transfer pending |
 | **Google Cloud** | dashboard "Continue with Google" OAuth | ✅ **DONE** — project "Twine Scheduler", transferred to Dustin |
 
 ### Credentials on disk (not in git)
 `sov-tooling/` sits **outside the git root** and holds working credentials:
-- `.sbkey` — Supabase **service_role** JWT (full DB access; never put in frontend)
+- `.sbkey` — Supabase **service_role** JWT (full DB access; never put in frontend, **never rotate** — it's embedded in ~17 n8n workflows)
 - `.oakey` — OpenAI API key, used only by the local eval/backfill scripts
 - `~/.n8n_key` — n8n Public API key, used by the `n8n-admin` CLI
 
-⚠️ Rotate all three when Elan's accounts are deactivated.
+Dustin can obtain each of these from the source systems directly (he already has
+owner access). Do **not** rotate working keys — see §9.
 
 ---
 
@@ -311,37 +312,53 @@ Only **7.3%** of scraped LinkedIn posts are ever attributed; effective cost is
 ## 9. Open items on hand-over
 
 **Security / offboarding (do first):**
-1. **Revoke Elan's personal OpenAI keys.** Run Competitor Brief Generator once
-   to confirm its credential works on Twine's key, then revoke.
-2. **Delete + rotate the hardcoded keys** in 5 inactive junk workflows —
-   **2 distinct secrets** (an OpenAI project key `…P7QA` and an OpenRouter key
-   `…0f40`), repeated across ~25 nodes. Neither matches the key installed at
-   `sov-tooling/.oakey` (`…1XQA`). OpenRouter appears **only** in those inactive
-   workflows — nothing live uses it. Confirm ownership in the OpenAI/OpenRouter
-   consoles (check last-used) before revoking. Junk workflows = `My workflow 2`, `SOV_Workflow`,
-   `SOV_Workflow copy`, `Share Of Voice Workflow`, `Share Of Voice Workflow copy SAm`.
-   ⚠️ `SOV_Workflow_v2` (`AcwUHkXhqgEPk8N8`) is **not** junk — it's the retired
-   monolith rollback artifact, now exported to `ops/n8n/retired/`.
-3. **Rotate** `sov-tooling/.sbkey`, `.oakey`, `~/.n8n_key`.
-4. **Delete the personal repo** `esmyla/AI_Competitive_Intelligence_System_Twine_S26`
-   — an old private copy of company code that received an accidental push. Also
-   delete its `feat/linkedin-engagement-kpi` and `fix/board-rpc-cache` branches.
-5. Complete account transfers (§2).
+
+⚠️ **Revoke only Elan's personal keys. Do not rotate anything that currently
+works.** The pipeline is healthy; regenerating working credentials is the single
+easiest way to break it. In particular:
+- **Never rotate the Supabase `service_role` JWT** — it is embedded directly in
+  the code nodes of ~17 n8n workflows. Rotating it breaks the entire pipeline
+  until every one of those workflows is edited and re-published.
+- **Do not create new keys** to replace working ones. Dustin is already an owner
+  on Supabase and can read the existing keys from
+  [Settings → API](https://supabase.com/dashboard/project/addwjngdezmmnxddulll/settings/general).
+
+1. **Revoke Elan's personal keys** (confirmed personal, safe to kill):
+   - OpenAI `…P7QA` — appears only in the 5 inactive junk workflows below
+   - OpenRouter `…0f40` — same; **nothing live uses OpenRouter**
+   ✅ **`…1XQA` is Twine's key and is the correct one — leave it alone.**
+   Before revoking `…P7QA`, run **Competitor Brief Generator** once to confirm the
+   `OpenAI API` credential (`eivPsVZtPRmoUz7e`) is serving from Twine's key. Note
+   the n8n API redacts credential *values*, so this can only be confirmed by
+   running it (or by checking last-used in the OpenAI console).
+2. **Delete the 5 inactive junk workflows** that carry those two keys:
+   `My workflow 2`, `SOV_Workflow`, `SOV_Workflow copy`, `Share Of Voice Workflow`,
+   `Share Of Voice Workflow copy SAm`. The "25 keys" are those **2 secrets repeated
+   across ~25 nodes**, not 25 distinct keys.
+3. ⚠️ **`SOV_Workflow_v2` (`AcwUHkXhqgEPk8N8`) is not junk — ARCHIVE it, never
+   delete.** It's a 78-node map of essentially the whole system in one place, and
+   the retired pre-split rollback path. Exported to `ops/n8n/retired/` as a backup,
+   but keep the n8n copy archived: the export is a reference, not a restore.
+4. **Ownership is already in place.** Dustin is an **owner** on Supabase, n8n, and
+   Apify; a **collaborator** on GitHub (intentional and sufficient); and has
+   **OpenAI + Anthropic access** (sent 2026-08-06). Nothing further is owed —
+   Cloudflare intentionally stays on **justin@twinesecurity.com**, which is that
+   account's normal home, not an outstanding transfer.
 
 **Product decisions waiting:**
-6. **Define OKR target %s** for "Mentions This Week" and KR-21 — the cards have
-   no goal line without them.
-7. **The 10 flagged Lumos recruiter posts** — under the new "job ads count"
-   policy they're correct attributions. Unflag all, unflag one (they're 10
-   near-duplicates of the same post, so unflagging all inflates Lumos ~10×), or
-   leave. Elan's call was never made.
+5. **Define OKR target %s** for "Mentions This Week" and KR-21 — the cards show
+   the live number but have no goal line. **Dustin's decision** (with Justin).
+6. **The 10 flagged Lumos recruiter posts.** Policy is settled: **recruiting/job
+   posts DO count** toward SOV. So those are correct attributions and the
+   `misattributed` flags on them are wrong. Open question is only whether to
+   unflag all 10 or just one — they're near-duplicates of a single recruiter post,
+   so unflagging all inflates Lumos ~10×. **Dustin's call.**
 
 **Verification owed:**
-8. **Tomorrow's 05:45 News run is the first live test of the repaired parse
-   node.** Confirm articles actually receive `companyName` and `post_weight`.
-9. **Backfill `sov_weekly`/`sov_daily`** under current platform weights, or
+7. **The 05:45 News run is the first live test of the repaired parse node.** Confirm articles actually receive `companyName` and `post_weight`.
+8. **Backfill `sov_weekly`/`sov_daily`** under current platform weights, or
    accept that old trend points aren't comparable.
-10. **Audit Firecrawl spend** — the one unmeasured cost.
+9. **Audit Firecrawl spend** — the one unmeasured cost.
 
 **Known-good deferred:** the older Jun 26 – Jul 20 unattributed news gap (~666
 rows) was deliberately left alone.
