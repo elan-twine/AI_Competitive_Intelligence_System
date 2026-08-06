@@ -48,6 +48,8 @@ the orientation layer.
 ## Conventions
 
 - **Friday→Thursday weeks.** Every SOV metric uses this week unless explicitly
+  stated otherwise — the week CLOSES on OKR-review Thursday so report day shows a
+  ~full week. Helper: `isoWeekStart` in `src/lib/metrics.js` (`WEEK_ANCHOR_DAY=5`).
   stated otherwise — the week closes on the Thursday OKR-review day (Elan,
   2026-08-06; superseded the earlier Thu→Wed anchor). Helper: `isoWeekStart`,
   anchored by `WEEK_ANCHOR_DAY = 5`, in `src/lib/metrics.js`.
