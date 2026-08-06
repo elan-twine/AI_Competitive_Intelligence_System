@@ -1257,7 +1257,7 @@ async function handleEnrichCompetitor(request, env) {
     + 'definition (1-2 sentences: what the company actually is — product, category, and any distinctive funding/founders/customers — specific enough to tell it apart from same-named things), '
     + 'keywords (array of 2-6 distinctive search phrases people use for it; prefer product/handle/quoted-name terms; OMIT the bare name when it is generic or collision-prone), '
     + 'collision_terms (array of namesakes / wrong senses to REJECT — other companies, products, brands, tokens, or common words that share the name token), '
-    + 'aliases (array of alternate names/spellings), domain (best primary domain or ""), x_handle (best X/Twitter handle without @, or ""), subreddits (array of relevant subreddit names without r/, or []). '
+    + 'aliases (array of alternate names/spellings). '
     + 'Use real knowledge; when unsure use conservative/empty values rather than guessing. Output ONLY the JSON object.'
   const usr = `Company name: ${name}\nLinkedIn/URL: ${url || '(none)'}\nDomain hint: ${domain || '(none)'}`
 
@@ -1279,14 +1279,15 @@ async function handleEnrichCompetitor(request, env) {
   try { out = JSON.parse(m ? m[0] : text) } catch { return json(502, { error: 'enrichment returned unparseable output' }) }
 
   const arr = (v) => Array.isArray(v) ? v.map(x => String(x || '').trim()).filter(Boolean).slice(0, 12) : []
+  // Deliberately NO domain / x_handle / subreddits / linkedin_urn: the model
+  // reliably hallucinates those identifiers (e.g. real-looking but wrong X
+  // handles), and a wrong identifier silently mis-scopes the scrapers. Those
+  // fields are human-entered only (Elan, 2026-08-06).
   return json(200, {
     definition: String(out.definition || '').trim().slice(0, 800),
     keywords: arr(out.keywords),
     collision_terms: arr(out.collision_terms),
     aliases: arr(out.aliases),
-    domain: String(out.domain || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').slice(0, 120),
-    x_handle: String(out.x_handle || '').trim().replace(/^@/, '').slice(0, 40),
-    subreddits: arr(out.subreddits).map(s => s.replace(/^\/?r\//i, '')),
   })
 }
 

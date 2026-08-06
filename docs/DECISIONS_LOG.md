@@ -4,6 +4,17 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-08-06 — Final polish (Elan's last session): Friday weeks, cream light mode, UX fixes, no-hallucination autofill
+
+- **WEEKS NOW RUN FRIDAY 00:00 → THURSDAY 23:59** (was Thu→Wed since 08-03). Reason: OKR review is Thursday — under Thu→Wed anchoring, report-day morning always showed a brand-new, near-empty week. Fri→Thu means the week CLOSES on review day (~93% complete at the Thursday-noon engagement measurement; Thursday evening still accrues — accepted trade-off, later re-measures supersede). Changed together: `WEEK_ANCHOR_DAY` 4→5 (app), Snapshot `isoThursday`→`isoFriday` (n8n, published), engagement pipeline now measures the CURRENT Fri-week to date on Thursdays (n8n, published). Historical Thursday-stamped `week_start` rows are left as-is (charts key on dates; comparisons are ordinal).
+- **Light mode = clean cream** — warm off-white ground (#f6f5ee), solid white cards, warm-olive greys, and a darkened olive accent (#6f8a00) that actually reads on white (the old lime-wash theme had an invisible Twine line and text-stroke hacks, all removed). New `--on-accent` token replaces 8 hardcoded dark-on-lime text colors. Palette adapted from the Twine OKRs site's light mode.
+- **Tab-switch no longer resets the app.** supabase-js re-fires SIGNED_IN whenever a tab regains focus; the unguarded handler navigated to the dashboard home every time. Now only a GENUINE first sign-in navigates (hadSession ref guard).
+- **Logo → home**: the Twine logo/title in the header returns to the dashboard overview (and resets the persisted sub-nav). Header icons got instant tooltip bubbles (data-tip CSS; native title removed to avoid doubling).
+- **Auto-fill NEVER suggests identifiers** — domain, x_handle, subreddits, linkedin_urn are stripped from the enrichment prompt AND response (worker) and from the client merge: the model reliably hallucinates plausible-but-wrong ones, and a wrong identifier silently mis-scopes scrapers. Descriptive fields only (definition, keywords, collision_terms, aliases). Worker test locks this in.
+- **About + Methodology refreshed**: multipliers ×15/×1.5 (were shown as ×30/×3), X reach = engagement-only (viewCount reference removed), tracked-daily + Fri→Thu week language, new "Press weighs most" principle card.
+
+---
+
 ## 2026-08-05 — LinkedIn scrape cost: the leak is UNQUOTED multi-word keywords (fuzzy expansion)
 
 - **Root cause found.** LinkedIn's post search is **fuzzy/semantic by default** (per the actor's own docs: quote for exact match). Our keywords were sent bare AND with `total_posts: 250`, so the actor paginated deep into "semantically similar" posts that never name the company. Measured: `Opti IAM` → **122 posts/day**; `"Opti IAM"` → **1**. Cost is a flat **$0.005/post** (no per-run fee), so this was ~$18/mo from one keyword.

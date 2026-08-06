@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Docs from './pages/Docs'
@@ -32,10 +32,16 @@ function App() {
   const [authReady, setAuthReady] = useState(false)
 
   // Bootstrap + subscribe to Supabase auth state.
+  // hadSession guards the SIGNED_IN navigation: supabase-js re-fires SIGNED_IN
+  // every time the tab regains focus (visibility-change session recovery), and
+  // the unguarded handler yanked users back to the dashboard home whenever they
+  // switched tabs. Only a GENUINE first sign-in should navigate.
+  const hadSession = useRef(false)
   useEffect(() => {
     let mounted = true
     getSession().then((s) => {
       if (!mounted) return
+      hadSession.current = !!s
       setSession(s)
       setAuthReady(true)
     })
@@ -46,10 +52,11 @@ function App() {
       // lands the user on the dashboard. We can't rely on the URL hash for the
       // OAuth case — supabase-js consumes it to extract the session — so we
       // navigate explicitly here and clean any leftover code/token from the URL.
-      if (event === 'SIGNED_IN') {
+      if (event === 'SIGNED_IN' && !hadSession.current) {
         window.history.replaceState({}, document.title, window.location.pathname + '#dashboard')
         setView('dashboard')
       }
+      hadSession.current = !!s
     })
     return () => { mounted = false; unsub() }
   }, [])

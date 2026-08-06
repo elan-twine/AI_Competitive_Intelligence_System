@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Globe, Repeat2, Clock, Users, MessageCircle, Brain } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Globe, Newspaper, Repeat2, Clock, Users, MessageCircle, Brain } from 'lucide-react'
 import { GlassCard } from '../components/GlassCard'
 import { AppHeader } from '../components/AppHeader'
 import '../App.css'
@@ -10,6 +10,7 @@ import './about.css'
 /* ------------------------------------------------------------------ */
 const PRINCIPLES = [
   { icon: Globe, title: 'Earned attention wins', body: 'An outsider choosing to talk about you counts far more than your own posts.' },
+  { icon: Newspaper, title: 'Press weighs most', body: 'Earned editorial coverage counts 15× vendor social — one tier-1 article can move the whole board.' },
   { icon: Repeat2, title: 'Spread beats applause', body: 'A reshare reaches a whole new audience — worth an order of magnitude more than a like.' },
   { icon: Clock, title: 'Fresh beats old', body: 'Full credit for its first week, then it fades. Momentum now, not an all-time ledger.' },
   { icon: Users, title: 'Direct field only', body: 'Scored against your real competitors — their shares add up to exactly 100%.' },
@@ -28,9 +29,9 @@ export default function About({ onLogout, onNavigate }) {
           <h2 className="about-lede-title">One number for who owns the conversation.</h2>
           <p className="about-lede-thesis">
             <strong>Share of Voice</strong> is your slice of the identity-security conversation versus your
-            direct competitors — read every week across <strong>LinkedIn</strong>, <strong>Google News</strong>,
+            direct competitors — tracked daily across <strong>LinkedIn</strong>, <strong>Google News</strong>,
             <strong> Reddit</strong>, and <strong>X</strong>, and scored by how much attention each mention
-            genuinely earned.
+            genuinely earned. Weekly metrics run Friday → Thursday, closing on OKR-review day.
           </p>
         </header>
 

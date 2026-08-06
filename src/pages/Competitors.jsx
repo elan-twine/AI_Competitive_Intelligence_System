@@ -25,15 +25,16 @@ const EMPTY_ADV = { aliases: '', linkedin_urn: '', domain: '', x_handle: '', sub
 // with a hallucinated one), so it must never clobber anything a person typed
 // — clear a field first if you want the AI's suggestion for it.
 const keep = (prevVal, aiVal) => (String(prevVal || '').trim() ? prevVal : aiVal)
+// Auto-fill only suggests DESCRIPTIVE fields. Identifiers (domain, x_handle,
+// subreddits, linkedin_urn) are human-entered only — the model hallucinates
+// plausible-but-wrong ones, and a wrong identifier silently mis-scopes the
+// scrapers (Elan, 2026-08-06). The worker no longer returns them at all.
 const mergeEnrichment = (prev, e) => ({
   ...prev,
   definition: keep(prev.definition, e.definition || ''),
   keywords: keep(prev.keywords, e.keywords?.length ? e.keywords.join(', ') : ''),
   collision_terms: keep(prev.collision_terms, e.collision_terms?.length ? e.collision_terms.join(', ') : ''),
   aliases: keep(prev.aliases, e.aliases?.length ? e.aliases.join(', ') : ''),
-  domain: keep(prev.domain, e.domain || ''),
-  x_handle: keep(prev.x_handle, e.x_handle || ''),
-  subreddits: keep(prev.subreddits, e.subreddits?.length ? e.subreddits.join(', ') : ''),
 })
 
 export default function Competitors({ onLogout, onNavigate }) {

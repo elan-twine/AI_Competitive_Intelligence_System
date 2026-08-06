@@ -25,6 +25,41 @@
   box-shadow: 0 0 15px var(--glow-color);
 }
 
+/* Instant tooltip bubble under the header icon buttons (driven by data-tip;
+   native `title` is deliberately not set so the two never double up). */
+.theme-btn { position: relative; }
+.theme-btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-3px);
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border: 1px solid var(--divider);
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 60;
+}
+.theme-btn[data-tip]:hover::after,
+.theme-btn[data-tip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* The logo + title act as a "home" button (back to the dashboard overview). */
+.header-home { cursor: pointer; border-radius: 10px; }
+.header-home:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.header-home:hover .header-logo { opacity: 0.85; }
+
 /* ---- Chart Tooltip ---- */
 .chart-tooltip {
   background: var(--bg-card);
@@ -201,7 +236,7 @@
 
 .view-seg.active {
   background: var(--accent);
-  color: #0B0D00;
+  color: var(--on-accent);
 }
 
 /* Narrow screens: the absolutely-centered view-switch overlaps the logo/actions,
@@ -221,7 +256,7 @@
   background: var(--accent);
   border: 1.5px solid #C4E600;
   border-radius: var(--radius-sm);
-  color: #0B0D00;
+  color: var(--on-accent);
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -237,6 +272,18 @@
 .refresh-btn.loading {
   opacity: 0.5;
   pointer-events: none;
+}
+
+/* Light: the refresh button's lime border/hover clash with the olive accent */
+[data-theme="light"] .refresh-btn { border-color: var(--accent-dark); }
+[data-theme="light"] .refresh-btn:hover { background: var(--accent-dark); box-shadow: 0 4px 12px rgba(111, 138, 0, 0.3); }
+/* Light: hover glare follows the olive accent instead of raw lime */
+[data-theme="light"] .glass-glare {
+  background: radial-gradient(
+    300px circle at var(--glare-x) var(--glare-y),
+    rgba(111, 138, 0, var(--glare-opacity)),
+    transparent 60%
+  );
 }
 
 /* ---- Stats Grid ---- */
@@ -286,9 +333,7 @@
 }
 
 [data-theme="light"] .stat-card .value.accent {
-  color: #5a6b00;
-  -webkit-text-stroke: 0.6px #3f4a00;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  color: var(--accent);   /* olive accent reads on white — no stroke hacks needed */
 }
 
 .stat-card .sub {
@@ -357,7 +402,7 @@
   padding: 4px 10px;
   border-radius: 20px;
   background: var(--accent);
-  color: #0B0D00;
+  color: var(--on-accent);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -492,7 +537,7 @@
 
 .feed-tab.active {
   background: var(--accent);
-  color: #0B0D00;
+  color: var(--on-accent);
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -687,7 +732,7 @@
 
 .tab-nav .tab.active {
   background: var(--accent);
-  color: #0B0D00;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -751,7 +796,7 @@
 
 .chip.active {
   background: var(--accent);
-  color: #0B0D00;
+  color: var(--on-accent);
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -820,17 +865,16 @@
 
 /* ---- Light-mode green text readability ---- */
 [data-theme="light"] .sentiment-row.is-twine {
-  background: rgba(139, 166, 0, 0.18);
+  background: var(--accent-dim);
 }
 
 [data-theme="light"] .sentiment-row.is-twine .sentiment-name,
 [data-theme="light"] .breakdown-table tr.is-twine .col-company {
-  color: #3f4a00;
-  text-shadow: 0 0 1px rgba(0, 0, 0, 0.12);
+  color: var(--accent);
 }
 
 [data-theme="light"] .breakdown-table tr.is-twine td {
-  background: rgba(139, 166, 0, 0.15);
+  background: var(--accent-dim);
 }
 
 /* ---- Breakdown table ---- */
@@ -933,7 +977,7 @@
   text-align: right; font-variant-numeric: tabular-nums;
 }
 .breakdown-table tr.is-twine .bt-pct { color: var(--accent); }
-[data-theme="light"] .breakdown-table tr.is-twine .bt-pct { color: #3f4a00; }
+[data-theme="light"] .breakdown-table tr.is-twine .bt-pct { color: var(--accent); }
 
 .breakdown-table td.positive { color: var(--positive); }
 .breakdown-table td.negative { color: var(--negative); }
@@ -1046,7 +1090,7 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   background: var(--accent);
-  color: #0B0D00;
+  color: var(--on-accent);
   padding: 2px 8px;
   border-radius: 999px;
   margin-left: 8px;
@@ -1315,7 +1359,7 @@
 .sb-vote-btn.up.on { background: var(--positive); border-color: var(--positive); color: #fff; }
 .sb-vote-btn.down.on { background: var(--negative); border-color: var(--negative); color: #fff; }
 /* Star toggle ("interesting") — replaces the thumbs pair. */
-.sb-vote-btn.sb-star-btn.on { background: var(--accent); border-color: var(--accent); color: #0B0D00; }
+.sb-vote-btn.sb-star-btn.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .sb-vote-btn.sb-star-btn.on svg { fill: currentColor; }
 
 /* Affiliation badge: who authored the post relative to the competitor. */

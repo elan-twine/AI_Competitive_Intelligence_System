@@ -134,11 +134,13 @@ export function computeWeightedSOV(posts, config = DEFAULT_SOV_CONFIG) {
 export const SOV_HISTORY_START = '2026-06-22'
 
 // Week anchor day for ALL client-side weekly bucketing (0=Sun..6=Sat).
-// Scrapes run Thursday mornings and the n8n snapshot stamps sov_weekly's
-// week_start as the most-recent Thursday, so weeks are Thursday-anchored (4)
-// to match. If the scrape day ever moves, change this ONE constant (and the
-// snapshot's isoThursday in n8n) — every weekly grouping in the app follows.
-export const WEEK_ANCHOR_DAY = 4
+// Weeks run FRIDAY 00:00 → THURSDAY 23:59 (anchor 5) so the week CLOSES on
+// the Thursday OKR-review day — on report day the cards show a ~full week
+// instead of a brand-new one (Elan, 2026-08-06; supersedes the Thu→Wed
+// anchor of 08-03). If this ever changes again, change this ONE constant
+// plus the n8n snapshot's isoFriday and the engagement pipeline's anchor —
+// every weekly grouping in the app follows.
+export const WEEK_ANCHOR_DAY = 5
 
 // Anchor day of the week containing `date`, normalized to local midnight.
 // We label each bucket by this anchor date as 'YYYY-MM-DD' (the week-start date).

@@ -425,8 +425,8 @@ function AuthorFork() {
 const MULTIPLIERS = [
   { name: 'LinkedIn', x: 1, color: 'var(--linkedin-color)' },
   { name: 'X', x: 1, color: 'var(--x-color)' },
-  { name: 'Reddit', x: 3, color: 'var(--reddit-color)' },
-  { name: 'Google News', x: 30, color: 'var(--news-color)' },
+  { name: 'Reddit', x: 1.5, color: 'var(--reddit-color)' },
+  { name: 'Google News', x: 15, color: 'var(--news-color)' },
 ]
 function MultiplierScale() {
   const max = Math.max(...MULTIPLIERS.map(m => m.x))
@@ -542,7 +542,7 @@ const GLOSSARY = [
   ['decay', 'age weighting; 7-day grace then halving'],
   ['post_weight', 'one item’s final score (reach × freshness, scaled by author)'],
   ['author tier', 'company ×1 · employee ×2 · external ×5 (baseline B; reach mult M = 1 / 1.2 / 2)'],
-  ['platform multiplier', 'trust exchange rate onto one scale — News ×30 · Reddit ×3 · LinkedIn ×1 · X ×1'],
+  ['platform multiplier', 'trust exchange rate onto one scale — News ×15 · Reddit ×1.5 · LinkedIn ×1 · X ×1'],
   ['mindshare units', 'post_weight × platform multiplier — the shared, cross-platform scale'],
   ['pool', 'the sum of every direct competitor’s mindshare units; a company’s SOV% is its slice'],
 ]
@@ -674,7 +674,7 @@ export default function Equations({ onLogout, onNavigate }) {
             intuition="Turn engagement into a rough audience size, so one viral item can’t dominate."
             pill={trace('reach')}>
             <EquationRow label="default" color="var(--text-muted)">reach = eng^(49/50)</EquationRow>
-            <EquationRow label="X" color="var(--x-color)" note="X gives real impressions">reach = (viewCount + eng)^(49/50)</EquationRow>
+            <EquationRow label="X" color="var(--x-color)" note="engagement only — view counts were deliberately dropped (a view is not attention)">reach = eng^(49/50)</EquationRow>
             <EquationRow label="News" color="var(--news-color)" note="presence is the signal">reach = 1</EquationRow>
             <ReachCurve />
             <div className="meth-example-line">example: 89.5^0.98 ≈ <strong>81.8</strong></div>
@@ -749,8 +749,8 @@ export default function Equations({ onLogout, onNavigate }) {
             <Callout>
               The multipliers are trust exchange rates grounded in B2B-buyer research — editorial security press reaches
               and persuades buyers far more than a vendor’s own social post, and peer/community talk more than either:
-              <strong> Google News ×30 · Reddit ×3 · LinkedIn ×1 · X ×1</strong>. LinkedIn and X are the ~locked baseline;
-              <strong> News is the dial the team sets</strong> (provisional ×30 — this is where a wider range gets tuned).
+              <strong> Google News ×15 · Reddit ×1.5 · LinkedIn ×1 · X ×1</strong>. LinkedIn and X are the ~locked baseline;
+              <strong> News is the dial the team sets</strong> (×15 since 2026-07-13, tuned down from a provisional ×30).
               Versioned in the pipeline config.
             </Callout>
             <MultiplierScale />
