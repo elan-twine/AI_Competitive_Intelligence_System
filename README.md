@@ -168,8 +168,8 @@ Each looks arbitrary until you read the reasoning in
 - **X ignores view counts.** Engagement only — a view is not attention.
 - **Sentiment is display-only.** `sentimentClamp` is `{1,1}`, so tone doesn't
   move scores.
-- **All SOV metrics use a Thursday→Wednesday week** unless explicitly stated
-  otherwise, matching OKR reporting.
+- **All SOV metrics use a Friday→Thursday week** unless explicitly stated
+  otherwise, so the week closes on the Thursday OKR-review day.
 - **Every post table has a `misattributed` flag** as the human correction path,
   and the board RPC excludes flagged rows. There is deliberately no review queue.
 
