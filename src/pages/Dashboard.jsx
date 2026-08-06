@@ -384,6 +384,7 @@ function Dashboard({ onLogout, onNavigate }) {
         onLogout={onLogout}
         view={view}
         onViewChange={setView}
+        onHome={() => { setView('sov'); setTab('overview') }}
       />
 
       {view === 'social' && <SocialBriefs posts={allPosts} competitors={competitors} />}
