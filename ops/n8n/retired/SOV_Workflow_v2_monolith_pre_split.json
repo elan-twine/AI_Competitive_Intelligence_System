@@ -1,0 +1,2872 @@
+{
+ "name": "SOV_Workflow_v2",
+ "nodes": [
+  {
+   "parameters": {},
+   "id": "e521f9c7-25e1-496f-8b73-4bb2f11cfc21",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    -400,
+    208
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "competitors",
+    "returnAll": true,
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "active",
+       "condition": "eq",
+       "keyValue": "true"
+      }
+     ]
+    }
+   },
+   "id": "185e127e-5df1-4587-9016-24845cf05d96",
+   "name": "Load Competitors",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    -144,
+    352
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "sov_config",
+    "returnAll": true,
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "id",
+       "condition": "eq",
+       "keyValue": "1"
+      }
+     ]
+    }
+   },
+   "id": "253b5600-d654-4200-9de1-d49c6f049d10",
+   "name": "Load SOV Config",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    112,
+    352
+   ],
+   "executeOnce": true,
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const competitors = $(\"Load Competitors\").all().map(i => i.json);\nconst cfgRow = $(\"Load SOV Config\").first();\nconst config = (cfgRow && cfgRow.json && cfgRow.json.config) ? cfgRow.json.config : {};\nconst active = competitors.filter(c => c.active !== false);\nconst companies = active.map(c => ({ name: c.name, aliases: Array.isArray(c.aliases) ? c.aliases : [], domain: c.domain || null, x_handle: c.x_handle || null, linkedin_urn: c.linkedin_urn || null, subreddits: Array.isArray(c.subreddits) ? c.subreddits : [], type: c.type || 'direct' }));\nconst linkedin_urns = companies.map(c => c.linkedin_urn).filter(Boolean);\nconst companyEnum = companies.map(c => c.name).join(\", \");\nconst allSubreddits = Array.from(new Set([].concat(...companies.map(c => c.subreddits)).concat([\"cybersecurity\",\"netsec\",\"asknetsec\",\"devsecops\",\"hacking\",\"information_security\",\"security\",\"identitymanagement\",\"sysadmin\",\"itmanagers\",\"blueteamsec\"]))).filter(Boolean);\nreturn [{ json: { config, companies, linkedin_urns, companyEnum, allSubreddits } }];\n"
+   },
+   "id": "0dd60286-6e74-4e9e-89cc-159fcd60e904",
+   "name": "Build Context",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    352,
+    352
+   ],
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "weeks",
+       "triggerAtDay": [
+        1
+       ],
+       "triggerAtHour": 5
+      }
+     ]
+    }
+   },
+   "id": "4517dd7e-0705-4df1-b975-6c7c304b8d36",
+   "name": "Weekly Monday 5am",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.3,
+   "position": [
+    -400,
+    512
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const out = [];\nfor (const item of $input.all()) { const t = item.json || {}; if (!t.activity_id) continue; const stats = t.stats || {}; const article = (t.content && t.content.article) ? t.content.article : {}; out.push({ json: { activity_id: t.activity_id, post_url: t.post_url || '', text: t.text || '', full_urn: t.full_urn || '', author: t.author || {}, totalReactions: stats.total_reactions || 0, comments: stats.comments || 0, reshares: stats.shares || 0, posted_at: (t.posted_at && t.posted_at.date) ? t.posted_at.date : null, hashtags: t.hashtags || [], content: t.content || {}, is_reshare: !!t.is_reshare, metadata: t.metadata || {}, search_input: t.search_input || {}, title: article.title || '', imageURL: article.thumbnail_url || '', source: 'keyword' } }); }\nreturn out;"
+   },
+   "id": "fe346a68-05fb-4492-94b8-1c1a45c3a5a5",
+   "name": "Flatten LinkedIn",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    864,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.activity_id }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "exists",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "c3e2b1f7-27e0-442a-a55c-ae34f6f4f66c",
+   "name": "LinkedIn Has activity_id",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    1104,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/linkedin_posts?on_conflict=activity_id",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=representation"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ activity_id: $json.activity_id, post_url: $json.post_url, text: $json.text, full_urn: $json.full_urn, author: $json.author, totalReactions: $json.totalReactions, comments: $json.comments, reshares: $json.reshares, posted_at: $json.posted_at, hashtags: $json.hashtags, content: $json.content, is_reshare: $json.is_reshare, metadata: $json.metadata, search_input: $json.search_input, title: $json.title, imageURL: $json.imageURL }) }}",
+    "options": {}
+   },
+   "id": "b9cc1092-eb26-4680-a0df-cd55dc62f29e",
+   "name": "Upsert linkedin_posts",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1360,
+    0
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  const txt = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n  let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) results.push({ json: e });\n}\nreturn results;"
+   },
+   "id": "03fe08e0-0fdf-4803-99de-b1ebe8455f92",
+   "name": "Parse LinkedIn LLM",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1600,
+    208
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": false,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "NONE",
+       "operator": {
+        "type": "string",
+        "operation": "notEquals"
+       }
+      },
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "662c3022-f305-4d66-9abc-f8cb7181b9ed",
+   "name": "LinkedIn Relevance Gate",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    1856,
+    208
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const helpers = this.helpers;\nconst SRK = '<REDACTED_SUPABASE_JWT>';\nconst SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\n// classifier cache (author_affiliation): employees only -> \"competitor|profile_id\"\nconst EMP = {};\ntry {\n  const aff = await helpers.httpRequest({ method: 'GET', url: SB + '/author_affiliation?select=profile_id,competitor&verdict=eq.employee', headers: { apikey: SRK, Authorization: 'Bearer ' + SRK }, json: true });\n  for (const a of (aff || [])) { if (a && a.profile_id && a.competitor) EMP[String(a.competitor).trim().toLowerCase() + '|' + String(a.profile_id)] = true; }\n} catch (e) { /* table absent/unreachable -> fall back to URN+headline heuristic */ }\n\nconst ctx = $('Build Context').first().json; const cfg = ctx.config || {};\nconst ew = (cfg.engagementWeights && cfg.engagementWeights.LinkedIn) || { reaction:1, comment:3, reshare:10, image:1.5 };\nconst clamp = cfg.sentimentClamp || { min:0.5, max:1.3 };\nconst halfLife = (cfg.halfLifeDays && cfg.halfLifeDays.LinkedIn) || 14;\nconst AB = cfg.authorBaseline || { company:1.0, external:5.0 };   // additive presence floor\nconst AEM = cfg.authorEngMult || { company:1.0, external:1.5 };   // engagement multiplier (external = new eyes)\nconst companies = ctx.companies || [];\nconst urnSet = new Set(companies.map(c => String(c.linkedin_urn||'')).filter(Boolean));\nconst posts = $('Dedup LinkedIn by activity_id').all().map(i=>i.json);\nconst results = [];\nfor (const item of $input.all()) {\n  const r = item.json;\n  const post = posts.find(p => p.activity_id === r.activity_id) || {};\n  const reactions = Number(post.totalReactions||0);\n  const comments = Number(post.comments||0);\n  const reshares = Number(post.reshares||0);\n  const hasImage = post.imageURL && String(post.imageURL).length > 0;\n  let eng = ((ew.reaction!=null?ew.reaction:1)*reactions) + ((ew.comment!=null?ew.comment:3)*comments) + ((ew.reshare!=null?ew.reshare:10)*reshares);\n  if (hasImage) eng += (ew.image!=null?ew.image:1.5);\n  const reach = Math.pow(eng, 49/50); // near-linear reach\n  const s = Math.max(-3, Math.min(3, Number(r.sentiment||0)));\n  const sentimentMult = clamp.min + ((s+3)/6)*(clamp.max-clamp.min);\n  const author = post.author || {};\n  const headline = String(author.headline||'').toLowerCase();\n  const authorUrn = String(author.profile_id||'');\n  const cn = String(r.companyName||'');\n  let authorType;\n  if (post.source === 'company_page') authorType = 'company';\n  else if (authorUrn && urnSet.has(authorUrn)) authorType = 'company';\n  else if (cn && cn !== 'NONE' && headline.indexOf(cn.toLowerCase()) !== -1) authorType = 'company';\n  else if (authorUrn && cn && cn !== 'NONE' && EMP[cn.toLowerCase() + '|' + authorUrn]) authorType = 'company'; // classifier-confirmed employee\n  else authorType = 'external';\n  const B = (authorType === 'company') ? (AB.company!=null?AB.company:1.0) : (AB.external!=null?AB.external:5.0);\n  const M = (authorType === 'company') ? (AEM.company!=null?AEM.company:1.0) : (AEM.external!=null?AEM.external:1.5);\n  let ageDays = 0; if (post.posted_at) { const d = new Date(post.posted_at); if (!isNaN(d)) ageDays = Math.max(0,(Date.now()-d.getTime())/86400000); }\n  const timeDecay = Math.pow(2, -ageDays/halfLife);\n  const post_weight = (B + reach * M) * sentimentMult * timeDecay;\n  results.push({ json: { activity_id: r.activity_id, sentiment: r.sentiment, reasoning: r.reasoning, companyName: r.companyName, authorType: authorType, post_weight: parseFloat(post_weight.toFixed(6)) } });\n}\nreturn results;\n"
+   },
+   "id": "9639ecfe-75c5-4ae2-9139-b2a57089f0df",
+   "name": "Compute LinkedIn post_weight",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2112,
+    208
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "tableId": "linkedin_posts",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "activity_id",
+       "condition": "eq",
+       "keyValue": "={{ $json.activity_id }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "sentiment",
+       "fieldValue": "={{ $json.sentiment }}"
+      },
+      {
+       "fieldId": "reasoning",
+       "fieldValue": "={{ $json.reasoning }}"
+      },
+      {
+       "fieldId": "companyName",
+       "fieldValue": "={{ $json.companyName }}"
+      },
+      {
+       "fieldId": "post_weight",
+       "fieldValue": "={{ $json.post_weight }}"
+      }
+     ]
+    }
+   },
+   "id": "a5caff90-348b-4e36-9be0-efff0948d2a9",
+   "name": "Write LinkedIn post_weight",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    2352,
+    208
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/googlenews?on_conflict=url",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Prefer",
+       "value": "resolution=ignore-duplicates,return=representation"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ url: $json.url, title: $json.title, source: $json.source, publishedAt: $json.publishedAt }) }}",
+    "options": {}
+   },
+   "id": "162a2536-2d20-43d7-9a39-4f7c643fd6d9",
+   "name": "Upsert googlenews",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    864,
+    704
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.firecrawl.dev/v1/scrape",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ url: $json.url, formats: [\"markdown\"] }) }}",
+    "options": {}
+   },
+   "id": "740ddde0-a6b7-41ea-8b72-ba5a9e19e2ae",
+   "name": "Firecrawl Scrape Article",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1104,
+    704
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "qT0DBGnJbtPp9lpU",
+     "name": "Firecrawl API"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const articles = $(\"Apify Google News (task)\").all().map(i=>i.json);\nconst byUrl = {};\nfunction norm(u){ if(!u) return \"\"; let s=String(u).trim(); s=s.replace(/[#?].*$/,\"\"); s=s.replace(/\\/+$/,\"\"); return s.toLowerCase(); }\nfor (const a of articles) { const k = norm(a.url); if (k && !(k in byUrl)) byUrl[k] = a; }\nconst items = $input.all();\nconst results = [];\nfor (let idx = 0; idx < items.length; idx++) {\n  const sd = items[idx].json || {};\n  const data = sd.data || {};\n  const meta = data.metadata || {};\n  const md = data.markdown || \"\";\n  const scrapedUrl = meta.url || meta.sourceURL || meta.ogUrl || data.url || sd.url || \"\";\n  const orig = byUrl[norm(scrapedUrl)] || {};\n  results.push({ json: {\n    url: orig.url || scrapedUrl || meta.ogUrl || \"\",\n    title: orig.title || meta.ogTitle || meta.title || \"\",\n    source: orig.source || meta.publisher || meta.source || \"\",\n    articleText: String(md).substring(0,5000)\n  } });\n}\nreturn results;"
+   },
+   "id": "4904ce8e-62ed-4cb5-9043-5d179a119c09",
+   "name": "Extract Article Text",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1360,
+    704
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "tableId": "googlenews",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "url",
+       "condition": "eq",
+       "keyValue": "={{ $json.url }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "articleText",
+       "fieldValue": "={{ $json.articleText }}"
+      }
+     ]
+    }
+   },
+   "id": "79c5363a-7969-4f0b-9f99-d04e556946f6",
+   "name": "Update News articleText",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    1600,
+    704
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  const txt = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n  let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) results.push({ json: e });\n}\nreturn results;"
+   },
+   "id": "94206dc4-2f25-4a8b-ab79-4f6ae08d5ae3",
+   "name": "Parse News LLM",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2112,
+    704
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": false,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "NONE",
+       "operator": {
+        "type": "string",
+        "operation": "notEquals"
+       }
+      },
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "cd7be0ef-2874-4dbe-94de-eb0495b5727e",
+   "name": "News Relevance Gate",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    2352,
+    704
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $(\"Build Context\").first().json; const cfg = ctx.config || {};\nconst clamp = cfg.sentimentClamp || { min:0.5, max:1.3 };\nconst halfLife = (cfg.halfLifeDays && cfg.halfLifeDays[\"Google News\"]) || 30;\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && ch.message.content) return ch.message.content; }\n  return '';\n}\nconst credByUrl = {};\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  if (a === -1 || b === -1 || b <= a) continue;\n  let arr; try { arr = JSON.parse(raw.slice(a, b + 1)); } catch (e) { continue; }\n  for (const e of (Array.isArray(arr) ? arr : [arr])) { if (e && e.url != null) credByUrl[e.url] = Number(e.credibility_score); }\n}\nconst sentByUrl = {};\n$(\"Parse News LLM\").all().forEach(i => { sentByUrl[i.json.url] = i.json; });\nconst articles = $(\"Apify Google News (task)\").all().map(i => i.json);\nconst results = [];\nfor (const url of Object.keys(sentByUrl)) {\n  const sent = sentByUrl[url];\n  const cs = credByUrl[url];\n  const credScore = (cs != null && !isNaN(cs)) ? cs : 50;\n  const authorityMult = credScore / 50;\n  const s = Math.max(-3, Math.min(3, Number(sent.sentiment || 0)));\n  const sentimentMult = clamp.min + ((s + 3) / 6) * (clamp.max - clamp.min);\n  let ageDays = 0; const article = articles.find(a => a.url === url) || {};\n  if (article.publishedAt) { const d = new Date(article.publishedAt); if (!isNaN(d)) ageDays = Math.max(0, (Date.now() - d.getTime()) / 86400000); }\n  const timeDecay = Math.pow(2, -ageDays / halfLife);\n  const post_weight = 1 * authorityMult * sentimentMult * timeDecay;\n  results.push({ json: { url: url, companyName: sent.companyName, sentiment: sent.sentiment, reasoning: sent.reasoning, credibility_score: credScore, post_weight: parseFloat(post_weight.toFixed(6)) } });\n}\nreturn results;"
+   },
+   "id": "ca6aa5e2-f031-4fe0-98de-856ce024d06d",
+   "name": "Compute News post_weight",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2864,
+    704
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "tableId": "googlenews",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "url",
+       "condition": "eq",
+       "keyValue": "={{ $json.url }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "sentiment",
+       "fieldValue": "={{ $json.sentiment }}"
+      },
+      {
+       "fieldId": "reasoning",
+       "fieldValue": "={{ $json.reasoning }}"
+      },
+      {
+       "fieldId": "companyName",
+       "fieldValue": "={{ $json.companyName }}"
+      },
+      {
+       "fieldId": "post_weight",
+       "fieldValue": "={{ $json.post_weight }}"
+      }
+     ]
+    }
+   },
+   "id": "5988b1da-1dc5-403b-ba5f-12aa4506a714",
+   "name": "Write News post_weight",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    3104,
+    704
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $(\"Build Context\").first().json;\n// X/Reddit track DIRECT competitors only (indirect = LinkedIn company-page + News). Dynamic on competitors.type.\nconst companies = (ctx.companies || []).filter(c => c && (c.type || 'direct') === 'direct');\nconst cfg = ctx.config || {};\nconst seen = new Set();\nconst searchQueries = [];\nfor (const c of companies) {\n  const name = (c && c.name != null) ? String(c.name).trim() : \"\";\n  if (!name) continue;\n  const k = name.toLowerCase();\n  if (seen.has(k)) continue;\n  seen.add(k);\n  searchQueries.push(name);\n}\nconst maxItems = (cfg.reddit && Number(cfg.reddit.maxItems)) || 300;\nreturn [{ json: { searchQueries, sort: \"new\", time: \"week\", maxItems } }];"
+   },
+   "id": "9150eca0-3041-41f8-8ccd-566afc44779a",
+   "name": "Build Reddit Queries",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    608,
+    1104
+   ],
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $(\"Build Context\").first().json; const companies = ctx.companies || []; const allowed = (ctx.allSubreddits || []).map(s => s.toLowerCase()); const regexes = [];\nfor (const c of companies) { const terms = [c.name].concat(c.aliases||[]).filter(Boolean); for (const t of terms) { const esc = t.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\"); regexes.push({ company: c.name, rx: new RegExp(\"\\\\b\" + esc + \"(?:\u2019s|s)?\\\\b\", \"i\") }); } }\nconst seen = new Set(); const out = [];\nfor (const item of $input.all()) { const p = item.json || {}; const permalink = p.permalink || p.url || \"\"; if (!permalink || seen.has(permalink)) continue; const sub = (p.subreddit || \"\").toLowerCase(); if (allowed.length && sub && !allowed.includes(sub)) continue; const content = [p.title||\"\", p.selfText||p.body||\"\", p.url||\"\", p.domain||\"\"].join(\" \"); const hit = regexes.find(r => r.rx.test(content)); if (!hit) continue; seen.add(permalink); out.push({ json: { id: p.id || permalink, title: p.title || \"\", selfText: p.selfText || p.body || \"\", permalink, url: p.url || \"\", subreddit: p.subreddit || \"\", score: Number(p.score||p.upVotes||0), numComments: Number(p.numComments||p.numberOfComments||0), createdAt: (p.createdAt || p.createdAtIso || (Number(p.createdUtc) ? new Date(Number(p.createdUtc) * 1000).toISOString() : null) || new Date().toISOString()), candidateCompany: hit.company } }); }\nreturn out;"
+   },
+   "id": "e2634d01-74f2-4a6a-81db-539d4be750e0",
+   "name": "Reddit Relevance Prefilter",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1104,
+    1104
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/reddit_posts?on_conflict=permalink",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Prefer",
+       "value": "resolution=ignore-duplicates,return=representation"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ permalink: $json.permalink, title: $json.title, selfText: $json.selfText, url: $json.url, subreddit: $json.subreddit, score: $json.score, numComments: $json.numComments, createdAt: $json.createdAt }) }}",
+    "options": {}
+   },
+   "id": "fe283c15-4c22-47ae-aae8-30764cd09927",
+   "name": "Upsert reddit_posts",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1360,
+    1104
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  const txt = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n  let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) results.push({ json: e });\n}\nreturn results;"
+   },
+   "id": "ad29ee7c-cea6-443f-982e-9d163dfc3990",
+   "name": "Parse Reddit LLM",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1600,
+    1312
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": false,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "NONE",
+       "operator": {
+        "type": "string",
+        "operation": "notEquals"
+       }
+      },
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "12d43c5c-8db8-426c-b87e-f54e172ad109",
+   "name": "Reddit Relevance Gate",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    1856,
+    1312
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $(\"Build Context\").first().json; const cfg = ctx.config || {};\nconst ew = (cfg.engagementWeights && cfg.engagementWeights.Reddit) || { upvote:1, comment:3 };\nconst clamp = cfg.sentimentClamp || { min:0.5, max:1.3 };\nconst halfLife = (cfg.halfLifeDays && cfg.halfLifeDays.Reddit) || 10;\nconst posts = $(\"Reddit Relevance Prefilter\").all().map(i=>i.json);\nconst results = [];\nfor (const item of $input.all()) {\n  const r = item.json;\n  const post = posts.find(p => p.permalink === r.permalink) || {};\n  const upvotes = Math.max(0, Number(post.score||0));\n  const comments = Number(post.numComments||0);\n  const eng = ((ew.upvote!=null?ew.upvote:1)*upvotes) + ((ew.comment!=null?ew.comment:3)*comments);\n  const reach = Math.pow(eng, 49/50); // D1: near-linear reach\n  const s = Math.max(-3, Math.min(3, Number(r.sentiment||0)));\n  const sentimentMult = clamp.min + ((s+3)/6)*(clamp.max-clamp.min);\n  let ageDays = 0; if (post.createdAt) { const d = new Date(post.createdAt); if (!isNaN(d)) ageDays = Math.max(0,(Date.now()-d.getTime())/86400000); }\n  const timeDecay = Math.pow(2, -ageDays/halfLife);\n  const post_weight = reach * sentimentMult * timeDecay;\n  results.push({ json: { permalink: r.permalink, companyName: r.companyName, sentiment: r.sentiment, reasoning: r.reasoning, post_weight: parseFloat(post_weight.toFixed(6)) } });\n}\nreturn results;"
+   },
+   "id": "7a246270-3268-4e9f-b0cb-90da91747735",
+   "name": "Compute Reddit post_weight",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2112,
+    1312
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "tableId": "reddit_posts",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "permalink",
+       "condition": "eq",
+       "keyValue": "={{ $json.permalink }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "sentiment",
+       "fieldValue": "={{ $json.sentiment }}"
+      },
+      {
+       "fieldId": "reasoning",
+       "fieldValue": "={{ $json.reasoning }}"
+      },
+      {
+       "fieldId": "companyName",
+       "fieldValue": "={{ $json.companyName }}"
+      },
+      {
+       "fieldId": "post_weight",
+       "fieldValue": "={{ $json.post_weight }}"
+      }
+     ]
+    }
+   },
+   "id": "25fa7988-d46a-4549-825b-877191c058f5",
+   "name": "Write Reddit post_weight",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    2352,
+    1312
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $(\"Build Context\").first().json;\n// X/Reddit track DIRECT competitors only (indirect = LinkedIn company-page + News). Dynamic on competitors.type.\nconst companies = (ctx.companies || []).filter(c => c && (c.type || 'direct') === 'direct');\nconst parts = [];\nfor (const c of companies) {\n  const name = (c.name == null ? \"\" : String(c.name)).trim();\n  if (name) parts.push('\"' + name + '\"');\n  if (c.x_handle) parts.push(\"@\" + String(c.x_handle).replace(/^@/, \"\"));\n}\nconst seen = new Set();\nconst uniq = parts.filter(t => { const k = t.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });\nconst query = uniq.join(\" OR \");\nconst start = $now.minus({ days: 7 }).toISODate();\nreturn [{ json: { query, searchTerms: [query], start } }];"
+   },
+   "id": "7bc403c0-50ca-4e48-91ca-3d29c7e1e28f",
+   "name": "Build X Queries",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    608,
+    1712
+   ],
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const out = []; const seen = new Set();\nfor (const item of $input.all()) { const t = item.json || {}; const id = t.id || t.tweetId || t.rest_id; if (!id || seen.has(id)) continue; seen.add(id); const author = t.author || {}; const followers = Number(author.followers||0); const viewCount = Number(t.viewCount||t.views||0); let baseWeight = 1; if (followers >= 100000) baseWeight = 6; else if (followers >= 10000) baseWeight = 5; else if (followers >= 1000) baseWeight = 4; else if (followers >= 500) baseWeight = 3; else if (followers >= 50) baseWeight = 2; let authorWeight = baseWeight; if (author.isVerified || author.isBlueVerified) authorWeight = baseWeight < 5 ? baseWeight + 1 : 5; out.push({ json: { id: String(id), twitterUrl: t.url || \"\", url: t.url || \"\", text: t.text || \"\", createdAt: t.createdAt || \"\", likeCount: Number(t.likeCount||0), retweetCount: Number(t.retweetCount||0), replyCount: Number(t.replyCount||0), quoteCount: Number(t.quoteCount||0), bookmarkCount: Number(t.bookmarkCount||0), viewCount, isQuote: !!t.isQuote, isRetweet: !!t.isRetweet, followers, authorWeight } }); }\nreturn out;"
+   },
+   "id": "139e44ed-e12a-4051-84f1-648fae70bea9",
+   "name": "Flatten X Data",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1104,
+    1712
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/tweets?on_conflict=id",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Prefer",
+       "value": "resolution=ignore-duplicates,return=representation"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ id: $json.id, twitterUrl: $json.twitterUrl, url: $json.url, text: $json.text, createdAt: $json.createdAt, likeCount: $json.likeCount, retweetCount: $json.retweetCount, replyCount: $json.replyCount, quoteCount: $json.quoteCount, viewCount: $json.viewCount, followers: $json.followers }) }}",
+    "options": {}
+   },
+   "id": "821e390b-2272-4bd3-88ff-0e10349056d1",
+   "name": "Upsert tweets",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1360,
+    1712
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  if (a === -1 || b === -1 || b <= a) continue;\n  let parsed; try { parsed = JSON.parse(raw.slice(a, b + 1)); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) { if (e && e.id) results.push({ json: e }); }\n}\nreturn results;"
+   },
+   "id": "efd2d19c-8766-4cae-ada6-f3ad9b7ac06e",
+   "name": "Parse X Relevance",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1856,
+    1712
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; if (typeof ch.text === 'string') return ch.text; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  const txt = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n  let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) results.push({ json: { activity_id: e.activity_id, companyName: e.companyName, sentiment: e.sentiment, reasoning: e.reasoning } });\n}\nreturn results;"
+   },
+   "id": "89a797d4-6bc4-4a9a-be27-d203db65b67e",
+   "name": "Parse X LLM",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2352,
+    1712
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": false,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "NONE",
+       "operator": {
+        "type": "string",
+        "operation": "notEquals"
+       }
+      },
+      {
+       "leftValue": "={{ $json.companyName }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "45085a89-5a8b-4ee1-a86f-d65eaf95d686",
+   "name": "X Relevance Gate",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    2608,
+    1712
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $(\"Build Context\").first().json; const cfg = ctx.config || {};\nconst ew = (cfg.engagementWeights && cfg.engagementWeights.X) || { like:1, reply:2, repost:3, quote:4 };\nconst clamp = cfg.sentimentClamp || { min:0.5, max:1.3 };\nconst halfLife = (cfg.halfLifeDays && cfg.halfLifeDays.X) || 7;\nconst tweets = $(\"Flatten X Data\").all().map(i=>i.json);\nconst results = [];\nfor (const item of $input.all()) {\n  const r = item.json;\n  const tw = tweets.find(t => t.id === r.activity_id) || {};\n  const likes = Number(tw.likeCount||0);\n  const replies = Number(tw.replyCount||0);\n  const reposts = Number(tw.retweetCount||0);\n  const quotes = Number(tw.quoteCount||0);\n  const viewCount = Number(tw.viewCount||0);\n  const eng = ((ew.like!=null?ew.like:1)*likes) + ((ew.reply!=null?ew.reply:2)*replies) + ((ew.repost!=null?ew.repost:3)*reposts) + ((ew.quote!=null?ew.quote:4)*quotes);\n  const reachX = Math.pow(viewCount + eng, 49/50); // D1: near-linear reach\n  const authorWeight = Number(tw.authorWeight||1);\n  const s = Math.max(-3, Math.min(3, Number(r.sentiment||0)));\n  const sentimentMult = clamp.min + ((s+3)/6)*(clamp.max-clamp.min);\n  let ageDays = 0; if (tw.createdAt) { const d = new Date(tw.createdAt); if (!isNaN(d)) ageDays = Math.max(0,(Date.now()-d.getTime())/86400000); }\n  const timeDecay = Math.pow(2, -ageDays/halfLife);\n  const post_weight = reachX * authorWeight * sentimentMult * timeDecay;\n  results.push({ json: { id: r.activity_id, companyName: r.companyName, sentiment: r.sentiment, reasoning: r.reasoning, authorWeight: authorWeight, post_weight: parseFloat(post_weight.toFixed(6)) } });\n}\nreturn results;"
+   },
+   "id": "53b2077c-fbdb-461d-aeaa-6946db1f8da4",
+   "name": "Compute X post_weight",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2864,
+    1712
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "tableId": "tweets",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "id",
+       "condition": "eq",
+       "keyValue": "={{ $json.id }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "sentiment",
+       "fieldValue": "={{ $json.sentiment }}"
+      },
+      {
+       "fieldId": "reasoning",
+       "fieldValue": "={{ $json.reasoning }}"
+      },
+      {
+       "fieldId": "companyName",
+       "fieldValue": "={{ $json.companyName }}"
+      },
+      {
+       "fieldId": "post_weight",
+       "fieldValue": "={{ $json.post_weight }}"
+      }
+     ]
+    }
+   },
+   "id": "874bfd46-a689-4653-a82b-6b0a10218947",
+   "name": "Write X post_weight",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    3104,
+    1712
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "content": "## SOV_Workflow_v2\nConfig-driven Share-of-Voice pipeline. Triggers (Manual + Weekly Mon 5am) load active competitors + sov_config, then run 4 platform branches (LinkedIn / Google News / Reddit / X) that each produce per-post post_weight + sentiment + companyName. Final SOV % math runs in the frontend.",
+    "height": 708,
+    "width": 1098,
+    "color": 4
+   },
+   "id": "0fe26e79-2c0d-45df-a8a8-413be2fe5858",
+   "name": "Sticky Note 0408a184",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -528,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "value": "5QnEH5N71IK2mFLrP",
+     "mode": "id"
+    },
+    "customBody": "={{ JSON.stringify({ keyword: $json.keyword, date_filter: \"past-week\", limit: 50, page_number: $json.page, sort_type: \"date_posted\" }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "id": "44528154-51c7-41a5-bbaf-a4536e1f8a43",
+   "name": "Apify LinkedIn (dynamic)",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    704,
+    0
+   ],
+   "executeOnce": false,
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "3Z6SK7F2WoPU3t2sg"
+    },
+    "customBody": "={{ JSON.stringify({ keywords: [...new Set(($json.companies || []).map(c => (c && c.name != null) ? String(c.name).trim() : \"\").filter(Boolean))], maxArticles: 50, timeframe: \"7d\", region_language: \"US:en\", decodeUrls: true, extractDescriptions: true, proxyConfiguration: { useApifyProxy: true } }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "id": "f920b8c6-407b-46f0-ae80-8eba0887d4e2",
+   "name": "Apify Google News (task)",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    608,
+    704
+   ],
+   "executeOnce": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "RSijjMBLS6g1W11GY"
+    },
+    "customBody": "={{ JSON.stringify({ searchQueries: $json.searchQueries, sort: $json.sort, time: $json.time, maxItems: $json.maxItems, proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: [\"RESIDENTIAL\"] } }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "id": "fb48870c-71fa-426b-a3ae-1686d92f785b",
+   "name": "Apify Reddit (per query)",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    864,
+    1104
+   ],
+   "executeOnce": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "61RPP7dywgiy0JPD0"
+    },
+    "customBody": "={{ JSON.stringify({ searchTerms: $json.searchTerms, sort: \"Latest\", start: $json.start, maxItems: 200, includeSearchTerms: true }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "id": "870542f3-3020-4716-964d-561ea931075f",
+   "name": "Apify X (per query)",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    864,
+    1712
+   ],
+   "executeOnce": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json.active }}",
+       "rightValue": "={{ true }}",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      },
+      {
+       "leftValue": "={{ $json.linkedin_url }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "notEmpty",
+        "singleValue": true
+       }
+      },
+      {
+       "leftValue": "={{ $json.linkedin_urn }}",
+       "rightValue": "",
+       "operator": {
+        "type": "string",
+        "operation": "empty",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "e410119b-8f1c-4462-a8b7-d444201f2db0",
+   "name": "Filter Needs URN",
+   "type": "n8n-nodes-base.filter",
+   "typeVersion": 2.3,
+   "position": [
+    -144,
+    64
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "ipHw77V2NMJPy8sbS"
+    },
+    "customBody": "={{ JSON.stringify({ identifier: $input.all().map(i => i.json.linkedin_url).filter(Boolean) }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "id": "092e6948-f3d6-40e7-b669-d02071d48f47",
+   "name": "Apify Resolve URN",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    112,
+    64
+   ],
+   "executeOnce": true,
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const needs = $(\"Filter Needs URN\").all().map(i => i.json);\nfunction norm(u){ return String(u||\"\").trim().toLowerCase().replace(/\\/+$/,\"\"); }\nfunction slugFromUrl(u){ const m = norm(u).match(/\\/company\\/([^\\/?#]+)/); return m ? m[1] : null; }\nfunction looksSlugDerived(name, slug){\n  const n = String(name||\"\").trim();\n  if (!n) return true; // missing\n  if (slug) {\n    const slugWords = slug.replace(/-/g, ' ').toLowerCase().trim();\n    if (n.toLowerCase() === slug.toLowerCase()) return true; // exact slug\n    if (n.toLowerCase() === slugWords) return true; // hyphen-stripped slug\n  }\n  // heuristic: a real display name usually has a space or capital letter; pure lowercase single token = slug-ish\n  if (!/\\s/.test(n) && n === n.toLowerCase() && /[-_]/.test(n)) return true;\n  return false;\n}\nfunction extractDomain(r){\n  const bi = r.basic_info || {};\n  const cand = r.website || r.domain || bi.website || bi.domain || (bi.websites && bi.websites[0]) || null;\n  if (!cand) return null;\n  try { const u = new URL(String(cand).match(/^https?:\\/\\//) ? cand : ('https://' + cand)); return u.hostname.replace(/^www\\./, '').toLowerCase(); } catch(e) { return String(cand).replace(/^https?:\\/\\//,'').replace(/^www\\./,'').split('/')[0].toLowerCase() || null; }\n}\nconst out = [];\nfor (const item of $input.all()) {\n  const r = item.json || {};\n  const bi = r.basic_info || {};\n  const urn = r.company_urn || bi.company_urn || null;\n  if (!urn) continue;\n  const ident = norm(r.input_identifier);\n  const slug = bi.universal_name ? norm(bi.universal_name) : null;\n  let comp = needs.find(c => norm(c.linkedin_url) === ident);\n  if (!comp && slug) comp = needs.find(c => slugFromUrl(c.linkedin_url) === slug);\n  if (!comp && ident) comp = needs.find(c => norm(c.linkedin_url).indexOf(ident) !== -1 || ident.indexOf(norm(c.linkedin_url)) !== -1);\n  if (!comp) continue;\n  const urlSlug = slug || slugFromUrl(comp.linkedin_url);\n  const actorName = (bi.name && String(bi.name).trim()) ? String(bi.name).trim() : null;\n  const actorDomain = extractDomain(r);\n  // Only override name when current is missing/slug-derived and we have a real actor name\n  const finalName = (actorName && looksSlugDerived(comp.name, urlSlug)) ? actorName : comp.name;\n  // Only set domain when current is missing/empty and actor gave one\n  const currentDomain = (comp.domain && String(comp.domain).trim()) ? String(comp.domain).trim().toLowerCase().replace(/^www\\./,'') : null;\n  const finalDomain = currentDomain || actorDomain || null;\n  out.push({ json: { name: finalName, match_url: comp.linkedin_url, linkedin_url: comp.linkedin_url, linkedin_urn: String(urn), domain: finalDomain } });\n}\nreturn out;"
+   },
+   "id": "349b9b2c-6282-40fc-a251-51a39ef2a1a0",
+   "name": "Match URNs",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    352,
+    64
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "tableId": "competitors",
+    "matchType": "allFilters",
+    "filters": {
+     "conditions": [
+      {
+       "keyName": "linkedin_url",
+       "condition": "eq",
+       "keyValue": "={{ $json.match_url }}"
+      }
+     ]
+    },
+    "fieldsUi": {
+     "fieldValues": [
+      {
+       "fieldId": "linkedin_urn",
+       "fieldValue": "={{ $json.linkedin_urn }}"
+      },
+      {
+       "fieldId": "name",
+       "fieldValue": "={{ $json.name }}"
+      },
+      {
+       "fieldId": "domain",
+       "fieldValue": "={{ $json.domain }}"
+      }
+     ]
+    }
+   },
+   "id": "b3cd45c5-3f05-4eff-b5cc-08cdb9b00458",
+   "name": "Update competitors linkedin_urn",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    608,
+    144
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "modelId": {
+     "__rl": true,
+     "value": "gpt-4o-mini",
+     "mode": "list",
+     "cachedResultName": "GPT-4O-MINI"
+    },
+    "responses": {
+     "values": [
+      {
+       "role": "system",
+       "content": "=You are an expert linguistic analyst. Analyze sentiment using an integer scale -3..3. Identify the main company discussed or the authoring company EXCLUSIVELY among: {{ $(\"Build Context\").first().json.companyEnum }}. Aliases and domains for disambiguation: {{ JSON.stringify($(\"Build Context\").first().json.companies) }}. CRITICAL DISAMBIGUATION: reject false matches where a company token refers to something unrelated (e.g. Lumos the crypto token or Harry Potter spell, a medical device, a generic word); only attribute when the text is genuinely about that cybersecurity company; otherwise set companyName to NONE. Companies often post about themselves with we/our without naming themselves: inspect post_url domain/handle to attribute. If not relevant to a listed company or cybersecurity, set companyName to NONE. Input: array of objects with activity_id,text,title,post_url. Output ONLY a valid JSON array, each element with exactly: activity_id, companyName (a listed name or NONE), sentiment (int -3..3), reasoning (one sentence)."
+      },
+      {
+       "content": "={{ JSON.stringify($json) }}"
+      }
+     ]
+    },
+    "builtInTools": {},
+    "options": {
+     "textFormat": {
+      "textOptions": {}
+     },
+     "temperature": 0
+    }
+   },
+   "id": "76c50587-4407-4f26-a61a-fe6a8ad7cfed",
+   "name": "LLM Sentiment+Attribution LinkedIn",
+   "type": "@n8n/n8n-nodes-langchain.openAi",
+   "typeVersion": 2.3,
+   "position": [
+    1360,
+    208
+   ],
+   "retryOnFail": true,
+   "maxTries": 5,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "modelId": {
+     "__rl": true,
+     "value": "gpt-4o-mini",
+     "mode": "list",
+     "cachedResultName": "GPT-4O-MINI"
+    },
+    "responses": {
+     "values": [
+      {
+       "role": "system",
+       "content": "=You are an expert sentiment + attribution analyst. Identify the main company discussed EXCLUSIVELY among: {{ $(\"Build Context\").first().json.companyEnum }}. Aliases/domains: {{ JSON.stringify($(\"Build Context\").first().json.companies) }}. CRITICAL DISAMBIGUATION: reject false matches where a company token refers to something unrelated (crypto token, Harry Potter spell, medical device, generic word); only attribute when the article is genuinely about that cybersecurity company; else companyName=NONE. Sentiment integer -3..3. Input objects have url,title,source,articleText. Output ONLY a JSON array, each element with exactly: url, companyName (listed name or NONE), sentiment (int), reasoning (one sentence)."
+      },
+      {
+       "content": "={{ JSON.stringify($json) }}"
+      }
+     ]
+    },
+    "builtInTools": {},
+    "options": {
+     "textFormat": {
+      "textOptions": {}
+     },
+     "temperature": 0
+    }
+   },
+   "id": "4ab0772a-5004-490e-8f68-ed4529e2855d",
+   "name": "LLM Sentiment+Attribution News",
+   "type": "@n8n/n8n-nodes-langchain.openAi",
+   "typeVersion": 2.3,
+   "position": [
+    1856,
+    704
+   ],
+   "retryOnFail": true,
+   "maxTries": 5,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "modelId": {
+     "__rl": true,
+     "value": "gpt-4o-mini",
+     "mode": "list",
+     "cachedResultName": "GPT-4O-MINI"
+    },
+    "responses": {
+     "values": [
+      {
+       "role": "system",
+       "content": "You evaluate news source credibility. Given url and source, return a credibility_score 0-100 (80-100 major established outlets/government/academic; 50-79 niche but legitimate; 0-49 unknown/blogs/questionable). Output ONLY a JSON array, each element with exactly: url, source, credibility_score (number 0-100), credibility_label (High/Medium/Low), reasoning (one sentence)."
+      },
+      {
+       "content": "={{ JSON.stringify({ url: $json.url, source: ($(\"Extract Article Text\").all().map(i=>i.json).find(a => a.url === $json.url) || {}).source || \"\" }) }}"
+      }
+     ]
+    },
+    "builtInTools": {},
+    "options": {
+     "textFormat": {
+      "textOptions": {}
+     },
+     "temperature": 0
+    }
+   },
+   "id": "ae99410e-8138-43e6-bf36-8ad3585fed38",
+   "name": "LLM Source Credibility News",
+   "type": "@n8n/n8n-nodes-langchain.openAi",
+   "typeVersion": 2.3,
+   "position": [
+    2608,
+    704
+   ],
+   "retryOnFail": true,
+   "maxTries": 5,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const results = [];\nfor (const item of $input.all()) { const j = item.json || {}; let raw = (typeof j.content === 'string' ? j.content : null) ?? j.output_text ?? j.text ?? (j.message && j.message.content) ?? (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) ?? ''; if (typeof raw !== 'string') raw = JSON.stringify(raw); raw = raw.replace(/```json|```/g, '').trim(); const m = raw.match(/\\[[\\s\\S]*\\]/); const txt = m ? m[0] : raw; let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; } const arr = Array.isArray(parsed) ? parsed : [parsed]; for (const e of arr) results.push({ json: e }); }\nreturn results;"
+   },
+   "id": "c59c0bbb-5c98-4e58-997c-7c06eadba1a5",
+   "name": "Parse News Credibility",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2736,
+    704
+   ]
+  },
+  {
+   "parameters": {
+    "modelId": {
+     "__rl": true,
+     "value": "gpt-4o-mini",
+     "mode": "list",
+     "cachedResultName": "GPT-4O-MINI"
+    },
+    "responses": {
+     "values": [
+      {
+       "role": "system",
+       "content": "=You are an expert sentiment + attribution analyst. Identify the main company discussed EXCLUSIVELY among: {{ $(\"Build Context\").first().json.companyEnum }}. Aliases/domains: {{ JSON.stringify($(\"Build Context\").first().json.companies) }}. CRITICAL DISAMBIGUATION: reject false matches where a company token refers to something unrelated (crypto token, Harry Potter spell, medical device, generic word); only attribute when the post is genuinely about that cybersecurity company; else companyName=NONE. If selfText is empty, use the title alone. Sentiment integer -3..3. Input objects have permalink,title,selfText. Output ONLY a JSON array, each element with exactly: permalink, companyName (listed name or NONE), sentiment (int), reasoning (one sentence)."
+      },
+      {
+       "content": "={{ JSON.stringify($json) }}"
+      }
+     ]
+    },
+    "builtInTools": {},
+    "options": {
+     "textFormat": {
+      "textOptions": {}
+     },
+     "temperature": 0
+    }
+   },
+   "id": "520ea661-43a5-44e9-926b-e6a0df0ca9f9",
+   "name": "LLM Sentiment+Attribution Reddit",
+   "type": "@n8n/n8n-nodes-langchain.openAi",
+   "typeVersion": 2.3,
+   "position": [
+    1360,
+    1312
+   ],
+   "retryOnFail": true,
+   "maxTries": 5,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "modelId": {
+     "__rl": true,
+     "value": "gpt-4o-mini",
+     "mode": "list",
+     "cachedResultName": "GPT-4O-MINI"
+    },
+    "responses": {
+     "values": [
+      {
+       "role": "system",
+       "content": "=You are a strict data filtering system for cybersecurity social media content. You receive a single JSON object representing one post with fields like id,text,url,createdAt. TASK: determine if relevant to cybersecurity discussions involving any of: {{ $(\"Build Context\").first().json.companyEnum }} (use these aliases/handles for matching: {{ JSON.stringify($(\"Build Context\").first().json.companies) }}). RELEVANCE RULES: keep if (1) mentions a listed company explicitly by name, handle, or close variant; OR (2) clearly discusses cybersecurity (IAM, IGA, PAM, SOC, SOAR, CTEM, identity governance, access control, security automation, threat detection) AND plausibly tied to a listed company; OR (3) announcements/funding/partnerships/features clearly tied to a listed company. REMOVE IF: generic tech/AI/startup not clearly cybersecurity; physical/non-cyber meaning of security; unrelated job posts; unrelated companies; weak/unclear relevance (be conservative); a token refers to something unrelated (e.g. Lumos as a crypto token or Harry Potter spell, a medical device). OUTPUT: return ONLY a valid JSON array. If relevant return the original object unchanged in an array; if not relevant return []. Copy ALL fields exactly, add/remove nothing. Be strict: when unsure return []."
+      },
+      {
+       "content": "={{ JSON.stringify($json) }}"
+      }
+     ]
+    },
+    "builtInTools": {},
+    "options": {
+     "temperature": 0
+    }
+   },
+   "id": "8d72dd5f-7d10-47e6-a55c-797ce20f7e07",
+   "name": "LLM X Strict Relevance Filter",
+   "type": "@n8n/n8n-nodes-langchain.openAi",
+   "typeVersion": 2.3,
+   "position": [
+    1600,
+    1712
+   ],
+   "retryOnFail": true,
+   "maxTries": 5,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "modelId": {
+     "__rl": true,
+     "value": "gpt-4o-mini",
+     "mode": "list",
+     "cachedResultName": "GPT-4O-MINI"
+    },
+    "responses": {
+     "values": [
+      {
+       "role": "system",
+       "content": "=You are an expert sentiment + attribution analyst. Identify the main company discussed EXCLUSIVELY among: {{ $(\"Build Context\").first().json.companyEnum }}. Aliases/handles: {{ JSON.stringify($(\"Build Context\").first().json.companies) }}. CRITICAL DISAMBIGUATION: reject false matches where a token refers to something unrelated; only attribute when genuinely about that cybersecurity company; else companyName=NONE. Sentiment integer -3..3. Input objects have id,text. Output ONLY a JSON array, each element with exactly: activity_id (the id from input), companyName (listed name or NONE), sentiment (int), reasoning (one sentence)."
+      },
+      {
+       "content": "={{ JSON.stringify($json) }}"
+      }
+     ]
+    },
+    "builtInTools": {},
+    "options": {
+     "textFormat": {
+      "textOptions": {}
+     },
+     "temperature": 0
+    }
+   },
+   "id": "f971a5c7-7a2b-4c1c-874a-8c269b565750",
+   "name": "LLM Sentiment+Attribution X",
+   "type": "@n8n/n8n-nodes-langchain.openAi",
+   "typeVersion": 2.3,
+   "position": [
+    2112,
+    1712
+   ],
+   "retryOnFail": true,
+   "maxTries": 5,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "openAiApi": {
+     "id": "CtqX2OknSkmWHoOu",
+     "name": "OpenAI account 2"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "numberInputs": 3
+   },
+   "id": "e44fb769-f85b-42ec-9e65-a33a8b50aad7",
+   "name": "Snapshot Barrier",
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    3408,
+    704
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "linkedin_posts",
+    "returnAll": true,
+    "filterType": "none"
+   },
+   "id": "a320c188-e476-4f70-9d11-ddc2106c48da",
+   "name": "Get linkedin_posts (snap)",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    3632,
+    704
+   ],
+   "executeOnce": true,
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "googlenews",
+    "returnAll": true,
+    "filterType": "none"
+   },
+   "id": "d34c6567-7f77-4950-a0c6-d1599c1afffe",
+   "name": "Get googlenews (snap)",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    3840,
+    704
+   ],
+   "executeOnce": true,
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "reddit_posts",
+    "returnAll": true,
+    "filterType": "none"
+   },
+   "id": "f4040c8e-b45d-4aaf-8909-29624949f459",
+   "name": "Get reddit_posts (snap)",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    4064,
+    704
+   ],
+   "executeOnce": true,
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "tableId": "tweets",
+    "returnAll": true,
+    "filterType": "none"
+   },
+   "id": "fa9e6741-5591-496a-ace7-99dc46499f32",
+   "name": "Get tweets (snap)",
+   "type": "n8n-nodes-base.supabase",
+   "typeVersion": 1,
+   "position": [
+    4288,
+    704
+   ],
+   "executeOnce": true,
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const helpers = this.helpers;\nconst SRK = '<REDACTED_SUPABASE_JWT>';\nconst SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\n// classifier employees (external determination on LinkedIn must match the live board)\nconst EMP = {};\ntry {\n  const aff = await helpers.httpRequest({ method:'GET', url: SB + '/author_affiliation?select=profile_id,competitor&verdict=eq.employee', headers:{ apikey:SRK, Authorization:'Bearer '+SRK }, json:true });\n  for (const a of (aff || [])) { if (a && a.profile_id && a.competitor) EMP[String(a.competitor).trim().toLowerCase() + '|' + String(a.profile_id)] = true; }\n} catch (e) { /* heuristic-only fallback */ }\n\nconst ctx = $(\"Build Context\").first().json; const cfg = ctx.config || {};\nconst comps = ctx.companies || [];                                   // active competitors (now carry .type)\nconst allNames = comps.map(c => c.name).filter(Boolean);             // rows we emit (direct + indirect)\nconst directSet = new Set(comps.filter(c => (c.type || 'direct') !== 'indirect').map(c => c.name)); // SOV denominator\nconst urnSet = new Set(comps.map(c => String(c.linkedin_urn||'')).filter(Boolean));\nconst platformWeights = cfg.platformWeights || { LinkedIn:0.35, \"Google News\":0.30, Reddit:0.20, X:0.15 };\nconst minPlatformVolume = (cfg.minPlatformVolume != null) ? Number(cfg.minPlatformVolume) : 3;\nconst overallW = cfg.overallWeights || { unweighted:0.20, weighted:0.80, sentiment:0.0 };\nconst HL = cfg.halfLifeDays || { LinkedIn:14, \"Google News\":30, Reddit:10, X:7 };\n\nfunction rows(node){ try { return $(node).all().map(i=>i.json); } catch(e){ return []; } }\nconst sources = {\n  'LinkedIn':     { rows: rows('Get linkedin_posts (snap)'), ts:'posted_at' },\n  'Google News':  { rows: rows('Get googlenews (snap)'),     ts:'publishedAt' },\n  'Reddit':       { rows: rows('Get reddit_posts (snap)'),   ts:'createdAt' },\n  'X':            { rows: rows('Get tweets (snap)'),          ts:'createdAt' }\n};\nconst now = Date.now();\nfunction ageDays(t){ if(!t) return 0; const d = new Date(t); if(isNaN(d)) return 0; return Math.max(0,(now-d.getTime())/86400000); }\nfunction decay(age, hl){ return age <= 7 ? 1 : Math.pow(2, -age/hl); }   // 7-day grace, then decay on actual age\nfunction liExternal(r){\n  const a = (r.author && typeof r.author === 'object') ? r.author : {};\n  const prof = String(a.profile_id||''); const head = String(a.headline||'').toLowerCase(); const cn = String(r.companyName||'');\n  if (prof && urnSet.has(prof)) return false;\n  if (cn && cn !== 'NONE' && head.indexOf(cn.toLowerCase()) !== -1) return false;\n  if (prof && cn && cn !== 'NONE' && EMP[cn.toLowerCase() + '|' + prof]) return false;\n  return true;\n}\n\nconst agg = {}; const platformTotals = {};   // platformTotals summed over DIRECT only = the denominator\nfor (const platform of Object.keys(sources)) {\n  agg[platform] = {}; platformTotals[platform] = 0;\n  const hl = HL[platform] || 14;\n  for (const r of sources[platform].rows) {\n    const name = r.companyName;\n    if (!name || name === 'NONE') continue;\n    if (!allNames.includes(name)) continue;\n    const pw = Number(r.post_weight); if (!isFinite(pw)) continue;\n    const dw = decay(ageDays(r[sources[platform].ts]), hl);\n    if (!agg[platform][name]) agg[platform][name] = { pw:0, cntw:0, count:0, sentSum:0, sentCount:0 };\n    const A = agg[platform][name];\n    A.pw += pw; A.cntw += dw; A.count += 1;\n    const ext = (platform === 'LinkedIn') ? liExternal(r) : true;   // News/Reddit/X are all external\n    if (ext && r.sentiment != null && isFinite(Number(r.sentiment))) { A.sentSum += Number(r.sentiment); A.sentCount += 1; }\n    if (directSet.has(name)) platformTotals[platform] += pw;\n  }\n}\n\nconst eligible = Object.keys(sources).filter(p => platformTotals[p] >= minPlatformVolume);\nlet wSum = 0; for (const p of eligible) wSum += (Number(platformWeights[p]) || 0);\nconst normWeights = {}; for (const p of eligible) normWeights[p] = wSum > 0 ? ((Number(platformWeights[p]) || 0) / wSum) : (1 / (eligible.length || 1));\n\nlet grandCntw = 0; const cntwBy = {}; const cntBy = {}; const sentSumBy = {}; const sentCntBy = {};\nfor (const platform of Object.keys(sources)) {\n  for (const name of Object.keys(agg[platform])) {\n    const A = agg[platform][name];\n    cntwBy[name] = (cntwBy[name] || 0) + A.cntw;\n    cntBy[name]  = (cntBy[name]  || 0) + A.count;\n    sentSumBy[name] = (sentSumBy[name] || 0) + A.sentSum;\n    sentCntBy[name] = (sentCntBy[name] || 0) + A.sentCount;\n    if (directSet.has(name)) grandCntw += A.cntw;\n  }\n}\n\nfunction isoMonday(d){ const dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); const day = dt.getUTCDay() || 7; if (day !== 1) dt.setUTCDate(dt.getUTCDate() - (day - 1)); return dt.toISOString().slice(0,10); }\nconst week_start = isoMonday(new Date());\n\nconst out = [];\nfor (const name of allNames) {\n  let weighted = 0;\n  for (const p of eligible) {\n    const total = platformTotals[p];\n    const cpw = (agg[p][name] && agg[p][name].pw) || 0;\n    weighted += (normWeights[p] || 0) * (total > 0 ? (cpw / total) : 0);\n  }\n  const weighted_pct = parseFloat((weighted * 100).toFixed(4));\n  const unweighted_pct = parseFloat((grandCntw > 0 ? ((cntwBy[name] || 0) / grandCntw) * 100 : 0).toFixed(4));\n  const avgSent = (sentCntBy[name] > 0) ? (sentSumBy[name] / sentCntBy[name]) : 0;\n  const sentiment_pct = parseFloat((((avgSent + 3) / 6) * 100).toFixed(4));\n  const overall = parseFloat((((overallW.weighted!=null?overallW.weighted:0.80) * weighted_pct) + ((overallW.unweighted!=null?overallW.unweighted:0.20) * unweighted_pct) + ((overallW.sentiment!=null?overallW.sentiment:0.0) * sentiment_pct)).toFixed(4));\n  out.push({ week_start, company: name, overall, weighted_pct, unweighted_pct, sentiment_pct, posts_count: (cntBy[name] || 0) });\n}\nreturn [{ json: { week_start, rows: out } }];\n"
+   },
+   "id": "e177abfd-cee8-4320-8d9a-90cf13fa43ac",
+   "name": "Compute SOV Snapshot",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    4512,
+    704
+   ],
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://addwjngdezmmnxddulll.supabase.co/rest/v1/sov_weekly?on_conflict=week_start,company",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.rows) }}",
+    "options": {}
+   },
+   "id": "d49f5397-e6a2-429a-b637-909b04521184",
+   "name": "Write sov_weekly",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    4720,
+    704
+   ],
+   "executeOnce": true,
+   "credentials": {
+    "supabaseApi": {
+     "id": "xborjCx9xUlMRzHB",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $('Build Context').first().json;\nconst companies = ctx.companies || [];\nconst withUrn = companies.filter(c => c && c.linkedin_urn);\nconst company_urns = withUrn.map(c => String(c.linkedin_urn)).join(', ');\nconst urnMap = {};\nfor (const c of withUrn) urnMap[String(c.linkedin_urn)] = c.name;\nreturn [{ json: { company_urns, urnMap } }];"
+   },
+   "id": "47e67f08-0c0c-4faf-ae60-c9f19cc9fad1",
+   "name": "Build LinkedIn URN Queries",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    -96,
+    832
+   ],
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "operation": "Run actor and get dataset",
+    "actorId": {
+     "__rl": true,
+     "value": "5QnEH5N71IK2mFLrP",
+     "mode": "id"
+    },
+    "customBody": "={{ JSON.stringify({ date_filter: \"past-week\", company_urns: $json.company_urns, limit: 50, sort_type: \"relevance\" }) }}",
+    "authentication": "apifyOAuth2Api"
+   },
+   "id": "276a510f-aa33-4331-9e60-e9ea77af6c43",
+   "name": "Apify LinkedIn Company Posts",
+   "type": "@apify/n8n-nodes-apify.apify",
+   "typeVersion": 1,
+   "position": [
+    208,
+    832
+   ],
+   "executeOnce": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "credentials": {
+    "apifyOAuth2Api": {
+     "id": "X2A3HJhtJZgM2KEe",
+     "name": "Apify account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const urnMap = $('Build LinkedIn URN Queries').first().json.urnMap || {};\nconst out = [];\nfor (const item of $input.all()) {\n  const t = item.json || {};\n  if (!t.activity_id) continue;\n  const stats = t.stats || {};\n  const article = (t.content && t.content.article) ? t.content.article : {};\n  const author = t.author || {};\n  const cn = urnMap[String(author.profile_id || '')] || null;\n  out.push({ json: { activity_id: t.activity_id, post_url: t.post_url || '', text: t.text || '', full_urn: t.full_urn || '', author: author, totalReactions: stats.total_reactions || 0, comments: stats.comments || 0, reshares: stats.shares || 0, posted_at: (t.posted_at && t.posted_at.date) ? t.posted_at.date : null, hashtags: t.hashtags || [], content: t.content || {}, is_reshare: !!t.is_reshare, metadata: t.metadata || {}, search_input: t.search_input || {}, title: article.title || '', imageURL: article.thumbnail_url || '', source: 'company_page', companyHint: cn } });\n}\nreturn out;"
+   },
+   "id": "1c81954b-56fd-4d0d-80c6-a8af0a80eb2f",
+   "name": "Flatten LinkedIn Company",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    480,
+    832
+   ]
+  },
+  {
+   "parameters": {},
+   "id": "11298d64-5793-4082-b3f9-24deae993373",
+   "name": "Merge LinkedIn Streams",
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    912,
+    304
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const items = $input.all().map(i => i.json);\nconst map = new Map();\nfor (const r of items) {\n  const id = r.activity_id;\n  if (!id) continue;\n  const ex = map.get(id);\n  if (!ex) { map.set(id, r); continue; }\n  if (ex.source !== 'company_page' && r.source === 'company_page') map.set(id, r);\n}\nreturn Array.from(map.values()).map(j => ({ json: j }));"
+   },
+   "id": "d3e854ff-4161-4075-a9a7-e9f850239938",
+   "name": "Dedup LinkedIn by activity_id",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1120,
+    304
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const dd = $('Dedup LinkedIn by activity_id').all().map(i => i.json);\nconst byId = {};\nfor (const p of dd) byId[p.activity_id] = p;\nconst out = [];\nfor (const item of $input.all()) {\n  const r = Object.assign({}, item.json);\n  const src = byId[r.activity_id];\n  if (src && src.source === 'company_page') {\n    if (!r.companyName || r.companyName === 'NONE') r.companyName = src.companyHint || r.companyName;\n  }\n  out.push({ json: r });\n}\nreturn out;"
+   },
+   "id": "06d3630a-0e25-458a-8b82-cf3459ee90b5",
+   "name": "Fix Company-Page Attribution",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1904,
+    208
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const sd = $getWorkflowStaticData('global');\nconst ctx = $('Build Context').first().json;\nconst cfg = ctx.config || {};\nconst MAX = (cfg.linkedinMaxPages != null) ? Number(cfg.linkedinMaxPages) : 8;\nconst companies = (ctx.companies || []).filter(c => c && c.name);\nsd.li = {\n  active: companies.map(c => ({ name: String(c.name), keyword: String(c.name), raw: 0, pages: 0 })),\n  acc: [],\n  maxPages: MAX,\n  truncated: []\n};\nconst pages = [];\nfor (let p = 1; p <= MAX; p++) pages.push({ json: { page: p } });\nreturn pages;\n"
+   },
+   "id": "7490d671-0c74-40f7-98d3-a8a9ae123c67",
+   "name": "LI Loop Init",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    -128,
+    1184
+   ]
+  },
+  {
+   "parameters": {
+    "options": {}
+   },
+   "id": "cf7c8e43-c053-4ee9-a792-63c4beafb637",
+   "name": "LI Page Loop",
+   "type": "n8n-nodes-base.splitInBatches",
+   "typeVersion": 3,
+   "position": [
+    112,
+    1184
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const sd = $getWorkflowStaticData('global');\nconst page = $json.page;\nconst active = (sd.li && sd.li.active) || [];\nif (!active.length) return [{ json: { _skip: true, page: page } }];\nreturn active.map(c => ({ json: { keyword: c.keyword, page: page } }));"
+   },
+   "id": "3bbb8691-32a5-4b91-8951-e4b1774c6d0f",
+   "name": "LI Build Active Queries",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    352,
+    1184
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "leftValue": "={{ $json._skip }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "16ac8b5e-6c73-4970-8878-4e2267ce395a",
+   "name": "LI Has Active",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.3,
+   "position": [
+    560,
+    1264
+   ]
+  },
+  {
+   "parameters": {
+    "modelId": {
+     "__rl": true,
+     "value": "gpt-4o-mini",
+     "mode": "list",
+     "cachedResultName": "GPT-4O-MINI"
+    },
+    "responses": {
+     "values": [
+      {
+       "role": "system",
+       "content": "=You are an expert sentiment + attribution analyst. Identify the main company discussed EXCLUSIVELY among: {{ $('Build Context').first().json.companyEnum }}. Aliases/domains for disambiguation: {{ JSON.stringify($('Build Context').first().json.companies) }}. CRITICAL DISAMBIGUATION: reject false token matches (crypto token, generic word, unrelated company or product); attribute only when the text is genuinely about that cybersecurity company; else companyName=NONE. Sentiment integer -3..3. Input objects have activity_id, text, author. Output ONLY a JSON array, each element exactly: {activity_id, companyName (listed name or NONE), sentiment (int), reasoning (one short sentence)}."
+      },
+      {
+       "content": "={{ JSON.stringify($json) }}"
+      }
+     ]
+    },
+    "builtInTools": {},
+    "options": {
+     "textFormat": {
+      "textOptions": {}
+     },
+     "temperature": 0
+    }
+   },
+   "id": "f9ce8a30-4e41-4301-a020-ac0595454df6",
+   "name": "Score LI Page",
+   "type": "@n8n/n8n-nodes-langchain.openAi",
+   "typeVersion": 2.3,
+   "position": [
+    1088,
+    -160
+   ],
+   "credentials": {
+    "openAiApi": {
+     "id": "m4FUdT4FgRFOHRKl",
+     "name": "Dustin's OpenAi account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const results = [];\nfunction llmText(j){\n  if (j && Array.isArray(j.output)) { for (const mm of j.output) { if (mm && Array.isArray(mm.content)) { for (const c of mm.content) { if (c && typeof c.text === 'string') return c.text; } } } }\n  if (j && typeof j.text === 'string') return j.text;\n  if (j && typeof j.content === 'string') return j.content;\n  if (j && j.message && typeof j.message.content === 'string') return j.message.content;\n  if (j && Array.isArray(j.choices) && j.choices[0]) { const ch = j.choices[0]; if (ch.message && (ch.message.content || ch.message.reasoning)) return ch.message.content || ch.message.reasoning; }\n  return '';\n}\nfor (const item of $input.all()) {\n  let raw = String(llmText(item.json) || '').replace(/```json/gi, '').replace(/```/g, '').trim();\n  if (!raw) continue;\n  const a = raw.indexOf('['); const b = raw.lastIndexOf(']');\n  const txt = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n  let parsed; try { parsed = JSON.parse(txt); } catch (e) { continue; }\n  const arr = Array.isArray(parsed) ? parsed : [parsed];\n  for (const e of arr) results.push({ json: e });\n}\nreturn results;"
+   },
+   "id": "5efe949f-cd21-42bf-82bc-be65ebc4ab09",
+   "name": "Parse LI Page",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1312,
+    -160
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Window-exhaustion gate (NOT relevance gate): keep paginating a company until\n// its past-week window runs out (a page returns < 50 raw results) or we hit the\n// safety cap. Accumulate ALL relevant (LLM-attributed) posts regardless of page,\n// so deep-but-relevant posts (e.g. 5-6 days old, page 7) are never missed.\nconst sd = $getWorkflowStaticData('global');\nif (!sd.li) sd.li = { active: [], acc: [], maxPages: 8, truncated: [] };\nconst inp = $input.all().map(i => i.json);\nif (inp.length && inp[0]._skip) return [{ json: { skipped: true } }];\n\nconst flat = $('Flatten LinkedIn').all().map(i => i.json);\n// raw posts returned THIS page, grouped by the company keyword they were found under\nconst rawByKw = {};\nconst flatById = {};\nfor (const ff of flat) {\n  const k = String(ff.search_input || '');\n  rawByKw[k] = (rawByKw[k] || 0) + 1;\n  flatById[ff.activity_id] = ff;\n}\n\n// accumulate every relevant post (decides WHAT we keep, never WHEN we stop)\nconst cnt = {};\nfor (const s of inp) {\n  if (s && s.companyName && s.companyName !== 'NONE') {\n    cnt[s.companyName] = (cnt[s.companyName] || 0) + 1;\n    const raw = flatById[s.activity_id] || {};\n    sd.li.acc.push(Object.assign({}, raw, { companyName: s.companyName, sentiment: s.sentiment, reasoning: s.reasoning }));\n  }\n}\n\nconst LIMIT = 50;                       // actor page size\nconst maxPages = sd.li.maxPages || 8;   // safety ceiling\nconst stillActive = [];\nfor (const c of (sd.li.active || [])) {\n  const got = rawByKw[c.keyword] || 0;\n  c.raw = (c.raw || 0) + got;\n  c.pages = (c.pages || 0) + 1;\n  if (got < LIMIT) {\n    // partial/empty page => past-week window exhausted => stop this company\n  } else if (c.pages >= maxPages) {\n    // full page but hit the safety cap => stop + record truncation so we can raise the cap\n    sd.li.truncated.push({ company: c.name, pagesScanned: c.pages, rawSeen: c.raw });\n  } else {\n    stillActive.push(c); // full page + under cap => more past-week posts may exist => keep going\n  }\n}\nsd.li.active = stillActive;\nreturn [{ json: { kept: stillActive.length, rawByKeyword: rawByKw, relevantThisPage: cnt, truncated: sd.li.truncated } }];\n"
+   },
+   "id": "eb371a09-49cf-4745-87e4-435aaa6b716f",
+   "name": "LI Accumulate Decide",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1520,
+    -160
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const sd = $getWorkflowStaticData('global');\nconst acc = (sd.li && sd.li.acc) || [];\nreturn acc.map(p => ({ json: p }));"
+   },
+   "id": "5b4fb215-d8f8-448e-a7eb-0f9a63206cb9",
+   "name": "LI Emit Accumulated",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    352,
+    1408
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// === Weekly Decay Refresh (n8n Code node, Run Once for All Items) ===\n// Recomputes post_weight on ALL rows of every post table at the CURRENT age, using\n// the FINAL model (matches recompute_weights.py / Compute * nodes):\n//   reach = eng^(49/50);  LinkedIn pw = (B_author + reach*M_author)*sentMult*decay\n//   (B company1/external5, M company1/external1.5); X = reach*authorWeight*sentMult*decay\n//   (reach over viewCount+eng); Reddit = reach*sentMult*decay; News reach=1.\n//   authorType is CLASSIFIER-AWARE (URN / headline / author_affiliation employee).\n//   decay = 7-day grace then 2^(-age/halfLife).\n// CHUNKED: streams ~300 rows at a time (read batch -> recompute -> write -> release)\n// so peak memory is one batch, not the whole dataset. Does NOT touch sov_weekly.\nconst helpers = this.helpers;\nconst KEY = '<REDACTED_SUPABASE_JWT>';\nconst BASE = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H = { apikey: KEY, Authorization: 'Bearer ' + KEY };\n\nconst ctx = $('Build Context').first().json;\nconst cfg = (ctx && ctx.config) ? ctx.config : {};\nconst clamp = cfg.sentimentClamp || { min: 0.5, max: 1.3 };\nconst ewAll = cfg.engagementWeights || {};\nconst lw = ewAll.LinkedIn || { reaction: 1, comment: 3, reshare: 10, image: 1.5 };\nconst xw = ewAll.X || { like: 1, reply: 2, repost: 10, quote: 4 };\nconst rw = ewAll.Reddit || { upvote: 1, comment: 3 };\nconst AB = cfg.authorBaseline || { company: 1.0, external: 5.0 };\nconst AEM = cfg.authorEngMult || { company: 1.0, external: 1.5 };\nconst hl = cfg.halfLifeDays || {};\nconst hlLI = hl.LinkedIn || 14, hlX = hl.X || 7, hlReddit = hl.Reddit || 10, hlNews = hl['Google News'] || 30;\nconst urnSet = new Set((ctx && ctx.companies ? ctx.companies : []).map(c => String(c.linkedin_urn || '')).filter(Boolean));\n\n// classifier employees (author_affiliation) keyed competitor|profile_id\nconst EMP = {};\ntry {\n  const aff = await helpers.httpRequest({ method: 'GET', url: BASE + '/author_affiliation?select=profile_id,competitor&verdict=eq.employee', headers: H, json: true });\n  for (const a of (aff || [])) { if (a && a.profile_id && a.competitor) EMP[String(a.competitor).trim().toLowerCase() + '|' + String(a.profile_id)] = true; }\n} catch (e) { /* table absent -> URN+headline only */ }\n\nfunction num(x, d) { return (x != null ? Number(x) : d); }\nfunction round6(x) { return parseFloat(Number(x).toFixed(6)); }\nfunction sentMult(x) { const s = Math.max(-3, Math.min(3, Number(x || 0))); return clamp.min + ((s + 3) / 6) * (clamp.max - clamp.min); }\nfunction ageDays(t) { if (!t) return 0; const d = new Date(t); return isNaN(d) ? 0 : Math.max(0, (Date.now() - d.getTime()) / 86400000); }\nfunction decay(age, hlife) { return age <= 7 ? 1 : Math.pow(2, -age / hlife); }\nfunction reachOf(eng) { return Math.pow(Math.max(0, eng), 49 / 50); }\nfunction authorType(r) {\n  const a = (r.author && typeof r.author === 'object') ? r.author : {};\n  const prof = String(a.profile_id || ''); const head = String(a.headline || '').toLowerCase(); const cn = String(r.companyName || '');\n  if (prof && urnSet.has(prof)) return 'company';\n  if (cn && cn !== 'NONE' && head.indexOf(cn.toLowerCase()) !== -1) return 'company';\n  if (prof && cn && cn !== 'NONE' && EMP[cn.toLowerCase() + '|' + prof]) return 'company';\n  return 'external';\n}\n\n// Chunked stream: read BATCH rows (ordered by a stable key) -> recompute -> write -> next.\n// Peak memory = one batch. Upsert leaves row count unchanged, so offset paging stays stable.\nasync function process(table, cols, orderCol, keyCol, computeRow, mode) {\n  const BATCH = 300; let off = 0, total = 0;\n  const hh = Object.assign({}, H, { 'Content-Type': 'application/json', 'Prefer': (mode === 'patch' ? 'return=minimal' : 'resolution=merge-duplicates,return=minimal') });\n  for (;;) {\n    const url = BASE + '/' + table + '?select=' + cols + '&order=' + orderCol + '&limit=' + BATCH + '&offset=' + off;\n    const batch = await helpers.httpRequest({ method: 'GET', url, headers: H, json: true });\n    const arr = Array.isArray(batch) ? batch : [];\n    if (!arr.length) break;\n    const rows = arr.map(computeRow);\n    if (mode === 'patch') {\n      for (const r of rows) {\n        const u = BASE + '/' + table + '?' + keyCol + '=eq.' + encodeURIComponent(r[keyCol]);\n        const body = {}; for (const k in r) { if (k !== keyCol) body[k] = r[k]; }\n        try { await helpers.httpRequest({ method: 'PATCH', url: u, headers: hh, body, json: true }); total++; } catch (e) {}\n      }\n    } else {\n      try { await helpers.httpRequest({ method: 'POST', url: BASE + '/' + table + '?on_conflict=' + keyCol, headers: hh, body: rows, json: true }); total += rows.length; } catch (e) {}\n    }\n    if (arr.length < BATCH) break;\n    off += BATCH;\n  }\n  return total;\n}\n\nconst liN = await process('linkedin_posts', 'activity_id,totalReactions,comments,reshares,imageURL,sentiment,posted_at,author,companyName', 'activity_id', 'activity_id', function (r) {\n  let eng = num(lw.reaction, 1) * Number(r.totalReactions || 0) + num(lw.comment, 3) * Number(r.comments || 0) + num(lw.reshare, 10) * Number(r.reshares || 0);\n  if (r.imageURL && String(r.imageURL).length > 0) eng += num(lw.image, 1.5);\n  const reach = reachOf(eng);\n  const at = authorType(r);\n  const B = at === 'company' ? num(AB.company, 1.0) : num(AB.external, 5.0);\n  const M = at === 'company' ? num(AEM.company, 1.0) : num(AEM.external, 1.5);\n  return { activity_id: r.activity_id, post_weight: round6((B + reach * M) * sentMult(r.sentiment) * decay(ageDays(r.posted_at), hlLI)) };\n}, 'upsert');\n\nconst twN = await process('tweets', 'id,likeCount,replyCount,retweetCount,quoteCount,viewCount,authorWeight,sentiment,createdAt', 'id', 'id', function (r) {\n  const eng = num(xw.like, 1) * Number(r.likeCount || 0) + num(xw.reply, 2) * Number(r.replyCount || 0) + num(xw.repost, 10) * Number(r.retweetCount || 0) + num(xw.quote, 4) * Number(r.quoteCount || 0);\n  const reach = reachOf(Number(r.viewCount || 0) + eng);\n  const aw = (r.authorWeight != null) ? Number(r.authorWeight) : 1;\n  return { id: r.id, post_weight: round6(reach * aw * sentMult(r.sentiment) * decay(ageDays(r.createdAt), hlX)) };\n}, 'upsert');\n\nconst gnN = await process('googlenews', 'url,sentiment,publishedAt', 'url', 'url', function (r) {\n  return { url: r.url, post_weight: round6(1 * sentMult(r.sentiment) * decay(ageDays(r.publishedAt), hlNews)) };\n}, 'upsert');\n\nconst rdN = await process('reddit_posts', 'id,score,numComments,sentiment,createdAt', 'id', 'id', function (r) {\n  const eng = num(rw.upvote, 1) * Math.max(0, Number(r.score || 0)) + num(rw.comment, 3) * Number(r.numComments || 0);\n  return { id: r.id, post_weight: round6(reachOf(eng) * sentMult(r.sentiment) * decay(ageDays(r.createdAt), hlReddit)) };\n}, 'patch');\n\nreturn [{ json: { decayRefresh: true, model: 'eng^(49/50); LI baseline+mult; classifier-aware', batch: 300, linkedin: liN, x: twN, news: gnN, reddit: rdN } }];\n"
+   },
+   "id": "693d2dc9-87c0-4768-a143-68f7cdaeda1b",
+   "name": "Weekly Decay Refresh",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3520,
+    560
+   ],
+   "executeOnce": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "// Weekly classify-new-authors: grow the author_affiliation cache with authors seen\n// this run that aren't cached yet. Heuristic only (URN/headline); unknowns are\n// cached as 'ambiguous' (treated as external for scoring) so a periodic profile-\n// scrape pass resolves them. Scrape/LLM are intentionally NOT run in-flow (cost).\n// Terminal branch off 'Write LinkedIn post_weight' \u2014 never blocks scoring.\nconst helpers = this.helpers;\nconst SRK = '<REDACTED_SUPABASE_JWT>';\nconst SB = 'https://addwjngdezmmnxddulll.supabase.co/rest/v1';\nconst H = { apikey: SRK, Authorization: 'Bearer ' + SRK };\nconst now = new Date().toISOString();\n\nconst ctx = $('Build Context').first().json;\nconst companies = (ctx.companies || []);\nconst urnSet = new Set(companies.map(c => String(c.linkedin_urn||'')).filter(Boolean));\n\n// existing cache keys (so we only classify NEW authors)\nlet existing = new Set();\ntry {\n  const aff = await helpers.httpRequest({ method:'GET', url: SB + '/author_affiliation?select=key', headers: H, json: true });\n  for (const a of (aff || [])) if (a && a.key) existing.add(String(a.key));\n} catch (e) { return [{ json: { cached: 0, note: 'cache read failed: ' + (e.message || e) } }]; }\n\n// attributed posts this run (companyName set) joined to their author object\nconst attributed = $('Compute LinkedIn post_weight').all().map(i=>i.json);\nconst byId = {}; for (const p of $('Dedup LinkedIn by activity_id').all().map(i=>i.json)) byId[p.activity_id] = p;\n\nconst rows = {}; // pid -> verdict row (dedupe within run)\nfor (const r of attributed) {\n  const cn = String(r.companyName||'');\n  if (!cn || cn === 'NONE') continue;\n  const post = byId[r.activity_id] || {};\n  const a = post.author || {};\n  const pid = String(a.profile_id||'');\n  if (!pid || urnSet.has(pid)) continue;          // no id, or the company page itself\n  if (existing.has(pid) || rows[pid]) continue;    // already cached / already handled this run\n  const head = String(a.headline||'').toLowerCase();\n  const verdict = (head && head.indexOf(cn.toLowerCase()) !== -1) ? 'employee' : 'ambiguous';\n  rows[pid] = { key: pid, name: a.name || null, profile_id: pid, competitor: cn, verdict: verdict, employer: (verdict === 'employee' ? cn : null), method: 'heuristic', checked_at: now };\n}\nconst list = Object.values(rows);\nif (!list.length) return [{ json: { cached: 0 } }];\nconst hh = Object.assign({}, H, { 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' });\ntry { await helpers.httpRequest({ method:'POST', url: SB + '/author_affiliation?on_conflict=key', headers: hh, body: list, json: true }); }\ncatch (e) { return [{ json: { cached: 0, error: (e.message || String(e)) } }]; }\nreturn [{ json: { cached: list.length, employee: list.filter(r=>r.verdict==='employee').length, ambiguous: list.filter(r=>r.verdict==='ambiguous').length } }];\n"
+   },
+   "id": "c1f5a7e2-1b3d-4c8a-9e6f-cacheauthors1",
+   "name": "Cache New Authors",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2576,
+    384
+   ],
+   "executeOnce": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "// One item per active competitor -> the paginating HTTP node runs once per company\n// and paginates that company's past-week window internally (page 1..N until a page\n// returns <50). Replaces the entire splitInBatches loop + per-page LLM.\nconst ctx = $('Build Context').first().json;\nconst companies = (ctx.companies || []).filter(c => c && c.name);\nreturn companies.map(c => ({ json: { keyword: String(c.name) } }));\n"
+   },
+   "id": "b1d2e3f4-0000-4aaa-8bbb-mentionsquery1",
+   "name": "Build LinkedIn Mentions Queries",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    320,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.apify.com/v2/acts/5QnEH5N71IK2mFLrP/run-sync-get-dataset-items",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "Bearer <REDACTED_APIFY_TOKEN>"
+      }
+     ]
+    },
+    "sendBody": true,
+    "bodyParameters": {
+     "parameters": [
+      {
+       "name": "keyword",
+       "value": "={{ $json.keyword }}"
+      },
+      {
+       "name": "date_filter",
+       "value": "past-week"
+      },
+      {
+       "name": "limit",
+       "value": "={{ 50 }}"
+      },
+      {
+       "name": "page_number",
+       "value": "={{ 1 }}"
+      },
+      {
+       "name": "sort_type",
+       "value": "date_posted"
+      }
+     ]
+    },
+    "options": {
+     "pagination": {
+      "pagination": {
+       "parameters": {
+        "parameters": [
+         {
+          "type": "body",
+          "name": "page_number",
+          "value": "={{ $pageCount + 1 }}"
+         }
+        ]
+       },
+       "paginationCompleteWhen": "other",
+       "completeExpression": "={{ $response.body.length < 50 }}",
+       "limitPagesFetched": true,
+       "maxRequests": 15,
+       "requestInterval": 300
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "a1b2c3d4-0000-4ccc-8ddd-apifypaginated1",
+   "name": "Apify LinkedIn Paginated",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    560,
+    0
+   ],
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const ctx = $('Build Context').first().json;\nconst config = ctx.config || {};\nconst companies = (ctx.companies || []).filter(c => c && c.name);\nconst companyEnum = ctx.companyEnum || '';\n// Per-company LinkedIn search keyword overrides (specific names cut generic-word junk -> cheaper Apify).\n// Default = the full company name. Opti gets TWO queries. (Console provisional: confirm.)\nconst KW = { 'Lumos': ['Lumos'], 'Opti': ['Opti IAM','Opti Identity'], 'OFFROAD': ['Offroad Security'], '7AI': ['7AI'], 'Console': ['Console security'] };\nconst out = [];\nfor (const c of companies) {\n  const kws = KW[c.name] || [String(c.name)];\n  for (const kw of kws) {\n    out.push({ json: { name: c.name, keyword: kw, aliases: c.aliases || [], linkedin_urn: c.linkedin_urn || '', type: c.type || 'direct', config: config, companies: companies, companyEnum: companyEnum } });\n  }\n}\nreturn out;"
+   },
+   "id": "0080c28a-6d78-444c-9092-61c401f3bfc4",
+   "name": "Build LinkedIn Company Items",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    432,
+    -224
+   ]
+  },
+  {
+   "parameters": {
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "Vw2llLWKqelBGId5"
+    },
+    "workflowInputs": {
+     "mappingMode": "defineBelow",
+     "value": {},
+     "matchingColumns": [],
+     "schema": [],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": true
+    },
+    "mode": "each",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   },
+   "id": "88a9b8af-5318-45fc-a57e-2f0782a7e191",
+   "name": "Dispatch LinkedIn Per-Company",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.3,
+   "position": [
+    656,
+    -224
+   ]
+  }
+ ],
+ "connections": {
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load Competitors": {
+   "main": [
+    [
+     {
+      "node": "Load SOV Config",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Filter Needs URN",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load SOV Config": {
+   "main": [
+    [
+     {
+      "node": "Build Context",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Context": {
+   "main": [
+    [
+     {
+      "node": "Build Reddit Queries",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Build X Queries",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Build LinkedIn Company Items",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Weekly Monday 5am": {
+   "main": [
+    [
+     {
+      "node": "Load Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LinkedIn Has activity_id": {
+   "main": [
+    [
+     {
+      "node": "Upsert linkedin_posts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LinkedIn Relevance Gate": {
+   "main": [
+    [
+     {
+      "node": "Compute LinkedIn post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Compute LinkedIn post_weight": {
+   "main": [
+    [
+     {
+      "node": "Write LinkedIn post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Upsert googlenews": {
+   "main": [
+    [
+     {
+      "node": "Firecrawl Scrape Article",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Firecrawl Scrape Article": {
+   "main": [
+    [
+     {
+      "node": "Extract Article Text",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Extract Article Text": {
+   "main": [
+    [
+     {
+      "node": "Update News articleText",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse News LLM": {
+   "main": [
+    [
+     {
+      "node": "News Relevance Gate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Compute News post_weight": {
+   "main": [
+    [
+     {
+      "node": "Write News post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Reddit Relevance Prefilter": {
+   "main": [
+    [
+     {
+      "node": "Upsert reddit_posts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse Reddit LLM": {
+   "main": [
+    [
+     {
+      "node": "Reddit Relevance Gate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Reddit Relevance Gate": {
+   "main": [
+    [
+     {
+      "node": "Compute Reddit post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Compute Reddit post_weight": {
+   "main": [
+    [
+     {
+      "node": "Write Reddit post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Flatten X Data": {
+   "main": [
+    [
+     {
+      "node": "Upsert tweets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse X LLM": {
+   "main": [
+    [
+     {
+      "node": "X Relevance Gate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "X Relevance Gate": {
+   "main": [
+    [
+     {
+      "node": "Compute X post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Compute X post_weight": {
+   "main": [
+    [
+     {
+      "node": "Write X post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify Google News (task)": {
+   "main": [
+    [
+     {
+      "node": "Upsert googlenews",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build Reddit Queries": {
+   "main": [
+    [
+     {
+      "node": "Apify Reddit (per query)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify Reddit (per query)": {
+   "main": [
+    [
+     {
+      "node": "Reddit Relevance Prefilter",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build X Queries": {
+   "main": [
+    [
+     {
+      "node": "Apify X (per query)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify X (per query)": {
+   "main": [
+    [
+     {
+      "node": "Flatten X Data",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Filter Needs URN": {
+   "main": [
+    [
+     {
+      "node": "Apify Resolve URN",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify Resolve URN": {
+   "main": [
+    [
+     {
+      "node": "Match URNs",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Match URNs": {
+   "main": [
+    [
+     {
+      "node": "Update competitors linkedin_urn",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Upsert linkedin_posts": {
+   "main": [
+    [
+     {
+      "node": "LLM Sentiment+Attribution LinkedIn",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM Sentiment+Attribution LinkedIn": {
+   "main": [
+    [
+     {
+      "node": "Parse LinkedIn LLM",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Update News articleText": {
+   "main": [
+    [
+     {
+      "node": "LLM Sentiment+Attribution News",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM Sentiment+Attribution News": {
+   "main": [
+    [
+     {
+      "node": "Parse News LLM",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "News Relevance Gate": {
+   "main": [
+    [
+     {
+      "node": "LLM Source Credibility News",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM Source Credibility News": {
+   "main": [
+    [
+     {
+      "node": "Parse News Credibility",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse News Credibility": {
+   "main": [
+    [
+     {
+      "node": "Compute News post_weight",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Upsert reddit_posts": {
+   "main": [
+    [
+     {
+      "node": "LLM Sentiment+Attribution Reddit",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM Sentiment+Attribution Reddit": {
+   "main": [
+    [
+     {
+      "node": "Parse Reddit LLM",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Upsert tweets": {
+   "main": [
+    [
+     {
+      "node": "LLM X Strict Relevance Filter",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM X Strict Relevance Filter": {
+   "main": [
+    [
+     {
+      "node": "Parse X Relevance",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse X Relevance": {
+   "main": [
+    [
+     {
+      "node": "LLM Sentiment+Attribution X",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LLM Sentiment+Attribution X": {
+   "main": [
+    [
+     {
+      "node": "Parse X LLM",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write LinkedIn post_weight": {
+   "main": [
+    [
+     {
+      "node": "Cache New Authors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Get linkedin_posts (snap)": {
+   "main": [
+    [
+     {
+      "node": "Get googlenews (snap)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Get googlenews (snap)": {
+   "main": [
+    [
+     {
+      "node": "Get reddit_posts (snap)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Get reddit_posts (snap)": {
+   "main": [
+    [
+     {
+      "node": "Get tweets (snap)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Get tweets (snap)": {
+   "main": [
+    [
+     {
+      "node": "Compute SOV Snapshot",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Compute SOV Snapshot": {
+   "main": [
+    [
+     {
+      "node": "Write sov_weekly",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build LinkedIn URN Queries": {
+   "main": [
+    [
+     {
+      "node": "Apify LinkedIn Company Posts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify LinkedIn Company Posts": {
+   "main": [
+    [
+     {
+      "node": "Flatten LinkedIn Company",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Flatten LinkedIn Company": {
+   "main": [
+    [
+     {
+      "node": "Merge LinkedIn Streams",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  },
+  "Merge LinkedIn Streams": {
+   "main": [
+    [
+     {
+      "node": "Dedup LinkedIn by activity_id",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Dedup LinkedIn by activity_id": {
+   "main": [
+    [
+     {
+      "node": "LinkedIn Has activity_id",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse LinkedIn LLM": {
+   "main": [
+    [
+     {
+      "node": "Fix Company-Page Attribution",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fix Company-Page Attribution": {
+   "main": [
+    [
+     {
+      "node": "LinkedIn Relevance Gate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LI Loop Init": {
+   "main": [
+    [
+     {
+      "node": "LI Page Loop",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LI Page Loop": {
+   "main": [
+    [
+     {
+      "node": "LI Emit Accumulated",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "LI Build Active Queries",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LI Build Active Queries": {
+   "main": [
+    [
+     {
+      "node": "LI Has Active",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LI Has Active": {
+   "main": [
+    [
+     {
+      "node": "LI Accumulate Decide",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Apify LinkedIn (dynamic)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Score LI Page": {
+   "main": [
+    [
+     {
+      "node": "Parse LI Page",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse LI Page": {
+   "main": [
+    [
+     {
+      "node": "LI Accumulate Decide",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "LI Accumulate Decide": {
+   "main": [
+    [
+     {
+      "node": "LI Page Loop",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Snapshot Barrier": {
+   "main": [
+    [
+     {
+      "node": "Weekly Decay Refresh",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Weekly Decay Refresh": {
+   "main": [
+    [
+     {
+      "node": "Get linkedin_posts (snap)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build LinkedIn Mentions Queries": {
+   "main": [
+    [
+     {
+      "node": "Apify LinkedIn Paginated",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apify LinkedIn Paginated": {
+   "main": [
+    [
+     {
+      "node": "Flatten LinkedIn",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Flatten LinkedIn": {
+   "main": [
+    [
+     {
+      "node": "Merge LinkedIn Streams",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build LinkedIn Company Items": {
+   "main": [
+    [
+     {
+      "node": "Dispatch LinkedIn Per-Company",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Dispatch LinkedIn Per-Company": {
+   "main": [
+    [
+     {
+      "node": "Snapshot Barrier",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write Reddit post_weight": {
+   "main": [
+    [
+     {
+      "node": "Snapshot Barrier",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  },
+  "Write X post_weight": {
+   "main": [
+    [
+     {
+      "node": "Snapshot Barrier",
+      "type": "main",
+      "index": 2
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "availableInMCP": true,
+  "binaryMode": "separate",
+  "timeSavedMode": "fixed",
+  "errorWorkflow": "E6P5SOCGjq6yrOSO",
+  "callerPolicy": "workflowsFromSameOwner"
+ },
+ "active": false
+}

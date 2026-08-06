@@ -313,9 +313,15 @@ Only **7.3%** of scraped LinkedIn posts are ever attributed; effective cost is
 **Security / offboarding (do first):**
 1. **Revoke Elan's personal OpenAI keys.** Run Competitor Brief Generator once
    to confirm its credential works on Twine's key, then revoke.
-2. **Delete + rotate 25 hardcoded `sk-` keys** sitting in 5 inactive junk
-   workflows (`My workflow 2`, `SOV_Workflow`, `SOV_Workflow copy`, `Share Of
-   Voice Workflow`, `Share Of Voice Workflow copy SAm`).
+2. **Delete + rotate the hardcoded keys** in 5 inactive junk workflows —
+   **2 distinct secrets** (an OpenAI project key `…P7QA` and an OpenRouter key
+   `…0f40`), repeated across ~25 nodes. Neither matches the key installed at
+   `sov-tooling/.oakey` (`…1XQA`). OpenRouter appears **only** in those inactive
+   workflows — nothing live uses it. Confirm ownership in the OpenAI/OpenRouter
+   consoles (check last-used) before revoking. Junk workflows = `My workflow 2`, `SOV_Workflow`,
+   `SOV_Workflow copy`, `Share Of Voice Workflow`, `Share Of Voice Workflow copy SAm`.
+   ⚠️ `SOV_Workflow_v2` (`AcwUHkXhqgEPk8N8`) is **not** junk — it's the retired
+   monolith rollback artifact, now exported to `ops/n8n/retired/`.
 3. **Rotate** `sov-tooling/.sbkey`, `.oakey`, `~/.n8n_key`.
 4. **Delete the personal repo** `esmyla/AI_Competitive_Intelligence_System_Twine_S26`
    — an old private copy of company code that received an accidental push. Also
@@ -371,6 +377,7 @@ merge. **Merging auto-deploys** to Cloudflare. Never self-merge without review.
 - `run_assistant_evals.mjs` — assistant regression tests
 - `verify_features.py` — smoke suite
 - `ops/migrations/` — dated SQL migrations (apply in the Supabase SQL editor)
+- `ops/n8n/retired/` — the pre-split architecture, kept as the documented rollback path (safe to delete from n8n now that it's in git)
 - `ops/n8n/` — **sanitized exports of all 21 live workflows** (disaster-recovery copy, and the only way to read the pipeline logic from this repo). Re-export with `ops/scripts/export_n8n.sh` after any workflow change or it goes stale.
 
 **Cost discipline (Elan's standing rules, worth keeping):**
