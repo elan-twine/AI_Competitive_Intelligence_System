@@ -170,6 +170,7 @@ Each looks arbitrary until you read the reasoning in
   move scores.
 - **All SOV metrics use a Friday→Thursday week** unless explicitly stated
   otherwise, matching OKR reporting.
+  otherwise, so the week closes on the Thursday OKR-review day.
 - **Every post table has a `misattributed` flag** as the human correction path,
   and the board RPC excludes flagged rows. There is deliberately no review queue.
 
