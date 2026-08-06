@@ -47,8 +47,10 @@ the orientation layer.
 
 ## Conventions
 
-- **Thursday→Wednesday weeks.** Every SOV metric uses this week unless explicitly
-  stated otherwise (matches OKR reporting). Helper: `isoWeekStart` in `src/lib/metrics.js`.
+- **Friday→Thursday weeks.** Every SOV metric uses this week unless explicitly
+  stated otherwise — the week closes on the Thursday OKR-review day (Elan,
+  2026-08-06; superseded the earlier Thu→Wed anchor). Helper: `isoWeekStart`,
+  anchored by `WEEK_ANCHOR_DAY = 5`, in `src/lib/metrics.js`.
 - **Competitors are table-driven.** Add/remove in the app UI → every scraper and
   gate picks it up live. Never hardcode a competitor, and no n8n edit is needed.
 - **Direct vs indirect.** Direct competitors are tracked on all platforms and form
