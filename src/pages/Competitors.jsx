@@ -199,12 +199,12 @@ export default function Competitors({ onLogout, onNavigate }) {
           <div className="sub">competitors in rotation</div>
         </GlassCard>
         <GlassCard className="stat-card" intensity={10}>
-          <div className="label">DIRECT</div>
+          <div className="label">SOV POOL</div>
           <div className="value accent">{directCount}</div>
           <div className="sub">counted in SOV ranking</div>
         </GlassCard>
         <GlassCard className="stat-card" intensity={10}>
-          <div className="label">INDIRECT</div>
+          <div className="label">WATCHLIST</div>
           <div className="value">{indirectCount}</div>
           <div className="sub">track &amp; learn only</div>
         </GlassCard>
@@ -319,13 +319,13 @@ export default function Competitors({ onLogout, onNavigate }) {
                 <div className="comp-groups">
                   {directList.length > 0 && (
                     <section className="comp-group">
-                      <GroupHeader kind="direct" label="Direct competitors" count={directList.length} hint="counted in SOV ranking" />
+                      <GroupHeader kind="direct" label="SOV Pool" count={directList.length} hint="counted in SOV ranking" />
                       <div className="comp-grid">{directList.map(renderTile)}</div>
                     </section>
                   )}
                   {indirectList.length > 0 && (
                     <section className="comp-group">
-                      <GroupHeader kind="indirect" label="Indirect competitors" count={indirectList.length} hint="track & learn only" />
+                      <GroupHeader kind="indirect" label="Watchlist" count={indirectList.length} hint="own-page social tracking only, not ranked" />
                       <div className="comp-grid">{indirectList.map(renderTile)}</div>
                     </section>
                   )}
@@ -370,14 +370,14 @@ function TypeChoice({ value, onChange }) {
         className={`chip ${value === 'direct' ? 'active' : ''}`}
         onClick={() => onChange('direct')}
       >
-        Direct — counted in SOV ranking
+        SOV Pool — counted in SOV ranking
       </button>
       <button
         type="button"
         className={`chip ${value === 'indirect' ? 'active' : ''}`}
         onClick={() => onChange('indirect')}
       >
-        Indirect — track &amp; learn only
+        Watchlist — own-page social tracking only
       </button>
     </div>
   )
@@ -398,8 +398,8 @@ function MetaChip({ dotColor, href, children }) {
 function SegFilter({ value, onChange, counts }) {
   const opts = [
     { key: 'all', label: 'All', count: counts.all },
-    { key: 'direct', label: 'Direct', count: counts.direct },
-    { key: 'indirect', label: 'Indirect', count: counts.indirect },
+    { key: 'direct', label: 'SOV Pool', count: counts.direct },
+    { key: 'indirect', label: 'Watchlist', count: counts.indirect },
     { key: 'removed', label: 'Removed', count: counts.removed },
   ]
   return (
@@ -504,7 +504,7 @@ function CompetitorTile({
           {c.name}
           {c.is_self && <span className="comp-you">You</span>}
         </span>
-        <span className={`comp-type ${typeClass}`}>{c.type || 'direct'}</span>
+        <span className={`comp-type ${typeClass}`}>{(c.type || 'direct') === 'indirect' ? 'watchlist' : 'SOV pool'}</span>
       </div>
 
       {c.aliases?.length > 0 && <div className="comp-tile-aliases">{c.aliases.join(', ')}</div>}

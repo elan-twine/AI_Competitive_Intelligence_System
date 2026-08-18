@@ -80,7 +80,20 @@ export function boardFromAgg(rows, { multipliers, platforms, competitors } = {})
     }
     ;(directNames.has(company) ? direct : indirect).push(row)
   }
-  direct.sort((a, b) => b.weightedPct - a.weightedPct)
+  // Zero-fill: a pool company with no items in the window still belongs on the
+  // board, at 0% — the pool size ("Twine Rank / N") must not shrink on a quiet
+  // week. Same rule the trend chart applies via fillZeroFor. (Before this,
+  // Torch vanished from the ranking whenever it had no mentions, turning
+  // "of 12" into "of 11" with no explanation.)
+  for (const name of directNames) {
+    if (!acc.has(name)) {
+      direct.push({
+        company: name, weightedPct: 0, overall: 0, postCount: 0, impact: 0,
+        byPlatform: {}, sentSumAll: 0, sentCntAll: 0,
+      })
+    }
+  }
+  direct.sort((a, b) => (b.weightedPct - a.weightedPct) || a.company.localeCompare(b.company))
   indirect.sort((a, b) => b.impact - a.impact)
   return { direct, indirect, directTotal }
 }

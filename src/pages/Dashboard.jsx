@@ -512,9 +512,9 @@ function Dashboard({ onLogout, onNavigate }) {
                 // the underlying number subtly alongside it.
                 sub: gapToTop3 != null
                   ? `${gapToTop3.toFixed(1)} pts to #3 (#3: ${boardRanked[2].weightedPct.toFixed(1)}%)`
-                  : (boardRanked.length ? `of ${boardRanked.length} direct` : 'no data'),
+                  : (boardRanked.length ? `of ${boardRanked.length} in the SOV pool` : 'no data'),
                 color: twineRank === 1 ? 'var(--positive)' : undefined,
-                hint: 'Where Twine places among direct competitors, ranked by SOV % (higher = more of the conversation). OKR: reach the top 3.',
+                hint: 'Where Twine places within the SOV pool, ranked by SOV % (higher = more of the conversation). OKR: reach the top 3.',
               },
               {
                 label: 'Twine SOV',
@@ -614,7 +614,7 @@ function Dashboard({ onLogout, onNavigate }) {
           {/* All-companies breakdown table (moved above Sentiment) */}
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header" style={{ display: 'flex', alignItems: 'center' }}>
-              <span className="card-title">Direct competitors · SOV ranking
+              <span className="card-title">SOV Pool · ranking
                 <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: '0.85em' }}> · {windowRangeLabel(days)}</span>
               </span>
               <button

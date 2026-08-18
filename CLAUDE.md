@@ -53,9 +53,11 @@ the orientation layer.
   `isoWeekStart` in `src/lib/metrics.js` (`WEEK_ANCHOR_DAY = 5`).
 - **Competitors are table-driven.** Add/remove in the app UI → every scraper and
   gate picks it up live. Never hardcode a competitor, and no n8n edit is needed.
-- **Direct vs indirect.** Direct competitors are tracked on all platforms and form
-  the 100% pool. Indirect ones are tracked *only* via their own LinkedIn company
-  page and are excluded from the pool.
+- **SOV Pool vs Watchlist** (UI labels; the `type` column still stores
+  `direct`/`indirect`). Pool companies are tracked on all platforms and form the
+  100% pool — always shown, zero-filled at 0% on quiet weeks so the pool size is
+  constant. Watchlist ones are tracked *only* via their own LinkedIn company page
+  and are excluded from the pool.
 - **Board logic lives in the `sov_board_agg` RPC**, not in client loops — the old
   client-side aggregation timed out as volume grew. Put new board math in the RPC.
 - **Frontend never sees privileged keys.** Browser uses the Supabase **anon** key
