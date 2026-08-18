@@ -142,7 +142,7 @@ async function checkBoardIntegrity() {
   if (e1) throw e1
   if (e2) throw e2
   if (!comps || !comps.length) {
-    return { id: 'board', label: 'Board integrity', group: 'Data', status: 'unknown', value: '—', detail: 'competitor roster not readable in this session', help: 'Direct competitors must sum to ~100% of the pool.' }
+    return { id: 'board', label: 'Board integrity', group: 'Data', status: 'unknown', value: '—', detail: 'competitor roster not readable in this session', help: 'SOV-pool companies must sum to ~100%.' }
   }
   const idx = new Map()
   for (const c of comps) {

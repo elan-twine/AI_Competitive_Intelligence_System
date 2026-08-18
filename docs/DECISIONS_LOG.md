@@ -4,6 +4,17 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-08-18 — SOV pool set to 10 (Dustin + Justin); UI labels → "SOV Pool / Watchlist"; board zero-fill
+
+- **Pool going forward, effective week of Fri 2026-08-21:** Twine, Oak, Linx, Cerby, Surf AI, Lumos, OFFROAD, Way Security, Opti, Orchid. **Torch Security and Redblock move to the watchlist** (own-LinkedIn-page tracking only — their keyword scrapes stop, saving their Apify spend). Flip the two types in the app on Thu 2026-08-20 evening / Fri morning so the prior week completes under the old pool.
+- **Kai stays on the watchlist — deliberately not promoted.** Evidence: ~6 weeks of daily company-page scraping captured 36 Kai posts, **all 36 authored by Kai itself — zero external mentions**. "Kai" is unsearchable as a bare keyword (tested against 30 real "kai" posts in our DB: 29 pure collisions — Finnish/Basque words, Kaiser, kaizen, personal names — 0 anchored vendor mentions), and the rare genuine mentions carry no anchor so the gpt-4.1 gate would return NONE anyway. Promoting Kai would add scrape cost, not signal. Anchors if this is ever revisited: kai.security · "Autonomous Defender" · Galina Antova (CEO, ex-Claroty) · Damiano Bolzoni · Alfredo Hickman · $125M stealth exit Mar-2026.
+- ⚠️ **An earlier round of flips (Aug 13: Torch/Orchid/Redblock→indirect, Kai→direct) never persisted** — the scraper's Build Queries output shows the original 12 keyword-searched every day through Aug 18. Root cause not established (suspect an unsaved UI edit masked by the 6h localStorage competitor cache). **Constraint: verify any roster type-change via the next 02:00 run's queries (n8n execution log) or a hard reload, never by trusting the page you just edited.**
+- **Board zero-fill (code change, this entry's PR):** the ranking table and "Twine Rank / N" now include **every pool company every window** — a company with no items shows 0% at the bottom instead of silently dropping out of the denominator (Torch vanished from "of 12", displaying "of 11", the week of Aug 13). N is now always the configured pool size.
+- **Labels renamed in the UI:** direct → **"SOV Pool"**, indirect → **"Watchlist"** (clearer post-change: pool membership is a ranking decision, not a competitive-closeness statement). DB values are unchanged — the `type` column still stores `direct`/`indirect`; every scraper and RPC reads those values.
+- **Trend-chart marker:** the pool change is recorded as a team annotation (`sov_annotations`) at **2026-08-21, "SOV pool → 10"** — pre-marker trend points were computed under the 12-company pool and are not strictly comparable to post-marker points (same class of caveat as the frozen platform-weight history, 2026-07-13).
+
+---
+
 ## 2026-08-06 — Final polish (Elan's last session): Friday weeks, cream light mode, UX fixes, no-hallucination autofill
 
 - **WEEKS NOW RUN FRIDAY 00:00 → THURSDAY 23:59** (was Thu→Wed since 08-03). Reason: OKR review is Thursday — under Thu→Wed anchoring, report-day morning always showed a brand-new, near-empty week. Fri→Thu means the week CLOSES on review day (~93% complete at the Thursday-noon engagement measurement; Thursday evening still accrues — accepted trade-off, later re-measures supersede). Changed together: `WEEK_ANCHOR_DAY` 4→5 (app), Snapshot `isoThursday`→`isoFriday` (n8n, published), engagement pipeline now measures the CURRENT Fri-week to date on Thursdays (n8n, published). Historical Thursday-stamped `week_start` rows are left as-is (charts key on dates; comparisons are ordinal).
