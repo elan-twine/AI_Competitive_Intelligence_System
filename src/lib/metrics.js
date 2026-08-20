@@ -30,7 +30,7 @@ export function postWeightOf(p) {
   return 1
 }
 
-export function applyFilters(posts, { platform = 'All', platforms, sentiment = 'All', days = 0 } = {}) {
+export function applyFilters(posts, { platform = 'All', platforms, sentiment = 'All', days = 0, fromTs = null, toTs = null } = {}) {
   let out = posts
   // Platform filter supports either a single string (legacy, 'All' = no filter)
   // or an array/Set of selected platforms (multi-select). A non-empty set keeps
@@ -49,7 +49,17 @@ export function applyFilters(posts, { platform = 'All', platforms, sentiment = '
       return true
     })
   }
-  if (days > 0) {
+  // Explicit date range (custom window): inclusive epoch-ms bounds. When set
+  // it replaces the trailing-days filter — the two are never combined.
+  if (fromTs != null || toTs != null) {
+    out = out.filter(p => {
+      const t = p.ts ? new Date(p.ts).getTime() : NaN
+      if (isNaN(t)) return false
+      if (fromTs != null && t < fromTs) return false
+      if (toTs != null && t > toTs) return false
+      return true
+    })
+  } else if (days > 0) {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
     out = out.filter(p => {
       const t = p.ts ? new Date(p.ts).getTime() : NaN
