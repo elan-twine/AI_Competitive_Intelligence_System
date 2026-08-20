@@ -25,7 +25,7 @@ import { AssistantChat } from '../components/AssistantChat'
 import { clearCache } from '../lib/cache'
 import { downloadCSV } from '../lib/csv'
 import { fmtDateRange } from '../lib/dates'
-import { applyFilters, rankings, platformSplit, compare, isoWeekStart } from '../lib/metrics'
+import { applyFilters, rankings, platformSplit, compare, isoWeekStart, SOV_HISTORY_START } from '../lib/metrics'
 import { PLATFORM_COLORS, registerCompanyColors, isTwine } from '../lib/colors'
 import Briefings from './Briefings'
 import '../App.css'
@@ -57,6 +57,18 @@ function windowRangeLabel(days) {
   const start = new Date(); start.setDate(start.getDate() - (days - 1))
   const range = fmtDateRange(start, end)
   return days === 7 ? `Week of ${range}` : range
+}
+
+// Custom explicit date range: {from,to} as 'YYYY-MM-DD', inclusive whole days
+// in local time. Returns epoch-ms bounds, or null while the pair is unset,
+// misordered, or unparseable (the dashboard keeps the preset window until the
+// range is actually usable).
+function rangeBounds(r) {
+  if (!r || !r.from || !r.to || r.from > r.to) return null
+  const fromTs = new Date(r.from + 'T00:00:00').getTime()
+  const toTs = new Date(r.to + 'T23:59:59.999').getTime()
+  if (isNaN(fromTs) || isNaN(toTs)) return null
+  return { fromTs, toTs, includesToday: toTs >= Date.now() }
 }
 
 function CustomTooltip({ active, payload }) {
@@ -145,6 +157,10 @@ function Dashboard({ onLogout, onNavigate }) {
   // platform filter (the "All" chip clears the selection). Time stays single-select.
   const [selectedPlatforms, setSelectedPlatforms] = usePersistedState('twinesov:nav:platforms', [])
   const [days, setDays] = usePersistedState('twinesov:nav:days', YTD_DAYS)
+  // Custom date range — overrides the preset window while valid. useCustom is
+  // the mode switch so a half-typed range doesn't yank the dashboard around.
+  const [useCustom, setUseCustom] = usePersistedState('twinesov:nav:useCustom', false)
+  const [customRange, setCustomRange] = usePersistedState('twinesov:nav:customRange', null)
 
   // Toggle a platform in/out of the selection. Clicking "All" clears everything.
   const togglePlatform = (p) => {
@@ -164,10 +180,15 @@ function Dashboard({ onLogout, onNavigate }) {
   const [compareA, setCompareA] = useState('')
   const [compareB, setCompareB] = useState('')
 
-  // Filtered working set (respects global platform + time only)
+  // Filtered working set (respects global platform + time only). A valid
+  // custom range replaces the trailing-days window outright.
+  const customBounds = useMemo(() => rangeBounds(customRange), [customRange])
+  const rangeActive = useCustom && !!customBounds
   const filtered = useMemo(
-    () => applyFilters(allPosts, { platforms: selectedPlatforms, days }),
-    [allPosts, selectedPlatforms, days]
+    () => applyFilters(allPosts, rangeActive
+      ? { platforms: selectedPlatforms, fromTs: customBounds.fromTs, toTs: customBounds.toTs }
+      : { platforms: selectedPlatforms, days }),
+    [allPosts, selectedPlatforms, days, rangeActive, customBounds]
   )
 
   // Competitive view = DIRECT competitors only. Indirect competitors are still
@@ -208,12 +229,15 @@ function Dashboard({ onLogout, onNavigate }) {
   // the client math exactly — sov-tooling/parity_board.mjs), posts-derived
   // sentiment merged in when the firehose has loaded (else shown as "—").
   const boardRanked = useMemo(() => {
-    if (!agg.board) return ranked
+    // A custom range can't be served by the RPC (it only supports trailing
+    // windows), so it uses the client-computed board — same path as the
+    // platform-filtered view.
+    if (!agg.board || rangeActive) return ranked
     return agg.board.direct.map(r => {
       const p = postsRowByCompany[r.company]
       return { ...r, avgSentiment: p ? p.avgSentiment : 0, sentimentCount: p ? p.sentimentCount : 0 }
     })
-  }, [agg.board, ranked, postsRowByCompany])
+  }, [agg.board, ranked, postsRowByCompany, rangeActive])
   // Current live standing (same numbers as the ranking table) → fed to the trend
   // chart as its "Now" tip so the graph ends where the table says.
   const nowValues = useMemo(
@@ -233,7 +257,10 @@ function Dashboard({ onLogout, onNavigate }) {
   const platformFiltered = selectedPlatforms.length > 0
   const platformScopeLabel = platformFiltered ? selectedPlatforms.join(' + ') : null
   // The single global window drives the trend charts' resolution + labels too.
-  const { windowDays, label: windowLabel } = windowMeta(days)
+  const { windowDays, label: windowLabel } = rangeActive
+    ? { windowDays: null, label: fmtDateRange(new Date(customBounds.fromTs), new Date(customBounds.toTs)) }
+    : windowMeta(days)
+  const rangeIncludesToday = rangeActive && customBounds.includesToday
   // --- Week-over-week + weekly-volume enrichment (the mock's Δwk / weekly-items fields) ---
   // WoW deltas come from the frozen weekly snapshots (sov_weekly) — cross-platform
   // by nature (the frozen board can't be sliced by platform). Two metrics because
@@ -452,11 +479,35 @@ function Dashboard({ onLogout, onNavigate }) {
             {TIME_RANGES.map(t => (
               <button
                 key={t.value}
-                className={`chip ${days === t.value ? 'active' : ''}`}
-                onClick={() => setDays(t.value)}
+                className={`chip ${!rangeActive && days === t.value ? 'active' : ''}`}
+                onClick={() => { setDays(t.value); setUseCustom(false) }}
                 title={t.hint}
               >{t.label}</button>
             ))}
+            <button
+              className={`chip ${rangeActive ? 'active' : ''}`}
+              onClick={() => setUseCustom(!useCustom)}
+              title="Pick an exact start and end date — every ranking, stat, and chart covers exactly that span (computed live from posts, like a platform-filtered view). Impact weights are as-decayed-today, so older ranges read lower than they did live; the weekly trend history stays the frozen record."
+            >Custom</button>
+            {useCustom && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="date" className="chip"
+                  value={(customRange && customRange.from) || ''}
+                  min={SOV_HISTORY_START} max={(customRange && customRange.to) || undefined}
+                  onChange={e => setCustomRange({ ...(customRange || {}), from: e.target.value })}
+                  aria-label="Custom range start"
+                />
+                <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>→</span>
+                <input
+                  type="date" className="chip"
+                  value={(customRange && customRange.to) || ''}
+                  min={(customRange && customRange.from) || SOV_HISTORY_START}
+                  onChange={e => setCustomRange({ ...(customRange || {}), to: e.target.value })}
+                  aria-label="Custom range end"
+                />
+              </span>
+            )}
           </div>
         </div>
         <div className="filter-group" style={{ marginLeft: 'auto', gap: 10 }}>
@@ -602,11 +653,11 @@ function Dashboard({ onLogout, onNavigate }) {
               competitors={competitors}
               metric="overall"
               yLabel="SOV %"
-              posts={chartPosts}
-              live={platformFiltered}
+              posts={rangeActive ? directPosts : chartPosts}
+              live={platformFiltered || rangeActive}
               config={sovConfig}
               windowDays={windowDays}
-              nowValues={nowValues}
+              nowValues={rangeActive && !rangeIncludesToday ? null : nowValues}
               annotations={annotations}
             />
           </GlassCard>
@@ -615,7 +666,7 @@ function Dashboard({ onLogout, onNavigate }) {
           <GlassCard className="card" style={{ marginBottom: 32 }} intensity={4} interactive>
             <div className="card-header" style={{ display: 'flex', alignItems: 'center' }}>
               <span className="card-title">SOV Pool · ranking
-                <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: '0.85em' }}> · {windowRangeLabel(days)}</span>
+                <span style={{ fontWeight: 400, color: 'var(--text-secondary)', fontSize: '0.85em' }}> · {rangeActive ? windowLabel : windowRangeLabel(days)}</span>
               </span>
               <button
                 className="csv-btn"
@@ -732,11 +783,11 @@ function Dashboard({ onLogout, onNavigate }) {
               competitors={competitors}
               metric="sentiment_pct"
               yLabel="Sentiment (−3 to +3)"
-              posts={chartPosts}
-              live={platformFiltered}
+              posts={rangeActive ? directPosts : chartPosts}
+              live={platformFiltered || rangeActive}
               config={sovConfig}
               windowDays={windowDays}
-              nowValues={sentimentNow}
+              nowValues={rangeActive && !rangeIncludesToday ? null : sentimentNow}
             />
           </GlassCard>
 
@@ -782,7 +833,7 @@ function Dashboard({ onLogout, onNavigate }) {
 
       <AssistantChat
         platform={selectedPlatforms.length ? selectedPlatforms.join(' + ') : 'All'}
-        windowLabel={days === 7 ? '7d' : days === 30 ? '30d' : 'YTD'}
+        windowLabel={rangeActive ? windowLabel : (days === 7 ? '7d' : days === 30 ? '30d' : 'YTD')}
         tab={tab}
         drilledCompany={drilledCompany}
         onOpenCompany={(name) => {

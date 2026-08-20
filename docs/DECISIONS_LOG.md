@@ -4,6 +4,15 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-08-20 — Custom date-range window on the dashboard (Dustin)
+
+- The global Time window gains a **Custom** mode: pick an explicit start/end date and every ranking, stat card, top-posts list, and chart covers exactly that span. Requested so ad-hoc questions ("how did conference week look?") don't have to approximate with 7d/30d presets.
+- **Mechanics:** a valid range bypasses the `sov_board_agg` RPC (it only supports trailing windows) and computes the board client-side from the posts firehose — the same live path the platform filter already uses, so no RPC change and no new failure surface. Weekly-resolution charts; the live "Now" tip is suppressed when the range ends before today.
+- **Known caveat (surfaced in the chip's hover hint):** stored `post_weight` is decayed **as of now**, so a historical range reads lower than it did live. The frozen `sov_weekly` history remains the OKR record; custom ranges are an investigation tool, not a reporting source.
+- Range state persists per-browser (`twinesov:nav:customRange` / `useCustom`); presets clear it. Range floor = `SOV_HISTORY_START` (2026-06-22).
+
+---
+
 ## 2026-08-18 — SOV pool set to 10 (Dustin + Justin); UI labels → "SOV Pool / Watchlist"; board zero-fill
 
 - **Pool going forward, effective week of Fri 2026-08-21:** Twine, Oak, Linx, Cerby, Surf AI, Lumos, OFFROAD, Way Security, Opti, Orchid. **Torch Security and Redblock move to the watchlist** (own-LinkedIn-page tracking only — their keyword scrapes stop, saving their Apify spend). Flip the two types in the app on Thu 2026-08-20 evening / Fri morning so the prior week completes under the old pool.
