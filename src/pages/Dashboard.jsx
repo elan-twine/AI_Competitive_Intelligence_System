@@ -38,12 +38,19 @@ const YTD_DAYS = Math.max(1, Math.ceil((Date.now() - new Date(new Date().getFull
 // window". The hint text is surfaced on hover so it's always clear what the
 // selected timescale means.
 const TIME_RANGES = [
-  { label: '7d', value: 7, hint: 'Everything below — rankings, stats, charts — covers the last 7 days. Trend charts show one point per day.' },
+  { label: 'This week', value: 'week', hint: 'The current OKR week — Friday to now, the same week the Thursday review talks about. Everything below covers it. Trend charts still show rolling 7-day points (labelled on the chart).' },
+  { label: '7d', value: 7, hint: 'Everything below — rankings, stats, charts — covers the last 7 days (rolling, so it can straddle two OKR weeks). Trend charts show one point per day.' },
   { label: '30d', value: 30, hint: 'Everything below — rankings, stats, charts — covers the last 30 days. Trend charts show one point per day.' },
   { label: 'YTD', value: YTD_DAYS, hint: 'Everything below covers Jan 1 → today. Trend charts show one point per week.' },
 ]
+// Start of the current Friday-anchored OKR week, as epoch ms (local midnight).
+function thisWeekFromTs() {
+  return isoWeekStart(new Date()).getTime()
+}
+
 // Map the selected window to the trend-chart resolution + a human label.
 function windowMeta(days) {
+  if (days === 'week') return { windowDays: 7, label: `week of ${fmtDateRange(new Date(thisWeekFromTs()), new Date())}` }
   if (days === 7) return { windowDays: 7, label: 'last 7 days' }
   if (days === 30) return { windowDays: 30, label: 'last 30 days' }
   return { windowDays: null, label: 'year-to-date' }
@@ -53,6 +60,7 @@ function windowMeta(days) {
 // "Jul 5 – 11" (same month) or "Jul 28 – Aug 3". Prefixed "Week of " on the
 // 7-day view (where the ranking IS a week); plain range on 30d/YTD.
 function windowRangeLabel(days) {
+  if (days === 'week') return `Week of ${fmtDateRange(new Date(thisWeekFromTs()), new Date())}`
   const end = new Date()
   const start = new Date(); start.setDate(start.getDate() - (days - 1))
   const range = fmtDateRange(start, end)
@@ -156,7 +164,7 @@ function Dashboard({ onLogout, onNavigate }) {
   // Platform is MULTI-select: an array of selected platform names. Empty = no
   // platform filter (the "All" chip clears the selection). Time stays single-select.
   const [selectedPlatforms, setSelectedPlatforms] = usePersistedState('twinesov:nav:platforms', [])
-  const [days, setDays] = usePersistedState('twinesov:nav:days', YTD_DAYS)
+  const [days, setDays] = usePersistedState('twinesov:nav:window', 'week')
   // Custom date range — overrides the preset window while valid. useCustom is
   // the mode switch so a half-typed range doesn't yank the dashboard around.
   const [useCustom, setUseCustom] = usePersistedState('twinesov:nav:useCustom', false)
@@ -184,11 +192,15 @@ function Dashboard({ onLogout, onNavigate }) {
   // custom range replaces the trailing-days window outright.
   const customBounds = useMemo(() => rangeBounds(customRange), [customRange])
   const rangeActive = useCustom && !!customBounds
+  const isWeek = !rangeActive && days === 'week'
+  const weekFrom = isWeek ? thisWeekFromTs() : null
   const filtered = useMemo(
     () => applyFilters(allPosts, rangeActive
       ? { platforms: selectedPlatforms, fromTs: customBounds.fromTs, toTs: customBounds.toTs }
-      : { platforms: selectedPlatforms, days }),
-    [allPosts, selectedPlatforms, days, rangeActive, customBounds]
+      : isWeek
+        ? { platforms: selectedPlatforms, fromTs: weekFrom }
+        : { platforms: selectedPlatforms, days }),
+    [allPosts, selectedPlatforms, days, rangeActive, customBounds, isWeek, weekFrom]
   )
 
   // Competitive view = DIRECT competitors only. Indirect competitors are still
@@ -231,7 +243,9 @@ function Dashboard({ onLogout, onNavigate }) {
   // payload is constant in post volume (the guard against the #139 timeout
   // class). Sentiment stays posts-derived (external-only semantics live in
   // JS), overlaid below; if the RPC fails we fall back to the posts board.
-  const agg = useBoardAgg(days, {
+  const agg = useBoardAgg(rangeActive || isWeek ? null : days, {
+    fromTs: rangeActive ? customBounds.fromTs : weekFrom,
+    toTs: rangeActive ? customBounds.toTs : null,
     platforms: selectedPlatforms,
     competitors,
     multipliers: sovConfig?.platformMultipliers,
@@ -244,15 +258,15 @@ function Dashboard({ onLogout, onNavigate }) {
   // the client math exactly — sov-tooling/parity_board.mjs), posts-derived
   // sentiment merged in when the firehose has loaded (else shown as "—").
   const boardRanked = useMemo(() => {
-    // A custom range can't be served by the RPC (it only supports trailing
-    // windows), so it uses the client-computed board — same path as the
-    // platform-filtered view.
-    if (!agg.board || rangeActive) return ranked
+    // The RPC serves ranges too (from_ts, 2026-08-21 migration). If it can't
+    // (migration not applied / error), agg.board is null and the client-computed
+    // board takes over — zero-filled, so denominators stay consistent.
+    if (!agg.board) return ranked
     return agg.board.direct.map(r => {
       const p = postsRowByCompany[r.company]
       return { ...r, avgSentiment: p ? p.avgSentiment : 0, sentimentCount: p ? p.sentimentCount : 0 }
     })
-  }, [agg.board, ranked, postsRowByCompany, rangeActive])
+  }, [agg.board, ranked, postsRowByCompany])
   // Current live standing (same numbers as the ranking table) → fed to the trend
   // chart as its "Now" tip so the graph ends where the table says.
   const nowValues = useMemo(
@@ -577,8 +591,8 @@ function Dashboard({ onLogout, onNavigate }) {
                 // The gap is real SOV math (#3's share − Twine's share), so show
                 // the underlying number subtly alongside it.
                 sub: gapToTop3 != null
-                  ? `${gapToTop3.toFixed(1)} pts to #3 (#3: ${boardRanked[2].weightedPct.toFixed(1)}%)`
-                  : (boardRanked.length ? `of ${boardRanked.length} in the SOV pool` : 'no data'),
+                  ? `${gapToTop3.toFixed(1)} pts to #3 · ${rangeActive ? windowLabel : windowRangeLabel(days)}`
+                  : (boardRanked.length ? `of ${boardRanked.length} in the SOV pool · ${rangeActive ? windowLabel : windowRangeLabel(days)}` : 'no data'),
                 color: twineRank === 1 ? 'var(--positive)' : undefined,
                 hint: 'Where Twine places within the SOV pool, ranked by SOV % (higher = more of the conversation). OKR: reach the top 3.',
               },
@@ -590,7 +604,7 @@ function Dashboard({ onLogout, onNavigate }) {
                 // previous frozen weekly snapshot, same composite metric as the value.
                 chip: twineRow && twineWow != null ? { text: `${fmtWow(twineWow)} pts`, tone: wowTone(twineWow) } : null,
                 rail: railTone(twineWow, 0.05),
-                sub: twineRow ? (twineWow != null ? 'vs last week' : `${twineRow.postCount} items`) : 'not in filter',
+                sub: twineRow ? `${rangeActive ? windowLabel : windowRangeLabel(days)}` : 'not in filter',
                 accent: true,
                 hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors. The chip is the change vs last week\'s snapshot.',
               },
@@ -848,7 +862,7 @@ function Dashboard({ onLogout, onNavigate }) {
 
       <AssistantChat
         platform={selectedPlatforms.length ? selectedPlatforms.join(' + ') : 'All'}
-        windowLabel={rangeActive ? windowLabel : (days === 7 ? '7d' : days === 30 ? '30d' : 'YTD')}
+        windowLabel={rangeActive ? windowLabel : (days === 'week' ? 'This week' : days === 7 ? '7d' : days === 30 ? '30d' : 'YTD')}
         tab={tab}
         drilledCompany={drilledCompany}
         onOpenCompany={(name) => {

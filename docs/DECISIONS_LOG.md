@@ -4,6 +4,15 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-08-21 — "This week" becomes the dashboard's default window; every KPI states its lens
+
+- **Problem (Dustin):** three lenses gave three "ranks" for the same moment — weekly standings said #8/10, rolling 7d said #10/10, and a custom range said #8/9 (that last one was a real bug: the client ranking path skipped the pool zero-fill; fixed in PR #177). The deeper mismatch: the team thinks in Friday→Thursday OKR weeks, but the dashboard defaulted to a rolling 7 days that straddles two OKR weeks except on Thursday night.
+- **Change:** a new **"This week"** preset (Friday 00:00 → now — the OKR week-to-date) is the **default** window (storage key bumped to `twinesov:nav:window` so existing browsers land on it once). 7d/30d/YTD/Custom remain. The **Twine Rank and Twine SOV cards now print their window** ("of 10 in the SOV pool · Week of Aug 21 – 25") so a screenshot can't be misread. Trend charts keep rolling 7-day points (self-labelled on the chart).
+- **RPC extension (`2026-08-21_board_agg_from_ts.sql` — run in the Supabase SQL editor):** `sov_board_agg` gains an optional `from_ts` lower bound, so This-week AND Custom ranges are served by the server-side aggregation (misattribution-excluding, multi-company-aware) instead of the client fallback. Body is the 2026-07-27 definition verbatim; the old 2-arg signature is dropped to avoid a PostgREST overload ambiguity; n8n's `(as_of, window_days)` calls bind unchanged. **Until the migration is applied, week/custom views gracefully fall back to the client-computed board** (zero-filled, consistent denominators — numbers can differ marginally from the RPC on multi-company posts).
+- Twine SOV card's sub now shows the window instead of "vs last week" (the WoW chip already carries that comparison).
+
+---
+
 ## 2026-08-20 — Custom date-range window on the dashboard (Dustin)
 
 - The global Time window gains a **Custom** mode: pick an explicit start/end date and every ranking, stat card, top-posts list, and chart covers exactly that span. Requested so ad-hoc questions ("how did conference week look?") don't have to approximate with 7d/30d presets.
