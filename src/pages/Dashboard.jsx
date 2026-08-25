@@ -210,7 +210,22 @@ function Dashboard({ onLogout, onNavigate }) {
     () => applyFilters(allPosts, { platforms: selectedPlatforms }).filter(p => directNames.has(p.companyName)),
     [allPosts, selectedPlatforms, directNames]
   )
-  const ranked = useMemo(() => rankings(directPosts, sovConfig), [directPosts, sovConfig])
+  const ranked = useMemo(() => {
+    const rows = rankings(directPosts, sovConfig)
+    // Zero-fill the pool — same rule as the RPC board (boardAgg.js): a pool
+    // company with no items in the window still ranks, at 0, at the bottom,
+    // so the pool size ("of N") never shrinks. This is the CLIENT path, used
+    // by custom date ranges and as the RPC-failure fallback; without this a
+    // quiet company made a custom week read "of 9" while 7d read "of 10".
+    const have = new Set(rows.map(r => r.company))
+    const zeros = [...directNames].filter(n => !have.has(n)).sort().map(company => ({
+      company, postCount: 0, unweightedSOV: 0, weightedSOV: 0, avgSentiment: 0,
+      sentimentCount: 0, posts: [], pct: 0, unweightedPct: 0, weightedPct: 0,
+      sentimentScaled: 50, netSentimentPct: 0, positiveSharePct: 0,
+      negativeSharePct: 0, overall: 0,
+    }))
+    return rows.concat(zeros)
+  }, [directPosts, sovConfig, directNames])
   // RPC-backed board (sov_board_agg): ~60 tiny rows computed in Postgres, so
   // the ranking + stat cards no longer depend on the raw-post firehose — the
   // payload is constant in post volume (the guard against the #139 timeout
