@@ -13,13 +13,17 @@ import { getCache, setCache } from '../lib/cache'
 // platforms: multi-select array; empty/absent = all platforms.
 // competitors + multipliers come from the caller (already-fetched hooks) so
 // this stays a single round-trip.
-export function useBoardAgg(windowDays, { platforms, competitors, multipliers } = {}) {
+export function useBoardAgg(windowDays, { platforms, competitors, multipliers, fromTs = null, toTs = null } = {}) {
   const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [tick, setTick] = useState(0) // bump to refetch
 
   const wd = windowDays == null || windowDays <= 0 ? null : Math.round(windowDays)
+  // Explicit bounds (This-week / custom range): from_ts overrides the trailing
+  // window in the RPC (2026-08-21 migration); as_of stays the upper bound.
+  const fromIso = fromTs != null ? new Date(fromTs).toISOString() : null
+  const toIso = toTs != null ? new Date(toTs).toISOString() : null
 
   // Stale-while-revalidate, cache-first: the cached RPC rows (tiny) paint the
   // board instantly on reload — the CORRECT numbers, so the posts-computed
@@ -31,7 +35,9 @@ export function useBoardAgg(windowDays, { platforms, competitors, multipliers } 
   // async continuations (react-hooks/set-state-in-effect).
   useEffect(() => {
     let alive = true
-    const key = `board_agg_${wd == null ? 'all' : wd}`
+    const key = fromIso
+      ? `board_agg_r_${fromIso.slice(0, 10)}_${toIso ? toIso.slice(0, 10) : 'now'}`
+      : `board_agg_${wd == null ? 'all' : wd}`
     if (tick === 0) {
       getCache(key)
         .then((c) => {
@@ -40,7 +46,10 @@ export function useBoardAgg(windowDays, { platforms, competitors, multipliers } 
         })
         .catch(() => { /* cache miss/parse error — network path below covers it */ })
     }
-    supabase.rpc('sov_board_agg', { window_days: wd })
+    const rpcArgs = fromIso
+      ? (toIso ? { window_days: null, from_ts: fromIso, as_of: toIso } : { window_days: null, from_ts: fromIso })
+      : { window_days: wd }
+    supabase.rpc('sov_board_agg', rpcArgs)
       .then(({ data, error: err }) => {
         if (!alive) return
         if (err) { setError(err.message || 'board query failed') }
@@ -53,7 +62,7 @@ export function useBoardAgg(windowDays, { platforms, competitors, multipliers } 
       })
       .catch((e) => { if (alive) { setError(e?.message || String(e)); setLoading(false) } })
     return () => { alive = false }
-  }, [wd, tick])
+  }, [wd, fromIso, toIso, tick])
 
   // Pure re-derivation on filter/config changes — no refetch needed: the RPC
   // rows are per-platform, so platform filtering happens client-side.
