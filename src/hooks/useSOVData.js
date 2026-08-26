@@ -93,7 +93,10 @@ export function useSOVData(competitorsArg) {
   // Cache key bumped to -v2: the pre-fix build could cache an empty firehose (see
   // the timeout branch above), and that poisoned entry would keep serving an empty
   // dashboard for its full 6h TTL. A new key abandons it on first load post-deploy.
-  const { data, loading, error, refetch } = useCachedFetch('sov-raw-v2', fetcher, { idb: true })
+  // Key bumped to -v3 (2026-08-26): a stale v2 entry survived days past its
+  // TTL on at least one machine (background refresh not landing), leaving the
+  // dashboard on a frozen Friday-morning firehose. New key = clean start.
+  const { data, loading, error, refetch } = useCachedFetch('sov-raw-v3', fetcher, { idb: true })
 
   // Re-render when a mention is flagged misattributed from any item card, so it
   // drops out of the calculations below immediately (no refetch/loader).
