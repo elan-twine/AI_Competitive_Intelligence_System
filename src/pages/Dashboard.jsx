@@ -207,7 +207,10 @@ function Dashboard({ onLogout, onNavigate }) {
   // tracked, scored, and analyzed (Competitive Review + trend graph), but they
   // never enter the SOV ranking/share. Missing `type` defaults to 'direct'.
   const directNames = useMemo(
-    () => new Set((competitors || []).filter(c => (c.type || 'direct') !== 'indirect').map(c => c.name)),
+    // active !== false matters: removed competitors keep their rows (re-addable),
+    // and without this check the zero-fill resurrects them into the pool — a
+    // removed company appeared as an 11th "of 11" row (Fabrix, 2026-08-26).
+    () => new Set((competitors || []).filter(c => c.active !== false && (c.type || 'direct') !== 'indirect').map(c => c.name)),
     [competitors]
   )
   const directPosts = useMemo(
