@@ -625,26 +625,40 @@ function Dashboard({ onLogout, onNavigate }) {
       {tab === 'overview' && (
         <>
           {/* OKR anchor — the number Justin tracks: 30-day rolling rank, fixed
-              regardless of the time window / platform filters above. */}
+              regardless of the time window / platform filters above. Full-width
+              hero card so it reads as THE key metric, matching the stat cards
+              beneath (same glass style, gap, and typography). */}
           {okr && (
-            <div
+            <GlassCard
+              className="stat-card"
+              intensity={10}
+              interactive
               title="The OKR is measured on a 30-day rolling window, all platforms. This gauge never changes with the filters above — whatever window you explore below, this is the number the OKR review uses."
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                margin: '0 0 14px', padding: '9px 14px',
-                border: '1px solid var(--border)', borderRadius: 10,
-                fontSize: 13, color: 'var(--text-secondary)',
-              }}
+              style={{ marginBottom: 16 }}
             >
-              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>🎯 OKR</span>
-              <span>
-                Twine Rank{' '}
-                <b style={{ color: okr.rank <= 3 ? 'var(--positive)' : 'var(--text-primary)', fontSize: 15 }}>#{okr.rank}</b>
-                {' '}/ {okr.pool} · 30-day rolling · target top 3
-              </span>
-              {okr.gap != null && <span>· {okr.gap.toFixed(1)} pts to #3</span>}
-              <span style={{ marginLeft: 'auto', opacity: 0.65 }}>fixed gauge — ignores the filters above</span>
-            </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+                <div>
+                  <div className="label">🎯 OKR · Twine Rank</div>
+                  <div className="value" style={{ color: okr.rank <= 3 ? 'var(--positive)' : undefined }}>
+                    #{okr.rank}<span className="unit">/ {okr.pool}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
+                  <span>
+                    <span className={`kpi-chip ${okr.rank <= 3 ? 'up' : 'warn'}`}>
+                      {okr.rank <= 3 ? '✓ in top 3' : '⚠ target top 3'}
+                    </span>
+                  </span>
+                  <span>
+                    30-day rolling · all platforms
+                    {okr.gap != null ? ` · ${okr.gap.toFixed(1)} pts to #3` : ''}
+                  </span>
+                </div>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-secondary)', opacity: 0.65 }}>
+                  fixed gauge — ignores the filters above
+                </span>
+              </div>
+            </GlassCard>
           )}
           {/* Stats grid — Twine-focused */}
           <div className="stats-grid">
