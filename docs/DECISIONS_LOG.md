@@ -4,6 +4,14 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-09-01 — OKR anchor strip; "Last week" preset; window-aware KPI copy (Justin + Dustin)
+
+- **OKR anchor (Justin):** the OKR number is defined as the **30-day rolling rank, all platforms**. A fixed strip now sits above the KPI cards showing it (rank / pool / pts-to-#3) no matter what window or platform filter is selected — labelled "fixed gauge — ignores the filters above". Separate cached RPC call; the explore filters below can't move it.
+- **"Last week" preset:** the last COMPLETED Friday→Thursday OKR week ([prev Friday 00:00, this Friday 00:00)), served by the RPC via from_ts/as_of. Now-tip suppressed (window excludes today). Label states the dates and "(closed)".
+- **KPI copy follows the window:** the Mentions card counts the SELECTED window (label switches off "Mentions This Week" outside the week view), its delta chip compares the equal-length preceding period, and every SOV KPI prints its window stamp. LinkedIn Engagement stays weekly — it's a weekly measurement by nature.
+
+---
+
 ## 2026-08-21 — "This week" becomes the dashboard's default window; every KPI states its lens
 
 - **Problem (Dustin):** three lenses gave three "ranks" for the same moment — weekly standings said #8/10, rolling 7d said #10/10, and a custom range said #8/9 (that last one was a real bug: the client ranking path skipped the pool zero-fill; fixed in PR #177). The deeper mismatch: the team thinks in Friday→Thursday OKR weeks, but the dashboard defaulted to a rolling 7 days that straddles two OKR weeks except on Thursday night.
