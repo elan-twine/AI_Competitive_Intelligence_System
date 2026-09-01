@@ -60,6 +60,7 @@ function lastWeekBounds() {
 function trailingFromTs(days) {
   return Date.now() - days * 86400000
 }
+function nowMs() { return Date.now() }
 
 // Map the selected window to the trend-chart resolution + a human label.
 function windowMeta(days) {
@@ -80,6 +81,21 @@ function windowRangeLabel(days) {
   const start = new Date(); start.setDate(start.getDate() - (days - 1))
   const range = fmtDateRange(start, end)
   return days === 7 ? `Week of ${range}` : range
+}
+
+// Zero-fill a client-computed ranking with every pool company that had no
+// items in the window (0 at the bottom) — same rule as the RPC board, so the
+// pool size ("of N") never shrinks. Used by the main ranking's client path
+// and by the previous-window comparison.
+function zeroFillPool(rows, directNames) {
+  const have = new Set(rows.map(r => r.company))
+  const zeros = [...directNames].filter(n => !have.has(n)).sort().map(company => ({
+    company, postCount: 0, unweightedSOV: 0, weightedSOV: 0, avgSentiment: 0,
+    sentimentCount: 0, posts: [], pct: 0, unweightedPct: 0, weightedPct: 0,
+    sentimentScaled: 50, netSentimentPct: 0, positiveSharePct: 0,
+    negativeSharePct: 0, overall: 0,
+  }))
+  return rows.concat(zeros)
 }
 
 // Custom explicit date range: {from,to} as 'YYYY-MM-DD', inclusive whole days
@@ -123,7 +139,9 @@ function wowFromSeries(series) {
   }
   return out
 }
-// ±x.x with a true minus sign; '—' when there's no prior week to compare.
+// Signed integer delta for item counts; '—' when there's no prior window.
+const fmtWowInt = (d) => (d == null ? '—' : d > 0 ? `+${d}` : d < 0 ? `−${Math.abs(d)}` : '0')
+// ±x.x with a true minus sign; '—' when there's no prior period to compare.
 // Deltas that round to zero display as an unsigned "0.0" (no "−0.0").
 const fmtWow = (d) => {
   if (d == null) return '—'
@@ -135,14 +153,6 @@ const wowTone = (d) => d == null ? 'fl' : d > 0.05 ? 'up' : d < -0.05 ? 'dn' : '
 // Rail tone for a KPI card's week-over-week change: green improved / red
 // declined / amber roughly unchanged (per-metric epsilon); null hides the rail.
 const railTone = (d, eps) => d == null ? null : d > eps ? 'up' : d < -eps ? 'dn' : 'fl'
-// A company's rank within one weekly-series row (values sorted high→low).
-function rankInRow(row, name) {
-  const vals = Object.entries(row)
-    .filter(([k, v]) => k !== 'week' && k !== 't' && v != null)
-    .sort((a, b) => b[1] - a[1])
-  const i = vals.findIndex(([k]) => k === name)
-  return i < 0 ? null : i + 1
-}
 
 function Dashboard({ onLogout, onNavigate }) {
   const { allPosts, companies, competitors, loading, error, refetch } = useSOVData()
@@ -217,6 +227,22 @@ function Dashboard({ onLogout, onNavigate }) {
     : isWeek ? { fromTs: weekFrom, toTs: null }
     : isLastWeek ? lwBounds
     : { fromTs: trailingFromTs(days), toTs: null }
+  // The comparison window for every "vs previous" delta: the same-length span
+  // immediately before the active one (This week → last completed week;
+  // Last week → the week before; 30d → the prior 30d; custom → the prior
+  // equal span). YTD has no sane prior period → null → deltas show '—'.
+  const lwFrom = lwBounds ? lwBounds.fromTs : null
+  const prevBounds = useMemo(() => {
+    if (rangeActive) {
+      const len = customBounds.toTs - customBounds.fromTs + 1
+      return { fromTs: customBounds.fromTs - len, toTs: customBounds.fromTs - 1 }
+    }
+    if (isWeek) return { fromTs: weekFrom - 7 * 86400000, toTs: weekFrom - 1 }
+    if (isLastWeek) return { fromTs: lwFrom - 7 * 86400000, toTs: lwFrom - 1 }
+    if (days === YTD_DAYS) return null
+    return { fromTs: trailingFromTs(2 * days), toTs: trailingFromTs(days) - 1 }
+  }, [rangeActive, customBounds, isWeek, weekFrom, isLastWeek, lwFrom, days])
+  const prevLabel = rangeActive ? 'prior period' : (isWeek || isLastWeek) ? 'prev. week' : days === YTD_DAYS ? null : `prior ${days}d`
   const filtered = useMemo(
     () => applyFilters(allPosts, (rangeActive || isWeek || isLastWeek)
       ? { platforms: selectedPlatforms, fromTs: activeBounds.fromTs, toTs: activeBounds.toTs }
@@ -246,27 +272,26 @@ function Dashboard({ onLogout, onNavigate }) {
     () => applyFilters(allPosts, { platforms: selectedPlatforms }).filter(p => directNames.has(p.companyName)),
     [allPosts, selectedPlatforms, directNames]
   )
-  const ranked = useMemo(() => {
-    const rows = rankings(directPosts, sovConfig)
-    // Zero-fill the pool — same rule as the RPC board (boardAgg.js): a pool
-    // company with no items in the window still ranks, at 0, at the bottom,
-    // so the pool size ("of N") never shrinks. This is the CLIENT path, used
-    // by custom date ranges and as the RPC-failure fallback; without this a
-    // quiet company made a custom week read "of 9" while 7d read "of 10".
-    const have = new Set(rows.map(r => r.company))
-    const zeros = [...directNames].filter(n => !have.has(n)).sort().map(company => ({
-      company, postCount: 0, unweightedSOV: 0, weightedSOV: 0, avgSentiment: 0,
-      sentimentCount: 0, posts: [], pct: 0, unweightedPct: 0, weightedPct: 0,
-      sentimentScaled: 50, netSentimentPct: 0, positiveSharePct: 0,
-      negativeSharePct: 0, overall: 0,
-    }))
-    return rows.concat(zeros)
-  }, [directPosts, sovConfig, directNames])
+  const ranked = useMemo(
+    // Zero-filled (see zeroFillPool) — the CLIENT path, used by custom ranges
+    // and as the RPC-failure fallback.
+    () => zeroFillPool(rankings(directPosts, sovConfig), directNames),
+    [directPosts, sovConfig, directNames]
+  )
   // RPC-backed board (sov_board_agg): ~60 tiny rows computed in Postgres, so
   // the ranking + stat cards no longer depend on the raw-post firehose — the
   // payload is constant in post volume (the guard against the #139 timeout
   // class). Sentiment stays posts-derived (external-only semantics live in
   // JS), overlaid below; if the RPC fails we fall back to the posts board.
+  // Same aggregation for the previous window — one more tiny cached RPC call.
+  const prevAgg = useBoardAgg(null, {
+    enabled: !!prevBounds,
+    fromTs: prevBounds ? prevBounds.fromTs : null,
+    toTs: prevBounds ? prevBounds.toTs : null,
+    platforms: selectedPlatforms,
+    competitors,
+    multipliers: sovConfig?.platformMultipliers,
+  })
   const agg = useBoardAgg(rangeActive || isWeek || isLastWeek ? null : days, {
     fromTs: rangeActive || isWeek || isLastWeek ? activeBounds.fromTs : null,
     toTs: rangeActive || isWeek || isLastWeek ? activeBounds.toTs : null,
@@ -323,15 +348,39 @@ function Dashboard({ onLogout, onNavigate }) {
   // by nature (the frozen board can't be sliced by platform). Two metrics because
   // the KPI card displays `overall` while the ranking column displays `weightedPct`;
   // each delta must match the number it sits next to. Same cached fetch under both.
-  const { series: weeklyOverallSeries } = useWeeklySOV('overall')
-  const { series: weeklyWeightedSeries } = useWeeklySOV('weighted_pct')
-  const wowOverall = useMemo(() => wowFromSeries(weeklyOverallSeries), [weeklyOverallSeries])
-  const wowWeighted = useMemo(() => wowFromSeries(weeklyWeightedSeries), [weeklyWeightedSeries])
+  // Window-aware deltas (2026-09-01): every "vs previous" number compares the
+  // window on screen against the equivalent window immediately before it.
+  // Both sides come from the same source (RPC, or the same client fallback),
+  // so the units match: pool share in percentage points, items in-window.
+  // Replaces the old frozen-snapshot delta, which compared cumulative
+  // standings rows from sov_weekly regardless of the selected window.
+  const prevBoardRows = useMemo(() => {
+    if (!prevBounds) return null
+    if (prevAgg.board) return prevAgg.board.direct
+    const posts = applyFilters(allPosts, { platforms: selectedPlatforms, fromTs: prevBounds.fromTs, toTs: prevBounds.toTs })
+      .filter(p => directNames.has(p.companyName))
+    return zeroFillPool(rankings(posts, sovConfig), directNames)
+  }, [prevBounds, prevAgg.board, allPosts, selectedPlatforms, directNames, sovConfig])
+  const prevByCompany = useMemo(() => {
+    if (!prevBoardRows) return null
+    const m = {}
+    prevBoardRows.forEach((r, i) => { m[r.company] = { overall: r.overall ?? r.weightedPct ?? 0, items: r.postCount || 0, rank: i + 1 } })
+    return m
+  }, [prevBoardRows])
+  const wowWeighted = useMemo(() => {
+    if (!prevByCompany) return null
+    const out = {}
+    for (const r of boardRanked) {
+      const p = prevByCompany[r.company]
+      out[r.company] = p ? (r.overall ?? r.weightedPct ?? 0) - p.overall : null
+    }
+    return out
+  }, [boardRanked, prevByCompany])
   const twineWow = useMemo(() => {
-    if (!wowOverall) return null
-    const k = Object.keys(wowOverall).find(n => isTwine(n))
-    return k != null ? wowOverall[k] : null
-  }, [wowOverall])
+    if (!wowWeighted) return null
+    const k = Object.keys(wowWeighted).find(n => isTwine(n))
+    return k != null ? wowWeighted[k] : null
+  }, [wowWeighted])
   // Twine's sentiment change vs last week (stored 0..100 index — only the sign
   // and rough magnitude matter here, they drive the rail color).
   const { series: weeklySentSeries } = useWeeklySOV('sentiment_pct')
@@ -341,28 +390,14 @@ function Dashboard({ onLogout, onNavigate }) {
     const k = Object.keys(w).find(n => isTwine(n))
     return k != null ? w[k] : null
   }, [weeklySentSeries])
-  // Twine's rank change vs last week (+ = climbed places, − = dropped).
+  // Twine's rank change vs the previous window (+ = climbed places, − = dropped).
   const twineRankWow = useMemo(() => {
-    const s = weeklyOverallSeries
-    if (!s || s.length < 2) return null
-    const tw = Object.keys(s[s.length - 1]).find(n => isTwine(n))
-    if (!tw) return null
-    const cur = rankInRow(s[s.length - 1], tw), prev = rankInRow(s[s.length - 2], tw)
-    return cur != null && prev != null ? prev - cur : null
-  }, [weeklyOverallSeries])
-  // Items per company in the CURRENT Thursday-anchored OKR week (the SOV
-  // default week — was a rolling last-7-days). Independent of the global time
-  // window; respects the platform filter like the rest of the table.
-  const weekItemsByCompany = useMemo(() => {
-    const wkStart = isoWeekStart(new Date()).getTime()
-    const m = {}
-    for (const p of applyFilters(allPosts, { platforms: selectedPlatforms })) {
-      if (!p.companyName) continue
-      const t = p.ts ? new Date(p.ts).getTime() : NaN
-      if (!isNaN(t) && t >= wkStart) m[p.companyName] = (m[p.companyName] || 0) + 1
-    }
-    return m
-  }, [allPosts, selectedPlatforms])
+    if (!prevByCompany) return null
+    const idx = boardRanked.findIndex(r => isTwine(r.company))
+    if (idx < 0) return null
+    const p = prevByCompany[boardRanked[idx].company]
+    return p ? p.rank - (idx + 1) : null
+  }, [boardRanked, prevByCompany])
   // OKR gauge: Twine mentions across ALL platforms in the CURRENT OKR week —
   // the same Thursday-anchored calendar week the drill-in and weekly pipeline
   // use (was a rolling last-7-days, which read "2" while the drill-in's
@@ -375,7 +410,7 @@ function Dashboard({ onLogout, onNavigate }) {
   // platform-unfiltered by definition ("all platforms").
   const twineMentions = useMemo(() => {
     const fromTs = activeBounds.fromTs
-    const toTs = activeBounds.toTs ?? Date.now()
+    const toTs = activeBounds.toTs ?? nowMs()
     const len = Math.max(toTs - fromTs, 1)
     let cur = 0, prev = 0
     for (const p of allPosts) {
@@ -403,8 +438,8 @@ function Dashboard({ onLogout, onNavigate }) {
   const enrichedRanked = useMemo(() => boardRanked.map(r => ({
     ...r,
     wowDelta: wowWeighted ? (wowWeighted[r.company] ?? null) : null,
-    weekItems: weekItemsByCompany[r.company] || 0,
-  })), [boardRanked, wowWeighted, weekItemsByCompany])
+    itemsDelta: prevByCompany ? (r.postCount || 0) - ((prevByCompany[r.company] || {}).items || 0) : null,
+  })), [boardRanked, wowWeighted, prevByCompany])
   // SOV rank per company — fixed by board order (SOV desc), so the # column
   // keeps showing each company's true rank even when the table is re-sorted.
   const rankByCompany = useMemo(
@@ -666,7 +701,7 @@ function Dashboard({ onLogout, onNavigate }) {
                 rail: railTone(twineWow, 0.05),
                 sub: twineRow ? windowStamp : 'not in filter',
                 accent: true,
-                hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors. The chip is the change vs last week\'s snapshot.',
+                hint: 'Twine\'s engagement-weighted cross-platform share of voice — the size of the conversation about Twine vs competitors. The chip is the change vs the previous window of the same length — on This week, that is vs last week.',
               },
               {
                 // OKR KR-21 (owner: Twine/company). Lagging weekly measurement:
@@ -770,7 +805,7 @@ function Dashboard({ onLogout, onNavigate }) {
                     { key: 'postCount', label: 'items' },
                     { key: r => (r.weightedPct ?? 0).toFixed(2), label: 'sov_pct' },
                     { key: r => r.wowDelta != null ? r.wowDelta.toFixed(2) : '', label: 'sov_wow_pts' },
-                    { key: 'weekItems', label: 'items_this_week' },
+                    { key: r => r.itemsDelta != null ? String(r.itemsDelta) : '', label: 'items_delta_vs_prev' },
                     { key: r => r.sentimentCount ? (r.avgSentiment ?? 0).toFixed(2) : '', label: 'avg_sentiment' },
                   ]
                 )}
@@ -799,8 +834,8 @@ function Dashboard({ onLogout, onNavigate }) {
                       <SortHeader label="Company" field="company" sortKey={sortKey} setSortKey={setSortKey} align="left" />
                       <SortHeader label="Items" field="postCount" sortKey={sortKey} setSortKey={setSortKey} />
                       <SortHeader label="Share of Voice" field="weightedPct" sortKey={sortKey} setSortKey={setSortKey} align="left" />
-                      <SortHeader label="Δ SOV (wk)" field="wowDelta" sortKey={sortKey} setSortKey={setSortKey} />
-                      <SortHeader label="Items (wk)" field="weekItems" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label={`Δ SOV${prevLabel ? ` vs ${prevLabel}` : ''}`} field="wowDelta" sortKey={sortKey} setSortKey={setSortKey} />
+                      <SortHeader label={`Δ items${prevLabel ? ` vs ${prevLabel}` : ''}`} field="itemsDelta" sortKey={sortKey} setSortKey={setSortKey} />
                     </tr>
                   </thead>
                   <tbody>
@@ -827,7 +862,7 @@ function Dashboard({ onLogout, onNavigate }) {
                           {fmtWow(r.wowDelta)}
                         </td>
                         <td className="col-wkitems" title="Items attributed in the current OKR week (Thursday-anchored, same week as the KPI cards and drill-in)">
-                          {error ? '—' : r.weekItems}
+                          {error ? '—' : fmtWowInt(r.itemsDelta)}
                         </td>
                       </tr>
                     ))}

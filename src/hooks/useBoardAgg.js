@@ -13,7 +13,7 @@ import { getCache, setCache } from '../lib/cache'
 // platforms: multi-select array; empty/absent = all platforms.
 // competitors + multipliers come from the caller (already-fetched hooks) so
 // this stays a single round-trip.
-export function useBoardAgg(windowDays, { platforms, competitors, multipliers, fromTs = null, toTs = null } = {}) {
+export function useBoardAgg(windowDays, { platforms, competitors, multipliers, fromTs = null, toTs = null, enabled = true } = {}) {
   const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -34,6 +34,9 @@ export function useBoardAgg(windowDays, { platforms, competitors, multipliers, f
   // fetches (~300ms), then swap — no flicker. All state updates happen in
   // async continuations (react-hooks/set-state-in-effect).
   useEffect(() => {
+    // enabled=false → no fetch (the board memo below returns null). Used when a
+    // comparison window has no sane definition, e.g. "previous period" for YTD.
+    if (!enabled) return undefined
     let alive = true
     const key = fromIso
       ? `board_agg_r_${fromIso.slice(0, 10)}_${toIso ? toIso.slice(0, 10) : 'now'}`
@@ -62,14 +65,14 @@ export function useBoardAgg(windowDays, { platforms, competitors, multipliers, f
       })
       .catch((e) => { if (alive) { setError(e?.message || String(e)); setLoading(false) } })
     return () => { alive = false }
-  }, [wd, fromIso, toIso, tick])
+  }, [wd, fromIso, toIso, tick, enabled])
 
   // Pure re-derivation on filter/config changes — no refetch needed: the RPC
   // rows are per-platform, so platform filtering happens client-side.
   const board = useMemo(() => {
-    if (!rows || !competitors || !multipliers) return null
+    if (!enabled || !rows || !competitors || !multipliers) return null
     return boardFromAgg(rows, { multipliers, platforms, competitors })
-  }, [rows, platforms, competitors, multipliers])
+  }, [enabled, rows, platforms, competitors, multipliers])
 
   return {
     board,                         // { direct, indirect, directTotal } | null
