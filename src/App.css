@@ -371,6 +371,14 @@
 .stat-card.rail-dn::after { background: linear-gradient(90deg, var(--negative), transparent); }
 .stat-card.rail-fl::after { background: linear-gradient(90deg, #f6c14e, transparent); }
 
+/* OKR hero card — the key-metric banner above the KPI grid. Its rail is
+   deliberately unlike the WoW rails: brand accent, thicker, and a centered
+   glow instead of a left-fading strip, so the card reads as its own thing. */
+.stat-card.okr-card::after {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; z-index: 2;
+  background: linear-gradient(90deg, transparent, var(--accent) 25%, var(--accent) 75%, transparent);
+}
+
 /* ---- Main Grid ---- */
 .main-grid {
   display: grid;

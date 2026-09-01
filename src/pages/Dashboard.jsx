@@ -630,33 +630,29 @@ function Dashboard({ onLogout, onNavigate }) {
               beneath (same glass style, gap, and typography). */}
           {okr && (
             <GlassCard
-              className="stat-card"
+              className="stat-card okr-card"
               intensity={10}
               interactive
               title="The OKR is measured on a 30-day rolling window, all platforms. This gauge never changes with the filters above — whatever window you explore below, this is the number the OKR review uses."
               style={{ marginBottom: 16 }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
-                <div>
-                  <div className="label">🎯 OKR · Twine Rank</div>
-                  <div className="value" style={{ color: okr.rank <= 3 ? 'var(--positive)' : undefined }}>
-                    #{okr.rank}<span className="unit">/ {okr.pool}</span>
-                  </div>
+              <span style={{ position: 'absolute', top: 10, right: 14, fontSize: 12, color: 'var(--text-secondary)', opacity: 0.65 }}>
+                fixed gauge — ignores the filters above
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 3 }}>
+                <div className="label">🎯 OKR · Twine Rank</div>
+                <div className="value" style={{ color: okr.rank <= 3 ? 'var(--positive)' : undefined }}>
+                  #{okr.rank}<span className="unit">/ {okr.pool}</span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
-                  <span>
-                    <span className={`kpi-chip ${okr.rank <= 3 ? 'up' : 'warn'}`}>
-                      {okr.rank <= 3 ? '✓ in top 3' : '⚠ target top 3'}
-                    </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <span className={`kpi-chip ${okr.rank <= 3 ? 'up' : 'warn'}`}>
+                    {okr.rank <= 3 ? '✓ in top 3' : '⚠ target top 3'}
                   </span>
                   <span>
                     30-day rolling · all platforms
                     {okr.gap != null ? ` · ${okr.gap.toFixed(1)} pts to #3` : ''}
                   </span>
                 </div>
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-secondary)', opacity: 0.65 }}>
-                  fixed gauge — ignores the filters above
-                </span>
               </div>
             </GlassCard>
           )}
