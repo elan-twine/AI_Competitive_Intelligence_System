@@ -624,43 +624,25 @@ function Dashboard({ onLogout, onNavigate }) {
 
       {tab === 'overview' && (
         <>
-          {/* OKR anchor — the number Justin tracks: 30-day rolling rank, fixed
-              regardless of the time window / platform filters above. Full-width
-              hero card so it reads as THE key metric, matching the stat cards
-              beneath (same glass style, gap, and typography). */}
-          {okr && (
-            <GlassCard
-              className="stat-card okr-card"
-              intensity={10}
-              interactive
-              title="The OKR is measured on a 30-day rolling window, all platforms. This gauge never changes with the filters above — whatever window you explore below, this is the number the OKR review uses."
-              style={{ marginBottom: 16 }}
-            >
-              <span style={{ position: 'absolute', top: 10, right: 14, fontSize: 12, color: 'var(--text-secondary)', opacity: 0.65 }}>
-                fixed gauge — ignores the filters above
-              </span>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 3 }}>
-                <div className="label">🎯 OKR · Twine Rank</div>
-                <div className="value" style={{ color: okr.rank <= 3 ? 'var(--positive)' : undefined }}>
-                  #{okr.rank}<span className="unit">/ {okr.pool}</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <span className={`kpi-chip ${okr.rank <= 3 ? 'up' : 'warn'}`}>
-                    {okr.rank <= 3 ? '✓ in top 3' : '⚠ target top 3'}
-                  </span>
-                  <span>
-                    30-day rolling · all platforms
-                    {okr.gap != null ? ` · ${okr.gap.toFixed(1)} pts to #3` : ''}
-                  </span>
-                </div>
-              </div>
-            </GlassCard>
-          )}
           {/* Stats grid — Twine-focused */}
-          <div className="stats-grid">
+          <div className="stats-grid five">
             {[
               {
-                label: 'Twine Rank',
+                // OKR anchor (Justin): ALWAYS the 30-day rolling rank, all
+                // platforms — fixed, ignores every filter. Sits first in the
+                // row with its own accent styling (okr-card) so it can't be
+                // read as the window-scoped rank beside it.
+                cardClass: 'okr-card',
+                label: '🎯 OKR · Twine Rank',
+                value: okr ? `#${okr.rank}` : '—',
+                unit: okr ? `/ ${okr.pool}` : '',
+                chip: okr ? (okr.rank <= 3 ? { text: '✓ in top 3', tone: 'up' } : { text: '⚠ target top 3', tone: 'warn' }) : null,
+                sub: okr && okr.gap != null ? `30d rolling · fixed · ${okr.gap.toFixed(1)} pts to #3` : '30-day rolling · fixed gauge',
+                color: okr && okr.rank <= 3 ? 'var(--positive)' : undefined,
+                hint: 'The OKR gauge: Twine\'s rank on a 30-DAY ROLLING window, all platforms — the number the OKR review uses. Fixed: it never moves with the time window or platform filters, unlike the "Twine Rank · this window" card beside it.',
+              },
+              {
+                label: 'Twine Rank · this window',
                 value: twineRank ? `#${twineRank}` : '—',
                 unit: twineRank && boardRanked.length ? `/ ${boardRanked.length}` : '',
                 // OKR: top-3 on SOV. Chip flags on/off target; sub shows the gap.
@@ -672,7 +654,7 @@ function Dashboard({ onLogout, onNavigate }) {
                   ? `${gapToTop3.toFixed(1)} pts to #3 · ${windowStamp}`
                   : (boardRanked.length ? `of ${boardRanked.length} in the SOV pool · ${windowStamp}` : 'no data'),
                 color: twineRank === 1 ? 'var(--positive)' : undefined,
-                hint: 'Where Twine places within the SOV pool, ranked by SOV % (higher = more of the conversation). OKR: reach the top 3.',
+                hint: 'Where Twine places within the SOV pool FOR THE SELECTED WINDOW, ranked by SOV % (higher = more of the conversation). OKR: reach the top 3.',
               },
               {
                 label: 'Twine SOV',
@@ -721,7 +703,7 @@ function Dashboard({ onLogout, onNavigate }) {
                 hint: 'Twine mentions across every platform in the SELECTED time window (always all platforms, even when the platform filter is narrowed). The chip compares against the equal-length period immediately before this window — on the This-week view that is last week\'s total, the number to beat.',
               },
             ].map((stat, i) => (
-              <GlassCard key={i} className={`stat-card ${stat.rail ? `rail-${stat.rail}` : ''}`} intensity={10} title={stat.hint}>
+              <GlassCard key={i} className={`stat-card ${stat.cardClass || ''} ${stat.rail ? `rail-${stat.rail}` : ''}`} intensity={10} title={stat.hint}>
                 <div className="label">{stat.label}</div>
                 <div className={`value ${stat.accent ? 'accent' : ''}`} style={stat.color ? { color: stat.color } : {}}>
                   {stat.value}{stat.unit ? <span className="unit">{stat.unit}</span> : null}
