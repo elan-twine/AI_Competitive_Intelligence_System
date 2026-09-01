@@ -4,6 +4,14 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-09-01 — Deltas follow the window (Justin): Δ SOV and Δ items compare the active window to the equivalent prior window
+
+- **Before:** every delta on the dashboard (Twine SOV chip, rank rail, the ranking table's "Δ SOV (wk)") subtracted the previous `sov_weekly` row from the latest one — cumulative all-time standings, frozen nightly — regardless of the selected window. Accurate as standings drift, misleading next to a window-scoped share, and wrong on Last week / Custom. "Items (wk)" likewise showed the current OKR week's items whatever the window.
+- **Now:** the comparison window is the same-length span immediately before the active one (This week → last completed week; Last week → the week before; 30d → prior 30d; Custom → prior equal span; YTD → none, shown as "—"). Both sides come from the same `sov_board_agg` call shape (or the same client fallback), so units match: pool share in percentage points, items in-window. Columns are labelled with the comparison ("Δ SOV vs prev. week"). "Items (wk)" became "Δ items vs …".
+- The metric itself is unchanged — weighted pool share of voice — only the *reference period* is now the one the viewer is looking at. Sentiment's WoW rail still uses the frozen weekly series (sentiment isn't served by the RPC).
+
+---
+
 ## 2026-09-01 — OKR anchor strip; "Last week" preset; window-aware KPI copy (Justin + Dustin)
 
 - **OKR anchor (Justin):** the OKR number is defined as the **30-day rolling rank, all platforms**. A fixed strip now sits above the KPI cards showing it (rank / pool / pts-to-#3) no matter what window or platform filter is selected — labelled "fixed gauge — ignores the filters above". Separate cached RPC call; the explore filters below can't move it.
