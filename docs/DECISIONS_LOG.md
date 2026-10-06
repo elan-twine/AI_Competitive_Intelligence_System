@@ -4,6 +4,15 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-10-06 — Week boundaries anchored to Israel time for every viewer
+
+- **Problem:** Dustin and Ben (Tel Aviv) saw Twine at #6 for last week; Justin (US) saw #5. Not a bug in anyone's screen — the frontend computed "Friday 00:00" in each viewer's own browser timezone, so posts near the Thursday/Friday line landed in different weeks for different people. Verified against the RPC: Tel Aviv bounds → Twine #6, 10.1%, 16 items; US Eastern bounds → #5, 11.0%, 18 items (even the #3 spot differed).
+- **Decision:** one canonical clock for SOV weeks — **`Asia/Jerusalem`** (`SOV_TZ` in `src/lib/metrics.js`). It is HQ time, the Thursday review runs on it, and the KR-21 pipeline already anchors there. Week labels now say "Israel time". `weekStartInstant` is the time-bound helper; `isoWeekStart`/`tzCalendarDate` yield Israel-calendar dates for labels and bucket keys, so the trend chart, drill-in week groups, and the KR-21 "current week" key all agree across viewers too.
+- **Known residual inconsistency (follow-up, n8n UI):** the Weekly Snapshot stamps `week_start` with a UTC-anchored Friday (`Date.UTC`/`getUTCDay` in `Compute SOV Snapshot`), i.e. midnight UTC = 02:00/03:00 Israel. Posts in that 2–3h sliver sit in different weeks for the frozen history vs the live board. Same date label, tiny membership drift. Aligning the snapshot to Asia/Jerusalem closes it.
+- **Constraint:** never anchor a week (or any OKR boundary) in the viewer's local clock.
+
+---
+
 ## 2026-09-01 — Deltas follow the window (Justin): Δ SOV and Δ items compare the active window to the equivalent prior window
 
 - **Before:** every delta on the dashboard (Twine SOV chip, rank rail, the ranking table's "Δ SOV (wk)") subtracted the previous `sov_weekly` row from the latest one — cumulative all-time standings, frozen nightly — regardless of the selected window. Accurate as standings drift, misleading next to a window-scoped share, and wrong on Last week / Custom. "Items (wk)" likewise showed the current OKR week's items whatever the window.

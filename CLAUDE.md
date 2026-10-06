@@ -47,10 +47,14 @@ the orientation layer.
 
 ## Conventions
 
-- **Friday→Thursday weeks.** Every SOV metric uses this week unless explicitly
-  stated otherwise — the week CLOSES on OKR-review Thursday so report day shows a
-  ~full week (Elan, 2026-08-06; superseded the earlier Thu→Wed anchor). Helper:
-  `isoWeekStart` in `src/lib/metrics.js` (`WEEK_ANCHOR_DAY = 5`).
+- **Friday→Thursday weeks, anchored in Israel time (`SOV_TZ = 'Asia/Jerusalem'`)
+  for every viewer.** Every SOV metric uses this week unless explicitly stated
+  otherwise — the week CLOSES on OKR-review Thursday so report day shows a
+  ~full week (Elan, 2026-08-06; superseded the earlier Thu→Wed anchor). Never
+  anchor a week in the viewer's local clock (2026-10-06: a US viewer and a Tel
+  Aviv viewer saw different "last week" rankings). Helpers in
+  `src/lib/metrics.js`: `weekStartInstant` for time bounds, `isoWeekStart` /
+  `tzCalendarDate` for labels and bucket keys (`WEEK_ANCHOR_DAY = 5`).
 - **Competitors are table-driven.** Add/remove in the app UI → every scraper and
   gate picks it up live. Never hardcode a competitor, and no n8n edit is needed.
 - **SOV Pool vs Watchlist** (UI labels; the `type` column still stores
