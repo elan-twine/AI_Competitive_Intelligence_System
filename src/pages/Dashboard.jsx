@@ -25,7 +25,7 @@ import { AssistantChat } from '../components/AssistantChat'
 import { clearCache } from '../lib/cache'
 import { downloadCSV } from '../lib/csv'
 import { fmtDateRange } from '../lib/dates'
-import { applyFilters, rankings, platformSplit, compare, isoWeekStart, SOV_HISTORY_START } from '../lib/metrics'
+import { applyFilters, rankings, platformSplit, compare, weekStartInstant, prevWeekStartInstant, tzCalendarDate, SOV_HISTORY_START } from '../lib/metrics'
 import { PLATFORM_COLORS, registerCompanyColors, isTwine } from '../lib/colors'
 import Briefings from './Briefings'
 import '../App.css'
@@ -38,23 +38,26 @@ const YTD_DAYS = Math.max(1, Math.ceil((Date.now() - new Date(new Date().getFull
 // window". The hint text is surfaced on hover so it's always clear what the
 // selected timescale means.
 const TIME_RANGES = [
-  { label: 'This week', value: 'week', hint: 'The current OKR week — Friday to now, the same week the Thursday review talks about. Everything below covers it. Trend charts still show rolling 7-day points (labelled on the chart).' },
-  { label: 'Last week', value: 'lastweek', hint: 'The last COMPLETED OKR week — Friday through Thursday, final numbers. This is the week the previous Thursday review discussed; use it to see what "beat last week" means.' },
+  { label: 'This week', value: 'week', hint: 'The current OKR week — Friday 00:00 Israel time to now, the same week the Thursday review talks about, identical for every viewer wherever they are. Everything below covers it. Trend charts still show rolling 7-day points (labelled on the chart).' },
+  { label: 'Last week', value: 'lastweek', hint: 'The last COMPLETED OKR week — Friday through Thursday, Israel time, final numbers; identical for every viewer wherever they are. This is the week the previous Thursday review discussed; use it to see what "beat last week" means.' },
   { label: '7d', value: 7, hint: 'Everything below — rankings, stats, charts — covers the last 7 days (rolling, so it can straddle two OKR weeks). Trend charts show one point per day.' },
   { label: '30d', value: 30, hint: 'Everything below — rankings, stats, charts — covers the last 30 days. Trend charts show one point per day.' },
   { label: 'YTD', value: YTD_DAYS, hint: 'Everything below covers Jan 1 → today. Trend charts show one point per week.' },
 ]
-// Start of the current Friday-anchored OKR week, as epoch ms (local midnight).
+// Start of the current OKR week: Friday 00:00 ISRAEL time, as an instant —
+// the same instant for every viewer regardless of their own timezone.
 function thisWeekFromTs() {
-  return isoWeekStart(new Date()).getTime()
+  return weekStartInstant()
 }
 
-// The last COMPLETED OKR week: [previous Friday 00:00, this Friday 00:00).
-// toTs is 1ms before the current week start so inclusive filters exclude it.
+// The last COMPLETED OKR week: [previous Friday 00:00, this Friday 00:00),
+// Israel time. toTs is 1ms before the current week start so inclusive
+// filters exclude it.
 function lastWeekBounds() {
   const end = thisWeekFromTs()
-  return { fromTs: end - 7 * 86400000, toTs: end - 1 }
+  return { fromTs: prevWeekStartInstant(end), toTs: end - 1 }
 }
+const TZ_NOTE = 'Israel time'
 
 // Trailing-window lower bound (module helper — keeps Date.now() out of render).
 function trailingFromTs(days) {
@@ -64,8 +67,8 @@ function nowMs() { return Date.now() }
 
 // Map the selected window to the trend-chart resolution + a human label.
 function windowMeta(days) {
-  if (days === 'week') return { windowDays: 7, label: `week of ${fmtDateRange(new Date(thisWeekFromTs()), new Date())}` }
-  if (days === 'lastweek') { const b = lastWeekBounds(); return { windowDays: null, label: `last week (${fmtDateRange(new Date(b.fromTs), new Date(b.toTs))})` } }
+  if (days === 'week') return { windowDays: 7, label: `week of ${fmtDateRange(tzCalendarDate(thisWeekFromTs()), tzCalendarDate(nowMs()))} (${TZ_NOTE})` }
+  if (days === 'lastweek') { const b = lastWeekBounds(); return { windowDays: null, label: `last week (${fmtDateRange(tzCalendarDate(b.fromTs), tzCalendarDate(b.toTs))}, ${TZ_NOTE})` } }
   if (days === 7) return { windowDays: 7, label: 'last 7 days' }
   if (days === 30) return { windowDays: 30, label: 'last 30 days' }
   return { windowDays: null, label: 'year-to-date' }
@@ -75,8 +78,8 @@ function windowMeta(days) {
 // "Jul 5 – 11" (same month) or "Jul 28 – Aug 3". Prefixed "Week of " on the
 // 7-day view (where the ranking IS a week); plain range on 30d/YTD.
 function windowRangeLabel(days) {
-  if (days === 'week') return `Week of ${fmtDateRange(new Date(thisWeekFromTs()), new Date())}`
-  if (days === 'lastweek') { const b = lastWeekBounds(); return `Last week · ${fmtDateRange(new Date(b.fromTs), new Date(b.toTs))} (closed)` }
+  if (days === 'week') return `Week of ${fmtDateRange(tzCalendarDate(thisWeekFromTs()), tzCalendarDate(nowMs()))} · ${TZ_NOTE}`
+  if (days === 'lastweek') { const b = lastWeekBounds(); return `Last week · ${fmtDateRange(tzCalendarDate(b.fromTs), tzCalendarDate(b.toTs))} (closed) · ${TZ_NOTE}` }
   const end = new Date()
   const start = new Date(); start.setDate(start.getDate() - (days - 1))
   const range = fmtDateRange(start, end)
@@ -237,8 +240,8 @@ function Dashboard({ onLogout, onNavigate }) {
       const len = customBounds.toTs - customBounds.fromTs + 1
       return { fromTs: customBounds.fromTs - len, toTs: customBounds.fromTs - 1 }
     }
-    if (isWeek) return { fromTs: weekFrom - 7 * 86400000, toTs: weekFrom - 1 }
-    if (isLastWeek) return { fromTs: lwFrom - 7 * 86400000, toTs: lwFrom - 1 }
+    if (isWeek) return { fromTs: prevWeekStartInstant(weekFrom), toTs: weekFrom - 1 }
+    if (isLastWeek) return { fromTs: prevWeekStartInstant(lwFrom), toTs: lwFrom - 1 }
     if (days === YTD_DAYS) return null
     return { fromTs: trailingFromTs(2 * days), toTs: trailingFromTs(days) - 1 }
   }, [rangeActive, customBounds, isWeek, weekFrom, isLastWeek, lwFrom, days])
@@ -581,7 +584,7 @@ function Dashboard({ onLogout, onNavigate }) {
           <span
             className="filter-label"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'help' }}
-            title="One time window for the whole dashboard — it sets the timescale of every ranking, stat, and trend below. Hover a window to see exactly what it means."
+            title="One time window for the whole dashboard — it sets the timescale of every ranking, stat, and trend below. Week boundaries are Friday→Thursday in Israel time for every viewer, so two people in different timezones always see the same week. Hover a window to see exactly what it means."
           >
             Time window <Info size={12} style={{ opacity: 0.6 }} />
           </span>

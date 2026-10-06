@@ -152,14 +152,64 @@ export const SOV_HISTORY_START = '2026-06-22'
 // every weekly grouping in the app follows.
 export const WEEK_ANCHOR_DAY = 5
 
-// Anchor day of the week containing `date`, normalized to local midnight.
-// We label each bucket by this anchor date as 'YYYY-MM-DD' (the week-start date).
+// Canonical timezone for SOV week boundaries. Weeks are Friday→Thursday in
+// ISRAEL time for every viewer — HQ, the Thursday OKR review, and the KR-21
+// pipeline all run on it. Until 2026-10-06 the frontend anchored weeks in the
+// viewer's own clock, so a US viewer and a Tel Aviv viewer got different
+// "last week" rankings (#5 vs #6) whenever posts straddled Thursday night.
+export const SOV_TZ = 'Asia/Jerusalem'
+
+const DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+const TZ_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: SOV_TZ, hourCycle: 'h23', weekday: 'short',
+  year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+})
+// Calendar parts of an instant as seen in SOV_TZ.
+function tzParts(date) {
+  const p = {}
+  for (const { type, value } of TZ_PARTS_FMT.formatToParts(date)) p[type] = value
+  return { y: +p.year, m: +p.month - 1, d: +p.day, dow: DOW[p.weekday], h: +p.hour, mi: +p.minute, s: +p.second }
+}
+// Instant (ms) of 00:00 on the SOV_TZ calendar date y-m-d. Two-pass so a DST
+// transition on that day resolves to the real midnight.
+function tzMidnight(y, m, d) {
+  const guess = Date.UTC(y, m, d)
+  const offsetAt = (t) => { const p = tzParts(new Date(t)); return Date.UTC(p.y, p.m, p.d, p.h, p.mi, p.s) - t }
+  let t = guess - offsetAt(guess)
+  const o2 = offsetAt(t)
+  if (guess - o2 !== t) t = guess - o2
+  return t
+}
+
+// The instant the SOV week containing `now` started (Friday 00:00 Israel time).
+// This is THE value to use as a time-filter bound.
+export function weekStartInstant(now = new Date()) {
+  const p = tzParts(now)
+  const back = (p.dow - WEEK_ANCHOR_DAY + 7) % 7
+  const dt = new Date(Date.UTC(p.y, p.m, p.d - back))
+  return tzMidnight(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate())
+}
+// Start of the week before the one starting at `weekStart` (DST-safe: steps
+// into the prior week and re-anchors instead of subtracting 7×24h).
+export function prevWeekStartInstant(weekStart) {
+  return weekStartInstant(new Date(weekStart - 3 * 86400000))
+}
+// A Date at LOCAL midnight of the SOV_TZ calendar date of `instant` — for
+// labels and bucket keys only (ymd()/fmtDateRange read local parts). Never use
+// its getTime() as a filter bound; use weekStartInstant for that.
+export function tzCalendarDate(instant) {
+  const p = tzParts(new Date(instant))
+  return new Date(p.y, p.m, p.d)
+}
+
+// Anchor day of the SOV week containing `date`, as a local-midnight Date of
+// that Israel-calendar Friday — so ymd()/fmtDateRange label the bucket
+// identically for every viewer. Bucket KEY only; for a bound use weekStartInstant.
 export function isoWeekStart(date) {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  // getDay(): 0=Sun..6=Sat. Shift back to the most recent anchor day.
-  const day = (d.getDay() - WEEK_ANCHOR_DAY + 7) % 7
-  d.setDate(d.getDate() - day)
-  return d
+  const p = tzParts(date)
+  const back = (p.dow - WEEK_ANCHOR_DAY + 7) % 7
+  const dt = new Date(Date.UTC(p.y, p.m, p.d - back))
+  return new Date(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate())
 }
 
 export function weeklySOVSeries(posts, config = DEFAULT_SOV_CONFIG, opts = {}) {
