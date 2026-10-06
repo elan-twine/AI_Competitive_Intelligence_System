@@ -4,6 +4,15 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-10-06 — Gate false-positive pattern: "anchor belongs to a different entity" entries were accepted
+
+- **Found (Ben):** a LUMO Labs (Dutch VC) post attributed to Lumos at weight 223. The gate's own reasoning said *"…LUMO Labs (the venture fund, not the identity security company)"* and the entry was accepted anyway. Scan found **6 such rows, all LinkedIn**: four LUMO Labs posts on 2026-09-30 (≈267 weight ≈ 15% of Lumos's 30-day LinkedIn score, so Lumos's late-September standing was inflated), one Way Security ("the way security works"), one Redblock (a branding agency). Zero on News/X/Reddit.
+- **Mechanism:** the LLM's `companies[]` contract says to list a company only with *its own* anchor and return `[]` otherwise; the model violated it by listing the company with negating reasoning, and `Score + Write + Mark` (line ~68) accepts any listed name without inspecting the reasoning. Not a keyword problem — the fuzzy "Lumos" search pulling "LUMO" is expected; the gate exists to reject it.
+- **Decisions:** (1) the 6 rows are **flagged `misattributed`**, not deleted — the flag is the designed soft-remove (RPC and app exclude it) and keeps them as reproducible negative eval cases (`ops/evals/gate_false_positives_2026-10-06.json`). (2) "LUMO Labs" added to Lumos's `collision_terms` (table-driven). (3) Parser hardening in the Processor: drop a `companies` entry whose reasoning negates the match, and tighten the prompt contract to forbid listing a company with non-affirming reasoning. (Both n8n-UI edits, Dustin.)
+- **Caveat:** the frozen Sep-30 rows in `sov_daily`/`sov_weekly` still carry the inflated Lumos; the live 30d board corrects the moment the flags land. Only a snapshot backfill would rewrite the frozen history.
+
+---
+
 ## 2026-10-06 — Week boundaries anchored to Israel time for every viewer
 
 - **Problem:** Dustin and Ben (Tel Aviv) saw Twine at #6 for last week; Justin (US) saw #5. Not a bug in anyone's screen — the frontend computed "Friday 00:00" in each viewer's own browser timezone, so posts near the Thursday/Friday line landed in different weeks for different people. Verified against the RPC: Tel Aviv bounds → Twine #6, 10.1%, 16 items; US Eastern bounds → #5, 11.0%, 18 items (even the #3 spot differed).
