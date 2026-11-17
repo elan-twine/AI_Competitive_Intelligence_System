@@ -5,6 +5,7 @@ import { useCachedFetch } from './useCachedFetch'
 import { isLocallyFlagged, subscribeFlagged, postIdentity } from '../lib/misattribution'
 import { postWeightOf } from '../lib/metrics'
 import { authorTypeOf } from '../lib/authorType'
+import { fanOutCompanies } from '../lib/multiCompany'
 
 // The set of company names/aliases we track now comes from the `competitors`
 // table (source of truth), not a hardcoded list. Anything else in the source
@@ -125,6 +126,9 @@ export function useSOVData(competitorsArg) {
     ...googleNews.map(g => ({ ...g, platform: 'Google News', ts: g.publishedAt })),
     ...linkedinPosts.map(l => ({ ...l, platform: 'LinkedIn', ts: l.posted_at })),
   ]
+    // One entry per credited company (company_names), exactly as the board RPC
+    // counts them — so a multi-company post appears in each company's lists.
+    .flatMap(fanOutCompanies)
     .filter(p => isTracked(p.companyName))
     // Exclude items flagged misattributed — soft-removed, the row is kept in the
     // DB. `misattributed` = the persisted DB flag (present after a fresh load);
@@ -133,6 +137,18 @@ export function useSOVData(competitorsArg) {
     .filter(p => { const { platform, key } = postIdentity(p); return !isLocallyFlagged(platform, key) })
     // Normalize aliases onto the canonical competitor name.
     .map(p => ({ ...p, companyName: canonicalOf(p.companyName) }))
+    // Two listed names can collapse onto one canonical company — keep one copy.
+    .filter((() => {
+      const seen = new Set()
+      return (p) => {
+        if (!p.coCredited) return true
+        const { platform, key } = postIdentity(p)
+        const k = `${platform}|${key}|${p.companyName}`
+        if (seen.has(k)) return false
+        seen.add(k)
+        return true
+      }
+    })())
 
   // Per-post fields the rest of the app expects:
   //   unweightedSOV — pure post-count share (1 / total posts)
