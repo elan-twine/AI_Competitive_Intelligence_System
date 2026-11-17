@@ -4,6 +4,19 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-11-17 — Gate now sees late mentions: first 600 chars + an excerpt around each tracked company named after the cut
+
+- **Found (Dustin):** a Gartner IAM Summit "Premier Sponsors" post (weight 168) was credited to Oak and not to Twine although both are named. Cause: `Fetch + Prep Batch` sent the LLM only `text.slice(0, MAXTEXT)` with `MAXTEXT = 600`. The list is alphabetical; "Oak" is inside the cut, "Twine Security" starts at char 623. The model never saw it (execution 16887: text sent ends "…Silverfort, Saviy").
+- **Why 600 existed:** the gate sends a whole batch (100 posts) in ONE gpt-4.1 request, 4×/day, and the request must fit the OpenAI tokens-per-minute allowance (documented as 30k/min when `BATCH` went 50→100 in July). 600 chars × 100 posts + the ~7k-token system prompt ≈ 30k tokens. It was a budget cap, not a quality choice.
+- **Size of the problem (Oct 1 → Nov 17, 12,125 posts):** 73% of posts are longer than 600 chars (median 952). For unambiguous names, attribution is ~100% when the exact name is inside the cut and the miss set is entirely names past it: Twine 7 of 70 mentions lost, Oak 23, Cerby 34, Orchid 16, Linx 11, Way 6, Surf AI 3, OFFROAD 3 (Lumos/Opti counts are namesake noise). It cuts against everyone; alphabetical lists and sign-offs make it lean against late-alphabet names.
+- **Decision:** keep the 600-char head (budget) and append ` [...] ` + a ±100-char excerpt around the FIRST mention past the cut of each tracked company (name or alias, word-bounded, case-sensitive), at most 900 extra chars per post (`gateText()` in `Fetch + Prep Batch`). One excerpt per company, not a shared window — a roundup that names several vendors late otherwise spends the budget on the first one (this is what the first draft missed). Company-page posts are unaffected (auto-attributed, no gate).
+- **Measured on the real data before shipping:** all 7 missed Twine posts now show the name to the gate; 97% of late exact-name mentions across the pool are surfaced; 7% of posts gain an excerpt; cost ≈ +330 tokens per 100-post batch on average (+1%), worst sampled batch ≈ +900; the real Nov 7 batch would have gone 30,084 → ~30,640 prompt tokens. If the TPM limit is ever hit the LLM node returns 429 → the run errors loudly (Error Handler) and the rows stay `pending` for the next drain — no silent loss.
+- **Rejected alternatives:** raising `MAXTEXT` (2,000 chars ≈ 3× the tokens → must cut `BATCH`, which lowers the 400/day drain cap below inflow — the July backlog failure); sending tail instead of head (loses the post's subject).
+- **Not done (open):** history is not repaired. ~100 posts since Oct 1 were under-credited across the pool; repairing only Twine's would bias the board, and re-gating needs their `linkedin_posts` NONE rows cleared first (the LLM-skip cache reuses an existing verdict). Decide separately. Also still open from 2026-10-06: the negated-reasoning parser filter was never applied to the live workflow.
+- **Constraint:** never attribute from a blind truncation. Any future text budget change must keep every tracked name visible to the gate. Eval fixture: `ops/evals/gate_late_mention_misses_2026-11-17.json`.
+
+---
+
 ## 2026-10-06 — Gate false-positive pattern: "anchor belongs to a different entity" entries were accepted
 
 - **Found (Ben):** a LUMO Labs (Dutch VC) post attributed to Lumos at weight 223. The gate's own reasoning said *"…LUMO Labs (the venture fund, not the identity security company)"* and the entry was accepted anyway. Scan found **6 such rows, all LinkedIn**: four LUMO Labs posts on 2026-09-30 (≈267 weight ≈ 15% of Lumos's 30-day LinkedIn score, so Lumos's late-September standing was inflated), one Way Security ("the way security works"), one Redblock (a branding agency). Zero on News/X/Reddit.

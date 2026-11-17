@@ -1,0 +1,13 @@
+{
+  "description": "Gate false NEGATIVES found 2026-11-17: the Processor sent only the first 600 characters of each post to the attribution LLM, so a tracked company named later in the post (alphabetical sponsor lists, vendor roundups, sign-offs) was never seen. Every row below names 'Twine Security' past character 600 and was rejected or credited to another company only. Expected verdict includes Twine Security. Texts are fetchable by activity_id from linkedin_posts. Use as positive cases for the late-mention excerpt logic (gateText in 'Fetch + Prep Batch').",
+  "pattern": "exact company name appears only after the 600-char cut; of 70 posts naming Twine Security since 2026-10-01, none with the name inside the cut went uncredited; all 7 uncredited posts have it past the cut",
+  "cases": [
+    { "activity_id": "7518313829559332864", "attributed": "NONE", "expected": "Twine Security", "name_at_char": 1349, "posted": "2026-10-20", "why": "hayaData Conference sponsor thank-you list" },
+    { "activity_id": "7519797625387331584", "attributed": "NONE", "expected": "Twine Security", "name_at_char": 1942, "posted": "2026-10-24", "why": "alphabetical vendor list (also names Surf AI, Torch Security)" },
+    { "activity_id": "7524490076052078592", "attributed": "Oak - Identity Security OS", "expected": "Oak - Identity Security OS + Twine Security", "name_at_char": 623, "posted": "2026-11-06", "why": "Gartner IAM Summit Premier Sponsors list; Oak inside the cut, Twine 23 chars past it" },
+    { "activity_id": "7524635294500057088", "attributed": "NONE", "expected": "Twine Security", "name_at_char": 1280, "posted": "2026-11-07", "why": "Twine co-founder's own post: 'it's why we built Twine Security'" },
+    { "activity_id": "7525483294172389376", "attributed": "NONE", "expected": "Twine Security", "name_at_char": 1030, "posted": "2026-11-09", "why": "industry roundup: Twine named a sample vendor in a Gartner Impact Radar" },
+    { "activity_id": "7525935649535946752", "attributed": "NONE", "expected": "Twine Security", "name_at_char": 633, "posted": "2026-11-10", "why": "podcast episode with Twine's co-founder" },
+    { "activity_id": "7528045654594551808", "attributed": "NONE", "expected": "Twine Security", "name_at_char": 1431, "posted": "2026-11-16", "why": "industry roundup: Twine up 4 places to #17 (needs one-excerpt-per-company; an earlier company used up a shared budget)" }
+  ]
+}
