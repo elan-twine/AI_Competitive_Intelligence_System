@@ -1,0 +1,12 @@
+{
+  "description": "Gate false positives found 2026-10-06: the LinkedIn attribution LLM listed a tracked company while its own reasoning said the anchor belonged to a DIFFERENT entity (namesake fund/brand). Expected verdict for every row is NONE. Texts are fetchable by activity_id from linkedin_posts (rows are flagged misattributed=true, not deleted, so this set stays reproducible). Wire into ops/scripts/eval_li_gate_mini.mjs as negative cases.",
+  "pattern": "reasoning contains a negation of the match (e.g. 'not the identity security company', 'no concrete anchor') yet companyName is set",
+  "cases": [
+    { "activity_id": "7510967957213253632", "attributed": "Lumos", "expected": "NONE", "weight_at_catch": 223.09, "posted": "2026-09-30", "why": "LUMO Labs (Dutch VC) congratulating a portfolio company; model wrote 'not the identity security company' and still attributed" },
+    { "activity_id": "7510996773893545984", "attributed": "Lumos", "expected": "NONE", "weight_at_catch": 22.23, "posted": "2026-09-30", "why": "LUMO Labs partner-led workshop" },
+    { "activity_id": "7510961666776498176", "attributed": "Lumos", "expected": "NONE", "weight_at_catch": 14.68, "posted": "2026-09-30", "why": "seed round led by LUMO Labs" },
+    { "activity_id": "7511021646821089281", "attributed": "Lumos", "expected": "NONE", "weight_at_catch": 7.0,   "posted": "2026-09-30", "why": "LUMO Labs named as investor" },
+    { "activity_id": "7492975690733060096", "attributed": "Way Security", "expected": "NONE", "weight_at_catch": 0.64, "posted": "2026-08-11", "why": "phrase 'the way security works'; model noted no concrete anchor and still attributed" },
+    { "activity_id": "7495095970595225600", "attributed": "Redblock", "expected": "NONE", "weight_at_catch": 0.17, "posted": "2026-08-17", "why": "Redblock Branding Solutions; shared name token only" }
+  ]
+}
