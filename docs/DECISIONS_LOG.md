@@ -4,6 +4,16 @@ Reverse-chronological. One entry per decision/change. Concise but descriptive: w
 
 ---
 
+## 2026-11-17 — Post lists follow `company_names`, same as the board RPC
+
+- **Found (Dustin):** after Twine was added to the Gartner "Premier Sponsors" post (`company_names` = Oak + Twine), the post counted in Twine's score but only appeared under Oak in the dashboard lists.
+- **Cause:** two readers of one row disagreed. `sov_board_agg` unnests `company_names` (every listed company gets the post's weight). The frontend firehose (`useSOVData`) only read the single `companyName` field, which holds the FIRST listed company. Nothing in `src/` referenced `company_names` at all. 17 of 2,703 attributed LinkedIn posts (and 1 Reddit post) credit a second company, so each had a score contribution with no visible post behind it.
+- **Decision:** the feed fans a row out into one post per credited company (`fanOutCompanies` in `src/lib/multiCompany.js`), mirroring the RPC: list non-empty → one entry per listed name (list is authoritative), else the row's `companyName`. Each copy carries that company's own sentiment/reasoning and a `coCredited` list. Every post-level view (drill-in lists, Mentions, top posts, live-window charts, the client fallback ranking) reads this feed, so they all agree with the score now.
+- **Constraint:** `company_names` is the source of truth for who a post credits; `companyName` is only "the first one". Any new reader of post tables must unnest the list. Flagging a post misattributed still removes the whole row for every company it credits.
+- **Not covered:** the AI assistant's post search in the Worker still filters on `companyName` only.
+
+---
+
 ## 2026-11-17 — Gate now sees late mentions: first 600 chars + an excerpt around each tracked company named after the cut
 
 - **Found (Dustin):** a Gartner IAM Summit "Premier Sponsors" post (weight 168) was credited to Oak and not to Twine although both are named. Cause: `Fetch + Prep Batch` sent the LLM only `text.slice(0, MAXTEXT)` with `MAXTEXT = 600`. The list is alphabetical; "Oak" is inside the cut, "Twine Security" starts at char 623. The model never saw it (execution 16887: text sent ends "…Silverfort, Saviy").
